@@ -1,0 +1,67 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+build/
+.vite/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+*.log
+
+# Variáveis de ambiente (nunca commitar chaves)
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Cache e temporários
+.cache/
+*.tmp
+*.temp
+.temp/
+tmp/
+temp/
+
+# NPM / Yarn
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.js
+
+# Testes e cobertura
+coverage/
+.nyc_output/
+*.lcov
+
+# Misc
+*.local
+*.log
+.eslintcache
+.stylelintcache
