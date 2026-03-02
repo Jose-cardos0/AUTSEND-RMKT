@@ -1,0 +1,27 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "pendingRecovery",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [{ "fieldPath": "sendAfter", "order": "ASCENDING" }]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orderId", "order": "ASCENDING" },
+        { "fieldPath": "evento", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pendingRecovery",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orderId", "order": "ASCENDING" },
+        { "fieldPath": "evento", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
