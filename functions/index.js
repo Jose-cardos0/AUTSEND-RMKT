@@ -8,7 +8,7 @@ const N8N_REMARKETING_URL = 'https://n8n.iacodenxt.online/webhook/REMARKETING'
 
 /** Eventos que só enviam automação após 5 min, e só se NÃO houver order_approved do mesmo pedido (recuperar quem desistiu de pagar). */
 const EVENTOS_RECUPERACAO_ATRASADA = ['order_status.boleto_issued', 'order_status.pix_issued']
-const ATRASO_MINUTOS = 5
+const ATRASO_MINUTOS = 2
 
 /** Retorna a config Evolution a usar (instância selecionada ou primeira ou config antiga). */
 async function getEvolutionConfigForUser(userId) {
@@ -29,59 +29,84 @@ async function getEvolutionConfigForUser(userId) {
 }
 
 function extractCustomer(body) {
-  const customer = body.Customer ?? body.customer ?? {}
+  const cart = body.cart ?? body.checkout ?? {}
+  const customer = body.Customer ?? body.customer ?? cart ?? {}
   const lead = body.Lead ?? body.lead ?? {}
-  const checkout = body.checkout ?? body.Checkout ?? {}
+  const checkout = body.checkout ?? body.Checkout ?? cart ?? {}
   const phoneRaw =
     body.customer_phone ?? body.phone_number ?? body.telefone ?? body.phone ?? body.numero ??
-    body.mobile ?? customer.mobile ?? customer.phone ?? customer.phone_number ?? customer.telefone ??
+    body.mobile ?? cart.phone ?? customer.mobile ?? customer.phone ?? customer.phone_number ?? customer.telefone ??
     lead.phone ?? lead.telefone ?? lead.mobile ?? lead.phone_number ??
     checkout.phone ?? checkout.telefone ?? checkout.customer_phone ?? ''
   return {
     nome: (
-      body.customer_name ?? customer.full_name ?? customer.name ?? body.nome ?? body.name ??
+      body.customer_name ?? cart.name ?? customer.full_name ?? customer.name ?? body.nome ?? body.name ??
       lead.name ?? lead.nome ?? ''
     ).toString().trim(),
     email: (
-      body.customer_email ?? customer.email ?? body.email ?? lead.email ?? checkout.email ?? ''
+      body.customer_email ?? cart.email ?? customer.email ?? body.email ?? lead.email ?? checkout.email ?? ''
     ).toString().trim(),
     telefone: phoneRaw.toString().replace(/\D/g, ''),
   }
 }
 
 function extractProduct(body) {
-  const product = body.Product ?? body.product ?? {}
+  const cart = body.cart ?? body.checkout ?? {}
+  const product = body.Product ?? body.product ?? cart ?? {}
   return {
-    nome: product.product_name ?? product.name ?? body.product_name ?? '',
-    id: product.product_id ?? product.id ?? body.product_id ?? '',
+    nome: product.product_name ?? product.name ?? body.product_name ?? cart.product_name ?? '',
+    id: product.product_id ?? product.id ?? body.product_id ?? cart.product_id ?? '',
   }
 }
 
-/** ID do pedido para vincular pix_emitido/boleto_emitido ao order_approved (mesmo pedido). */
+/** ID do pedido/carrinho para vincular eventos e deduplicação. */
 function extractOrderId(body) {
-  const id = body.order_id ?? body.orderId ?? body.id ?? body.transaction_id ?? body.purchase_id ?? body.sale_id ?? body.reference ?? body.uuid ?? ''
+  const data = body.data ?? body.payload ?? {}
+  const cart = body.cart ?? body.checkout ?? {}
+  const id = body.order_id ?? body.orderId ?? body.id ?? body.transaction_id ?? body.purchase_id ?? body.sale_id ?? body.reference ?? body.uuid ?? body.order_number ?? data.order_id ?? data.orderId ?? data.id ?? data.reference ?? cart.id ?? ''
   return (id && String(id).trim()) ? String(id).trim() : ''
 }
 
+/** Extrai o evento real. Kiwify pode enviar trigger/triggers, cart.status, ou status direto no body. */
 function extractEvent(body) {
+  const cart = body.cart ?? body.checkout ?? body.data?.cart ?? body.payload?.cart
+  const statusDireto = String(body.status || '').toLowerCase().trim()
+  const statusCart = cart && typeof cart === 'object' ? String(cart.status || '').toLowerCase().trim() : ''
+
+  if (statusDireto === 'abandoned' || statusCart === 'abandoned') return 'abandoned_cart'
+  if (statusDireto === 'approved' || statusCart === 'approved') return 'order_status.purchase_approved'
+  if (statusDireto === 'refused' || statusDireto === 'declined' || statusCart === 'refused' || statusCart === 'declined') return 'order_status.purchase_declined'
+  if (statusDireto === 'refunded' || statusCart === 'refunded') return 'order_status.refund'
+  if (statusDireto === 'chargedback' || statusCart === 'chargedback') return 'order_status.chargeback'
+  if (statusDireto.includes('billet') || statusCart.includes('billet')) return 'order_status.boleto_issued'
+  if (statusDireto === 'waiting_payment' || statusCart === 'waiting_payment') {
+    if ((body.payment_method || body.cart?.payment_method || '').toLowerCase().includes('boleto')) return 'order_status.boleto_issued'
+    if ((body.payment_method || body.cart?.payment_method || '').toLowerCase().includes('pix')) return 'order_status.pix_issued'
+  }
+
   const data = body.data ?? body.payload ?? body
+  const eventObj = body.event ?? data.event
+  const triggerFromObj = typeof eventObj === 'object' && eventObj !== null ? (eventObj.trigger ?? eventObj.type) : null
   const candidates = [
-    body.webhook_event_type,
     body.trigger,
-    body.event,
+    typeof body.event === 'string' ? body.event : null,
     Array.isArray(body.triggers) && body.triggers[0],
+    triggerFromObj,
+    body.webhook_event_type,
     body.event_type,
     body.event_name,
     body.tipo_evento,
-    body.tipo,
     body.evento,
     body.order_status,
-    body.type,
-    body.name,
     data.trigger,
-    data.event,
-    data.webhook_event_type,
+    typeof data.event === 'string' ? data.event : null,
     Array.isArray(data.triggers) && data.triggers[0],
+    data.webhook_event_type,
+    data.event_type,
+    data.event_name,
+    data.order_status,
+    body.Event,
+    data.Event,
   ]
   const raw = candidates.find((v) => v != null && v !== false && String(v).toLowerCase().trim() !== 'false') ?? 'unknown'
   return normalizeEventType(raw)
@@ -94,8 +119,8 @@ function normalizeEventType(raw) {
   if (raw == null || raw === false) return 'unknown'
   const s = String(raw).toLowerCase().trim().replace(/\s+/g, '_')
   if (!s || s === 'false') return 'unknown'
-  if (s === 'abandoned_cart' || s === 'carrinho_abandonado' || s === 'cart_abandoned') return 'abandoned_cart'
-  if (s === 'boleto_gerado' || s.includes('boleto') || s === 'order_status.boleto_issued') return 'order_status.boleto_issued'
+  if (s === 'abandoned_cart' || s === 'carrinho_abandonado' || s === 'cart_abandoned' || s.includes('carrinho_abandonado') || s.includes('abandoned_cart') || s.includes('abandoned_checkout') || s.includes('checkout_abandoned') || s === 'abandoned') return 'abandoned_cart'
+  if (s === 'boleto_gerado' || s.includes('boleto') || s.includes('billet') || s === 'order_status.boleto_issued') return 'order_status.boleto_issued'
   if (s === 'pix_gerado' || s.includes('pix') || s === 'order_status.pix_issued') return 'order_status.pix_issued'
   if (s === 'compra_recusada' || s.includes('purchase_declined') || s.includes('recusad')) return 'order_status.purchase_declined'
   if (s === 'compra_aprovada' || s === 'order_approved' || s.includes('purchase_approved') || s.includes('aprovad')) return 'order_status.purchase_approved'
@@ -236,23 +261,57 @@ exports.kiwifyAbandonedCheckout = functions.https.onRequest(async (req, res) => 
   const product = extractProduct(body)
   const orderId = extractOrderId(body)
   if (evento === 'unknown') {
-    console.warn('Kiwify webhook: evento unknown. Body keys:', Object.keys(body).join(', '), '| trigger/event:', body.trigger ?? body.event ?? body.webhook_event_type ?? body.triggers)
+    console.warn('Kiwify webhook: evento unknown. Body keys:', Object.keys(body).join(', '), '| trigger:', body.trigger, '| event:', body.event, '| triggers:', body.triggers, '| data:', body.data ? Object.keys(body.data) : null)
   }
 
-  const leadData = {
-    nome: customer.nome,
-    email: customer.email,
-    telefone: customer.telefone,
-    produto: product.nome,
-    produtoId: product.id,
-    evento,
-    status: 'pendente',
-    orderId: orderId || undefined,
-    rawPayload: body,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  // Deduplicação: não criar lead nem enviar de novo se já existe para este pedido/evento (ou mesmo telefone+evento recente)
+  let leadRef = null
+  if (orderId) {
+    const existentes = await db.collection('users').doc(userId).collection('leads')
+      .where('orderId', '==', orderId)
+      .where('evento', '==', evento)
+      .limit(2)
+      .get()
+    if (!existentes.empty) {
+      const qualquer = existentes.docs[0]
+      res.status(200).json({ ok: true, evento, skip: 'duplicado_mesmo_pedido', leadId: qualquer.id })
+      return
+    }
+  }
+  if (!orderId && customer.telefone) {
+    const duasHorasAtras = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    const recentes = await db.collection('users').doc(userId).collection('leads')
+      .where('telefone', '==', customer.telefone)
+      .where('evento', '==', evento)
+      .where('status', '==', 'enviado')
+      .limit(20)
+      .get()
+    const jaEnviadoRecentemente = recentes.docs.some((d) => {
+      const createdAt = d.data().createdAt
+      return createdAt && (createdAt.toMillis ? createdAt.toMillis() : createdAt) >= duasHorasAtras.getTime()
+    })
+    if (jaEnviadoRecentemente) {
+      res.status(200).json({ ok: true, evento, skip: 'duplicado_telefone_recente' })
+      return
+    }
   }
 
-  const leadRef = await db.collection('users').doc(userId).collection('leads').add(leadData)
+  if (!leadRef) {
+    const leadData = {
+      nome: customer.nome,
+      email: customer.email,
+      telefone: customer.telefone,
+      produto: product.nome,
+      produtoId: product.id,
+      evento,
+      status: 'pendente',
+      orderId: orderId || undefined,
+      rawPayload: body,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }
+    const newRef = await db.collection('users').doc(userId).collection('leads').add(leadData)
+    leadRef = newRef
+  }
 
   if (product.nome || product.id) {
     const prodDocId = product.id || product.nome.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50)

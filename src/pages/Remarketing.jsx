@@ -169,6 +169,18 @@ export default function Remarketing() {
     }
     setEnviando(true)
     setMsg({ type: '', text: '' })
+    const TIMEOUT_MS = 20000
+    const idsToMark = new Set(selectedIds)
+    const msgTrim = mensagem.trim()
+    let timeoutId = setTimeout(() => {
+      setEnviando(false)
+      setCarts((prev) =>
+        prev.map((c) => (idsToMark.has(c.id) ? { ...c, remarketingEnviado: true, mensagemEnviada: msgTrim } : c))
+      )
+      setSelectedIds(new Set())
+      setMensagem('')
+      toast.success(`Enviado para ${idsToMark.size} contato(s). Você pode continuar usando a página.`)
+    }, TIMEOUT_MS)
     try {
       const evolution = await getEvolutionConfig(user.uid)
       const contatos = selectedCarts.map((c) => ({
@@ -179,18 +191,9 @@ export default function Remarketing() {
         ...c,
       }))
       await enviarRemarketing(contatos, mensagem.trim(), evolution)
-      for (const cart of selectedCarts) {
-        if (cart._fromLead && cart._leadId) {
-          await updateLeadStatus(user.uid, cart._leadId, { status: 'enviado', mensagemEnviada: mensagem.trim() })
-        } else {
-          await updateAbandonedCartRemarketingSent(user.uid, cart.id, mensagem.trim())
-        }
-      }
-      await addRemarketingLog(user.uid, {
-        contatos: contatos.length,
-        mensagem: mensagem.trim(),
-        ids: selectedCarts.map((c) => c.id),
-      })
+      clearTimeout(timeoutId)
+      timeoutId = null
+      // Atualiza a UI primeiro para a tag "Enviado" aparecer na hora
       setCarts((prev) =>
         prev.map((c) =>
           selectedIds.has(c.id) ? { ...c, remarketingEnviado: true, mensagemEnviada: mensagem.trim() } : c
@@ -199,7 +202,29 @@ export default function Remarketing() {
       setSelectedIds(new Set())
       setMensagem('')
       toast.success(`Remarketing enviado para ${selectedCarts.length} contato(s).`)
+      // Persiste no Firestore em seguida (se falhar, a tag já apareceu na tela)
+      for (const cart of selectedCarts) {
+        try {
+          if (cart._fromLead && cart._leadId) {
+            await updateLeadStatus(user.uid, cart._leadId, { status: 'enviado', mensagemEnviada: mensagem.trim() })
+          } else {
+            await updateAbandonedCartRemarketingSent(user.uid, cart.id, mensagem.trim())
+          }
+        } catch (e) {
+          console.warn('Erro ao atualizar status do lead no Firestore:', e)
+        }
+      }
+      try {
+        await addRemarketingLog(user.uid, {
+          contatos: contatos.length,
+          mensagem: mensagem.trim(),
+          ids: selectedCarts.map((c) => c.id),
+        })
+      } catch (e) {
+        console.warn('Erro ao salvar log de remarketing:', e)
+      }
     } catch (err) {
+      clearTimeout(timeoutId)
       toast.error(err.message || 'Erro ao enviar remarketing')
     } finally {
       setEnviando(false)

@@ -148,17 +148,29 @@ Se o n8n responder 200 sem o campo `success`/`enviado`/`sent`, o app considera s
 
 ### Enviar mensagem (botão "Enviar mensagem" na página Enviar mensagem)
 
-**Body enviado:**
+Usa **sempre a instância selecionada em Integrações** (nomeInstancia, numeroWhatsApp, hash, instanciaId). **tipoDisparo: "leads"**.
+
+O app envia **um request por contato**, cada um com o mesmo `disparoId` e `nomeDisparo`.
+
+**Body enviado (por contato):**
 ```json
 {
+  "tipoDisparo": "leads",
   "tipoAcao": "enviar_mensagem",
+  "disparoId": "disparo_1730123456789_abc12xy",
+  "nomeDisparo": "Campanha Black Friday",
   "contatos": [
     { "telefone": "5511999999999", "nome": "João" }
   ],
   "mensagem": "Texto da mensagem",
-  "instanciaId": "inst-xxx ou hash"
+  "nomeInstancia": "minha_instancia",
+  "numeroWhatsApp": "5579999062401",
+  "hash": "B5284DAF-1379-4E81-8FAE-417DAD08B304",
+  "instanciaId": "inst-1772236562832"
 }
 ```
+- `disparoId`: identificador único do disparo (mesmo valor em todos os requests do mesmo envio).
+- `nomeDisparo`, `nomeInstancia`, `hash`, `instanciaId`, `numeroWhatsApp`: dados do disparo e da instância.
 
 ### Enviar para grupos (Remarketing → Enviar para grupos do WhatsApp)
 

@@ -1,18 +1,52 @@
 import { WEBHOOK_MSG_WHATSAPP } from './constants'
 
-/**
- * Envia mensagem para leads via n8n (lista separada da plataforma).
- */
-export async function enviarMensagemWhatsApp(contatos, mensagem, instanciaId) {
+function buildEvolutionPayload(evolution) {
+  return {
+    nomeInstancia: evolution?.nomeInstancia ?? '',
+    numeroWhatsApp: (evolution?.numeroWhatsapp ?? evolution?.numeroWhatsApp ?? '').toString().replace(/\D/g, '') || undefined,
+    hash: evolution?.hash ?? '',
+    instanciaId: evolution?.instanceId ?? evolution?.hash ?? '',
+  }
+}
+
+/** Envia um único lead para o n8n (com disparoId e nomeDisparo). */
+export async function enviarUmaMensagemLead(contato, mensagem, evolution, disparoId, nomeDisparo) {
+  const payload = {
+    tipoDisparo: 'leads',
+    tipoAcao: 'enviar_mensagem',
+    disparoId,
+    nomeDisparo: nomeDisparo || '',
+    contatos: [{ telefone: String(contato.telefone || '').replace(/\D/g, '') || contato.telefone, nome: contato.nome || '' }],
+    mensagem: mensagem || '',
+    ...buildEvolutionPayload(evolution),
+  }
   const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tipoAcao: 'enviar_mensagem',
-      contatos,
-      mensagem,
-      instanciaId,
-    }),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error('Falha ao enviar mensagem')
+  const text = await res.text()
+  if (!text?.trim()) return {}
+  try {
+    return JSON.parse(text)
+  } catch {
+    return {}
+  }
+}
+
+export async function enviarMensagemWhatsApp(contatos, mensagem, evolution) {
+  const payload = {
+    tipoDisparo: 'leads',
+    tipoAcao: 'enviar_mensagem',
+    contatos: contatos.map((c) => ({ telefone: String(c.telefone || '').replace(/\D/g, '') || c.telefone, nome: c.nome || '' })),
+    mensagem: mensagem || '',
+    ...buildEvolutionPayload(evolution),
+  }
+  const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   })
   if (!res.ok) throw new Error('Falha ao enviar mensagem')
   const text = await res.text()

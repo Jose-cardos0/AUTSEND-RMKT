@@ -38,6 +38,42 @@ export function userRemarketingLogRef(uid) {
   return collection(db, 'users', uid, 'remarketingLog')
 }
 
+/** Coleção de disparos (linha do tempo de envios) — usuário por usuário */
+export function userDisparosRef(uid) {
+  return collection(db, 'users', uid, 'disparos')
+}
+
+/** Lista disparos do usuário, mais recentes primeiro */
+export async function getDisparos(uid) {
+  if (!uid) return []
+  const q = query(userDisparosRef(uid), orderBy('createdAt', 'desc'))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => {
+    const data = d.data()
+    const createdAt = data.createdAt?.toMillis?.() ?? data.createdAt ?? 0
+    const endTime = data.endTime?.toMillis?.() ?? data.endTime ?? 0
+    return { disparoId: d.id, ...data, createdAt, endTime }
+  })
+}
+
+/** Cria ou substitui um disparo (id = disparoId) */
+export async function setDisparo(uid, disparoId, data) {
+  const ref = doc(db, 'users', uid, 'disparos', disparoId)
+  await setDoc(ref, removeUndefined(data))
+}
+
+/** Atualiza campos de um disparo */
+export async function updateDisparo(uid, disparoId, patch) {
+  const ref = doc(db, 'users', uid, 'disparos', disparoId)
+  await updateDoc(ref, removeUndefined(patch))
+}
+
+/** Remove um disparo da linha do tempo */
+export async function deleteDisparo(uid, disparoId) {
+  const ref = doc(db, 'users', uid, 'disparos', disparoId)
+  await deleteDoc(ref)
+}
+
 /** Remove campos undefined do objeto (Firestore não aceita undefined) */
 function removeUndefined(obj) {
   if (obj == null || typeof obj !== 'object') return obj

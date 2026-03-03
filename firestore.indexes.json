@@ -21,6 +21,15 @@
         { "fieldPath": "orderId", "order": "ASCENDING" },
         { "fieldPath": "evento", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "telefone", "order": "ASCENDING" },
+        { "fieldPath": "evento", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
