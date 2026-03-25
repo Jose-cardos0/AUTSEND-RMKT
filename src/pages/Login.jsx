@@ -2,11 +2,16 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../lib/firebase'
-import { Mail, Lock, MessageCircle } from 'lucide-react'
+import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
+import logo from '../assets/logo.png'
+import WhatsAppIcon from '../components/WhatsAppIcon'
+import ParticlesBackground from '../components/ParticlesBackground'
+import { SUPPORT_WHATSAPP } from '../lib/constants'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -37,84 +42,98 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-50 px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-lg border border-surface-200 p-8">
-          <div className="flex justify-center mb-6">
-            <div className="w-12 h-12 rounded-xl bg-primary-100 flex items-center justify-center">
-              <MessageCircle className="w-6 h-6 text-primary-600" />
-            </div>
+    <ParticlesBackground className="flex items-center justify-center px-4 sm:px-6 py-6 sm:py-8">
+      <a
+        href={`https://wa.me/${SUPPORT_WHATSAPP}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed z-50 flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#25D366] text-white shadow-lg hover:bg-[#20bd5a] hover:scale-110 active:scale-95 transition-all duration-200 touch-manipulation bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-6 sm:right-6"
+        title="Falar com suporte"
+        aria-label="Falar com suporte no WhatsApp"
+      >
+        <WhatsAppIcon className="w-6 h-6 sm:w-7 sm:h-7" white />
+      </a>
+      <div className="w-full max-w-[420px]">
+        <div className="card-elevated p-6 sm:p-8 lg:p-10">
+          <div className="flex justify-center mb-6 sm:mb-8">
+            <img src={logo} alt="CODE NXT" className="h-10 sm:h-12 w-auto" />
           </div>
-          <h1 className="text-xl font-semibold text-center text-gray-800 mb-1">
-            Remarketing
-          </h1>
-          <p className="text-sm text-gray-500 text-center mb-6">
-            {isSignUp ? 'Crie sua conta' : 'Entre na sua conta'}
+          <p className="text-xs sm:text-sm text-stone-500 text-center mb-6 sm:mb-8 uppercase tracking-widest font-medium">
+            {isSignUp ? 'Criar conta' : 'Remarketing'}
           </p>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             {error && (
-              <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm font-medium">
                 {error}
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-semibold text-stone-600 uppercase tracking-wider mb-2">
                 E-mail
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.com"
                   required
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition"
+                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-surface-200 bg-surface-50/50 text-sm transition-all"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-semibold text-stone-600 uppercase tracking-wider mb-2">
                 Senha
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
                   minLength={6}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition"
+                  className="w-full pl-11 pr-11 py-3 rounded-xl border border-surface-200 bg-surface-50/50 text-sm transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-surface-100 transition-colors touch-manipulation"
+                  title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 transition"
+              className="btn-primary w-full py-3 min-h-[48px] text-sm touch-manipulation"
             >
               {loading ? 'Aguarde...' : isSignUp ? 'Criar conta' : 'Entrar'}
+              {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
           </form>
 
-          <p className="mt-4 text-center text-sm text-gray-500">
-            {isSignUp ? 'Já tem conta?' : 'Não tem conta?'}{' '}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp)
-                setError('')
-              }}
-              className="text-primary-600 font-medium hover:underline"
-            >
-              {isSignUp ? 'Entrar' : 'Criar conta'}
-            </button>
-          </p>
+          <div className="mt-5 sm:mt-6 pt-5 sm:pt-6 border-t border-surface-200">
+            <p className="text-center text-sm text-stone-500">
+              {isSignUp ? 'Já tem conta?' : 'Não tem conta?'}{' '}
+              <button
+                type="button"
+                onClick={() => { setIsSignUp(!isSignUp); setError('') }}
+                className="text-primary-600 font-semibold hover:text-primary-700 transition-colors"
+              >
+                {isSignUp ? 'Entrar' : 'Criar conta'}
+              </button>
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </ParticlesBackground>
   )
 }

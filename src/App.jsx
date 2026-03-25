@@ -6,6 +6,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Integracoes from './pages/Integracoes'
 import Remarketing from './pages/Remarketing'
+import RemarketingGrupos from './pages/RemarketingGrupos'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
 
@@ -14,7 +15,7 @@ function ProtectedRoute({ children }) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-50">
-        <div className="animate-pulse text-gray-500">Carregando...</div>
+        <div className="animate-pulse text-stone-500">Carregando...</div>
       </div>
     )
   }
@@ -24,22 +25,24 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/rmkt">
       <Toaster
         position="top-center"
         toastOptions={{
           duration: 4000,
           style: {
             background: '#fff',
-            border: '1px solid #e4e4e7',
-            borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            border: '1px solid #e2e5ea',
+            borderRadius: '14px',
+            boxShadow: '0 4px 24px -4px rgba(91, 94, 235, 0.12), 0 2px 6px rgba(0,0,0,0.04)',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontSize: '14px',
           },
           success: {
-            iconTheme: { primary: '#0ea5e9' },
+            iconTheme: { primary: '#5b5eeb' },
           },
           error: {
-            iconTheme: { primary: '#ef4444' },
+            iconTheme: { primary: '#dc2626' },
           },
         }}
       />
@@ -57,6 +60,7 @@ export default function App() {
           <Route path="integracoes" element={<Integracoes />} />
           <Route path="automacoes" element={<Automacoes />} />
           <Route path="remarketing" element={<Remarketing />} />
+          <Route path="remarketing-grupos" element={<RemarketingGrupos />} />
           <Route path="enviar-mensagem" element={<EnviarMensagem />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -35,11 +35,26 @@ export async function enviarUmaMensagemLead(contato, mensagem, evolution, dispar
   }
 }
 
-export async function enviarMensagemWhatsApp(contatos, mensagem, evolution) {
+/**
+ * Um único POST para o n8n com todos os contatos + mensagem (template com {nome}).
+ * O n8n deve iterar o array e enviar com pausa (ex.: intervaloMinutos entre cada).
+ * @param {Array<{ telefone?: string, nome?: string }>} contatos
+ * @param {string} mensagem - template; o n8n pode substituir {nome} por contato.nome
+ * @param {object} evolution
+ * @param {{ disparoId?: string, nomeDisparo?: string, intervaloMinutos?: number }} [extra]
+ */
+export async function enviarMensagemWhatsApp(contatos, mensagem, evolution, extra = {}) {
+  const { disparoId = '', nomeDisparo = '', intervaloMinutos = 5 } = extra
   const payload = {
     tipoDisparo: 'leads',
     tipoAcao: 'enviar_mensagem',
-    contatos: contatos.map((c) => ({ telefone: String(c.telefone || '').replace(/\D/g, '') || c.telefone, nome: c.nome || '' })),
+    disparoId,
+    nomeDisparo,
+    intervaloMinutos,
+    contatos: contatos.map((c) => ({
+      telefone: String(c.telefone || '').replace(/\D/g, '') || c.telefone,
+      nome: c.nome || '',
+    })),
     mensagem: mensagem || '',
     ...buildEvolutionPayload(evolution),
   }
@@ -58,9 +73,12 @@ export async function enviarMensagemWhatsApp(contatos, mensagem, evolution) {
   }
 }
 
+const ENVIAR_GRUPOS_TIMEOUT_MS = 25000
+
 /**
  * Envia mensagem de remarketing para grupos no WhatsApp.
  * Usa a instância conectada em Integrações: nomeInstancia, numeroWhatsApp, hash, instanciaId.
+ * Se o n8n responder 200 dentro do timeout, retorna sucesso. Se der timeout, considera enviado (evita loading infinito).
  */
 export async function enviarMensagemParaGrupos(grupos, mensagemTexto, evolution) {
   const payload = {
@@ -72,17 +90,30 @@ export async function enviarMensagemParaGrupos(grupos, mensagemTexto, evolution)
     hash: evolution?.hash ?? undefined,
     instanciaId: evolution?.instanceId ?? evolution?.hash ?? undefined,
   }
-  const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) throw new Error('Falha ao enviar mensagem para grupos')
-  const text = await res.text()
-  if (!text?.trim()) return {}
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), ENVIAR_GRUPOS_TIMEOUT_MS)
   try {
-    return JSON.parse(text)
-  } catch {
-    return {}
+    const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
+    if (!res.ok) throw new Error('Falha ao enviar mensagem para grupos')
+    const text = await res.text()
+    if (!text?.trim()) return {}
+    try {
+      return JSON.parse(text)
+    } catch {
+      return {}
+    }
+  } catch (err) {
+    clearTimeout(timeoutId)
+    if (err.name === 'AbortError') {
+      // n8n pode demorar; mensagem já foi aceita. Considera enviado para não travar a UI.
+      return {}
+    }
+    throw err
   }
 }

@@ -1,3 +1,5 @@
+export const SUPPORT_WHATSAPP = '5579999062401'
+
 export const WEBHOOK_EVOLUTION = 'https://n8n.iacodenxt.online/webhook/HUBNXTEVOPAI'
 export const WEBHOOK_REMARKETING = 'https://n8n.iacodenxt.online/webhook/REMARKETING'
 export const WEBHOOK_MSG_WHATSAPP = 'https://n8n.iacodenxt.online/webhook/HUBNXTMSGWHATSAPPEVOAPI'

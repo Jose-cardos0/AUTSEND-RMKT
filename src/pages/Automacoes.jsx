@@ -21,6 +21,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Search,
   RefreshCw,
   Package,
@@ -43,13 +45,15 @@ function StatCard({ label, value, icon: Icon, color }) {
     purple: 'bg-purple-50 text-purple-600 border-purple-100',
   }
   return (
-    <div className={`rounded-2xl border p-4 ${colors[color] || colors.blue}`}>
+    <div className={`rounded-2xl border p-4 sm:p-5 ${colors[color] || colors.blue}`}>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider opacity-70">{label}</p>
-          <p className="text-2xl font-bold mt-1">{value}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest opacity-60">{label}</p>
+          <p className="text-2xl sm:text-3xl font-bold mt-1.5 tracking-tight">{value}</p>
         </div>
-        <Icon className="w-8 h-8 opacity-40" />
+        <div className="w-10 h-10 rounded-xl bg-white/40 flex items-center justify-center">
+          <Icon className="w-5 h-5 opacity-60" />
+        </div>
       </div>
     </div>
   )
@@ -133,31 +137,31 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between p-4 hover:bg-surface-50 transition"
+        className="w-full flex items-center justify-between p-3 sm:p-4 min-h-[52px] hover:bg-surface-50 active:bg-surface-100 transition touch-manipulation"
       >
         <div className="flex items-center gap-3">
-          <Zap className={`w-4 h-4 ${ativo ? 'text-green-500' : 'text-gray-400'}`} />
-          <span className="font-medium text-gray-800">{event.label}</span>
+          <Zap className={`w-4 h-4 ${ativo ? 'text-green-500' : 'text-stone-400'}`} />
+          <span className="font-medium text-stone-800">{event.label}</span>
           {leadCount > 0 && (
-            <span className="text-xs bg-surface-100 text-gray-500 px-2 py-0.5 rounded-full">{leadCount} leads</span>
+            <span className="text-xs bg-surface-100 text-stone-500 px-2 py-0.5 rounded-full">{leadCount} leads</span>
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className={`text-xs font-medium ${ativo ? 'text-green-600' : 'text-gray-400'}`}>
+          <span className={`text-xs font-medium ${ativo ? 'text-green-600' : 'text-stone-400'}`}>
             {ativo ? 'Ativo' : 'Inativo'}
           </span>
-          {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+          {expanded ? <ChevronUp className="w-4 h-4 text-stone-400" /> : <ChevronDown className="w-4 h-4 text-stone-400" />}
         </div>
       </button>
 
       {expanded && (
         <div className="p-4 pt-0 space-y-3 border-t border-surface-100">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">Envio automático</label>
+            <label className="text-sm font-medium text-stone-700">Envio automático</label>
             <button
               type="button"
               onClick={() => setAtivo(!ativo)}
-              className={`relative w-11 h-6 rounded-full transition ${ativo ? 'bg-green-500' : 'bg-gray-300'}`}
+              className={`relative w-11 h-6 rounded-full transition-colors ${ativo ? 'bg-primary-500' : 'bg-stone-300'}`}
             >
               <span
                 className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ativo ? 'translate-x-5' : 'translate-x-0'}`}
@@ -166,12 +170,12 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Variáveis de template</label>
+            <label className="block text-sm font-medium text-stone-700 mb-1.5">Variáveis de template</label>
             <VariableButtons textareaRef={taRef} value={mensagem} onChange={setMensagem} />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Mensagem automática</label>
+            <label className="block text-sm font-medium text-stone-700 mb-1.5">Mensagem automática</label>
             <textarea
               ref={taRef}
               value={mensagem}
@@ -180,13 +184,13 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
               rows={4}
               className="w-full p-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none text-sm"
             />
-            <p className="text-xs text-gray-400 mt-1">Use *texto* para negrito e _texto_ para itálico no WhatsApp.</p>
+            <p className="text-xs text-stone-400 mt-1">Use *texto* para negrito e _texto_ para itálico no WhatsApp.</p>
           </div>
 
           <button
             onClick={handleSave}
             disabled={salvando}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition"
+            className="btn-primary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation"
           >
             {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             {salvando ? 'Salvando...' : 'Salvar automação'}
@@ -211,9 +215,12 @@ export default function Automacoes() {
   const [filtroNome, setFiltroNome] = useState('')
 
   const [reenviandoId, setReenviandoId] = useState(null)
+  const [paginaLeads, setPaginaLeads] = useState(1)
   const [selectedProduto, setSelectedProduto] = useState('')
-  const [addedProducts, setAddedProducts] = useState([])
-  const [newProductName, setNewProductName] = useState('')
+
+  useEffect(() => {
+    setPaginaLeads(1)
+  }, [filtroEvento, filtroProduto, filtroStatus, filtroNome])
 
   useEffect(() => {
     if (!user?.uid) return
@@ -272,6 +279,8 @@ export default function Automacoes() {
     return { total, enviados, erros, pendentes }
   }, [leads])
 
+  const LEADS_POR_PAGINA = 10
+
   const filtered = useMemo(() => {
     let list = leads
     if (filtroEvento) list = list.filter((l) => l.evento === filtroEvento)
@@ -289,14 +298,12 @@ export default function Automacoes() {
     return list
   }, [leads, filtroEvento, filtroProduto, filtroStatus, filtroNome])
 
-  const handleAddProduct = () => {
-    const name = newProductName.trim()
-    if (!name) return
-    setAddedProducts((prev) => (prev.includes(name) ? prev : [...prev, name]))
-    setSelectedProduto(name)
-    setNewProductName('')
-    toast.success(`Produto "${name}" adicionado. Configure as mensagens abaixo.`)
-  }
+  const totalPaginasLeads = Math.max(1, Math.ceil(filtered.length / LEADS_POR_PAGINA))
+  const paginaLeadsAtual = Math.min(paginaLeads, totalPaginasLeads)
+  const leadsPagina = useMemo(
+    () => filtered.slice((paginaLeadsAtual - 1) * LEADS_POR_PAGINA, paginaLeadsAtual * LEADS_POR_PAGINA),
+    [filtered, paginaLeadsAtual]
+  )
 
   const handleSaveAutoMsg = async (evento, data) => {
     await saveAutoMessage(user.uid, evento, selectedProduto, data)
@@ -349,9 +356,8 @@ export default function Automacoes() {
   const uniqueProducts = useMemo(() => {
     const names = new Set(leads.map((l) => l.produto).filter(Boolean))
     products.forEach((p) => names.add(p.nome))
-    addedProducts.forEach((p) => names.add(p))
     return [...names].filter(Boolean).sort()
-  }, [leads, products, addedProducts])
+  }, [leads, products])
 
   useEffect(() => {
     if (uniqueProducts.length > 0 && !uniqueProducts.includes(selectedProduto)) {
@@ -368,14 +374,11 @@ export default function Automacoes() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-800">Automações</h1>
-          <p className="text-gray-500 mt-1">Mensagens automáticas por evento Kiwify, produtos e leads.</p>
-        </div>
-        <button onClick={reload} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-200 bg-white font-medium text-sm hover:bg-surface-50 transition">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl sm:text-2xl font-bold">Automações</h1>
+        <button onClick={reload} className="btn-secondary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation">
           <RefreshCw className="w-4 h-4" />
           Atualizar
         </button>
@@ -383,73 +386,40 @@ export default function Automacoes() {
 
       {/* Dashboard Stats */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4" /> Dashboard
+        <h2 className="text-xs sm:text-sm font-semibold text-stone-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 shrink-0" /> Dashboard
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label="Total Leads" value={stats.total} icon={Users} color="blue" />
           <StatCard label="Enviados" value={stats.enviados} icon={CheckCircle2} color="green" />
           <StatCard label="Erros" value={stats.erros} icon={XCircle} color="red" />
           <StatCard label="Pendentes" value={stats.pendentes} icon={Clock} color="amber" />
         </div>
-
-        {/* Mini cards por evento */}
-        {leads.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            {KIWIFY_EVENTS.filter((e) => leadsCountByEvent[e.id]).map((e) => (
-              <div key={e.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-50 border border-surface-200 text-xs">
-                <span className="font-medium text-gray-700">{e.label}</span>
-                <span className="font-bold text-gray-900">{leadsCountByEvent[e.id]}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </section>
 
       {/* Produtos — cada produto tem suas próprias mensagens; o nome do produto é a referência */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Package className="w-4 h-4" /> Produtos
+        <h2 className="text-xs sm:text-sm font-semibold text-stone-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Package className="w-4 h-4 shrink-0" /> Produtos
         </h2>
-        <p className="text-xs text-gray-500 mb-2">
-          Cada produto tem suas próprias mensagens de automação. Clique em um produto para criar ou editar as mensagens dele. O <strong>nome do produto</strong> é a referência: quando um evento chegar da Kiwify, o sistema usa o nome do produto para escolher qual automação enviar (produto 1, 2, 3…).
-        </p>
-        <div className="flex flex-wrap items-center gap-3 mb-3">
+        <div className="flex overflow-x-auto gap-2 sm:gap-3 pb-2 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0 flex-wrap sm:flex-wrap">
           {uniqueProducts.map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setSelectedProduto(p)}
-              className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition shadow-sm ${
+              className={`px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border text-sm font-medium transition shadow-card whitespace-nowrap touch-manipulation shrink-0 ${
                 selectedProduto === p
                   ? 'border-primary-500 bg-primary-50 text-primary-700 ring-1 ring-primary-500'
-                  : 'border-surface-200 bg-white text-gray-800 hover:bg-surface-50'
+                  : 'border-surface-200 bg-white text-stone-800 hover:bg-surface-50'
               }`}
             >
               {p}
             </button>
           ))}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={newProductName}
-              onChange={(e) => setNewProductName(e.target.value)}
-              placeholder="Nome do novo produto"
-              className="px-3 py-2 rounded-lg border border-surface-200 text-sm w-48 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddProduct())}
-            />
-            <button
-              type="button"
-              onClick={handleAddProduct}
-              disabled={!newProductName.trim()}
-              className="px-3 py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Adicionar produto
-            </button>
-          </div>
         </div>
         {selectedProduto && (
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-stone-600">
             Configurando mensagens para: <strong className="text-primary-600">{selectedProduto}</strong>
           </p>
         )}
@@ -457,17 +427,14 @@ export default function Automacoes() {
 
       {/* Mensagens automáticas do produto selecionado */}
       {selectedProduto && (
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-surface-200 bg-surface-50/50">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-primary-500" />
-            Mensagens automáticas — {selectedProduto}
+      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
+          <h2 className="text-base sm:text-lg font-semibold text-stone-800 flex flex-wrap items-center gap-2">
+            <Zap className="w-5 h-5 text-primary-500 shrink-0" />
+            Mensagens automáticas — <strong className="text-red-500 break-all">{selectedProduto}</strong>
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Crie ou edite as mensagens para cada evento. Quando um lead chegar da Kiwify com o produto &quot;{selectedProduto}&quot;, a mensagem ativa do evento será enviada automaticamente pelo WhatsApp.
-          </p>
         </div>
-        <div className="p-4 space-y-2">
+        <div className="p-3 sm:p-4 space-y-2">
           {KIWIFY_EVENTS.map((event) => (
             <EventCard
               key={event.id}
@@ -483,33 +450,30 @@ export default function Automacoes() {
       )}
 
       {/* Tabela de Leads */}
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-surface-200 bg-surface-50/50">
-          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-            <Filter className="w-5 h-5 text-primary-500" />
+      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
+          <h2 className="text-base sm:text-lg font-semibold text-stone-800 flex items-center gap-2">
+            <Filter className="w-5 h-5 text-primary-500 shrink-0" />
             Leads recebidos
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Todos os leads recebidos dos eventos Kiwify. Filtre e reenvie mensagens com erro.
-          </p>
         </div>
 
         {/* Filtros */}
-        <div className="p-4 border-b border-surface-100 flex flex-wrap gap-3 items-end">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <div className="p-4 border-b border-surface-100 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+          <div className="relative w-full sm:w-56 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
             <input
               type="text"
               value={filtroNome}
               onChange={(e) => setFiltroNome(e.target.value)}
               placeholder="Nome, e-mail ou telefone"
-              className="pl-9 pr-3 py-2 rounded-lg border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none w-56"
+              className="w-full pl-9 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
             />
           </div>
           <select
             value={filtroEvento}
             onChange={(e) => setFiltroEvento(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="w-full sm:w-auto min-h-[44px] px-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
           >
             <option value="">Todos os eventos</option>
             {KIWIFY_EVENTS.map((e) => (
@@ -519,7 +483,7 @@ export default function Automacoes() {
           <select
             value={filtroProduto}
             onChange={(e) => setFiltroProduto(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="w-full sm:w-auto min-h-[44px] px-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
           >
             <option value="">Todos os produtos</option>
             {uniqueProducts.map((p) => (
@@ -529,7 +493,7 @@ export default function Automacoes() {
           <select
             value={filtroStatus}
             onChange={(e) => setFiltroStatus(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="w-full sm:w-auto min-h-[44px] px-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
           >
             <option value="">Todos os status</option>
             <option value="enviado">Enviado</option>
@@ -540,7 +504,7 @@ export default function Automacoes() {
           {(filtroEvento || filtroProduto || filtroStatus || filtroNome) && (
             <button
               onClick={() => { setFiltroEvento(''); setFiltroProduto(''); setFiltroStatus(''); setFiltroNome('') }}
-              className="text-xs text-primary-600 hover:underline"
+              className="text-xs text-primary-600 hover:underline py-2 touch-manipulation"
             >
               Limpar filtros
             </button>
@@ -550,46 +514,46 @@ export default function Automacoes() {
         {/* Tabela */}
         <div className="overflow-x-auto">
           {filtered.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 text-sm">
+            <div className="p-8 text-center text-stone-400 text-sm">
               {leads.length === 0
                 ? 'Nenhum lead recebido ainda. Configure o webhook na Kiwify para começar a receber eventos.'
                 : 'Nenhum lead corresponde aos filtros selecionados.'}
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
-                <tr className="border-b border-surface-100 text-left text-gray-500">
-                  <th className="px-4 py-3 font-medium">Nome</th>
-                  <th className="px-4 py-3 font-medium">Telefone</th>
-                  <th className="px-4 py-3 font-medium">Produto</th>
-                  <th className="px-4 py-3 font-medium">Evento</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Data</th>
-                  <th className="px-4 py-3 font-medium w-20"></th>
+                <tr className="border-b border-surface-100 text-left text-stone-500">
+                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Nome</th>
+                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Telefone</th>
+                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Produto</th>
+                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Evento</th>
+                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Status</th>
+                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Data</th>
+                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium w-14 sm:w-20"></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 100).map((lead) => (
-                  <tr key={lead.id} className="border-b border-surface-50 hover:bg-surface-50/50 transition">
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800 truncate max-w-[160px]">{lead.nome || '-'}</div>
-                      <div className="text-xs text-gray-400 truncate max-w-[160px]">{lead.email || ''}</div>
+                {leadsPagina.map((lead) => (
+                  <tr key={lead.id} className="border-b border-surface-50 hover:bg-surface-50/80 transition">
+                    <td className="px-3 sm:px-4 py-2.5 sm:py-3">
+                      <div className="font-medium text-stone-800 truncate max-w-[120px] sm:max-w-[160px]">{lead.nome || '-'}</div>
+                      <div className="text-xs text-stone-400 truncate max-w-[120px] sm:max-w-[160px]">{lead.email || ''}</div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">{lead.telefone || '-'}</td>
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[120px]">{lead.produto || '-'}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs bg-surface-100 text-gray-600 px-2 py-0.5 rounded-full whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-stone-600 font-mono text-xs">{lead.telefone || '-'}</td>
+                    <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-stone-700 truncate max-w-[80px] sm:max-w-[120px]">{lead.produto || '-'}</td>
+                    <td className="px-3 sm:px-4 py-2.5 sm:py-3">
+                      <span className="text-xs bg-surface-100 text-stone-600 px-2 py-0.5 rounded-full whitespace-nowrap">
                         {eventLabel(lead.evento)}
                       </span>
                     </td>
-                    <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{formatDate(lead.createdAt)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 sm:px-4 py-2.5 sm:py-3"><StatusBadge status={lead.status} /></td>
+                    <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs text-stone-500 whitespace-nowrap">{formatDate(lead.createdAt)}</td>
+                    <td className="px-3 sm:px-4 py-2.5 sm:py-3">
                       {(lead.status === 'erro' || lead.status === 'pendente' || !lead.status) && (
                         <button
                           onClick={() => handleReenviar(lead)}
                           disabled={reenviandoId === lead.id}
-                          className="p-1.5 rounded-lg hover:bg-primary-50 text-primary-600 disabled:opacity-50 transition"
+                          className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-primary-50 text-primary-600 disabled:opacity-50 transition touch-manipulation"
                           title="Reenviar"
                         >
                           {reenviandoId === lead.id
@@ -603,8 +567,32 @@ export default function Automacoes() {
               </tbody>
             </table>
           )}
-          {filtered.length > 100 && (
-            <p className="text-center text-xs text-gray-400 py-3">Exibindo 100 de {filtered.length} leads.</p>
+          {filtered.length > LEADS_POR_PAGINA && (
+            <div className="px-4 py-3 sm:py-4 border-t border-surface-100 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm text-stone-600 order-2 sm:order-1 text-center sm:text-left">
+                Página {paginaLeadsAtual} de {totalPaginasLeads} · {filtered.length} lead(s)
+              </p>
+              <div className="flex items-center gap-2 order-1 sm:order-2 justify-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPaginaLeads((p) => Math.max(1, p - 1))}
+                  disabled={paginaLeadsAtual <= 1}
+                  className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaginaLeads((p) => Math.min(totalPaginasLeads, p + 1))}
+                  disabled={paginaLeadsAtual >= totalPaginasLeads}
+                  className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
+                >
+                  Próxima
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </section>

@@ -142,21 +142,31 @@ function replaceVariables(template, lead, product) {
 
 async function tryAutoSend(userId, leadRef, evento, customer, product) {
   try {
+    // Busca todas as automações do evento (não filtra ativo aqui).
+    // Se existe regra para o produto exato, ela manda: inativa = não envia (nem cai na global).
     const autoMsgSnap = await db
       .collection('users').doc(userId).collection('autoMessages')
       .where('evento', '==', evento)
-      .where('ativo', '==', true)
-      .limit(20)
+      .limit(50)
       .get()
 
+    if (autoMsgSnap.empty) return
+
+    const docs = autoMsgSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const productName = (product.nome || '').trim()
+    const productId = (product.id || '').trim()
+    const norm = (p) => (p == null ? '' : String(p).trim())
+
+    const exactMatch = docs.find(
+      (d) => norm(d.produto) === productName || norm(d.produto) === productId
+    )
+    const globalMatch = docs.find((d) => !norm(d.produto))
+
     let autoMsg = null
-    if (!autoMsgSnap.empty) {
-      const docs = autoMsgSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      const productName = (product.nome || '').trim()
-      const productId = (product.id || '').trim()
-      const exactMatch = docs.find((d) => d.produto === productName || d.produto === productId)
-      const globalMatch = docs.find((d) => !d.produto || d.produto === '')
-      autoMsg = exactMatch || globalMatch || docs[0]
+    if (exactMatch) {
+      if (exactMatch.ativo === true) autoMsg = exactMatch
+    } else if (globalMatch && globalMatch.ativo === true) {
+      autoMsg = globalMatch
     }
 
     if (!autoMsg) return

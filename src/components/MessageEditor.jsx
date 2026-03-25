@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
-import { Bold, Italic, Smile } from 'lucide-react'
+import { Bold, Italic, Smile, User } from 'lucide-react'
 
 const EMOJIS = ['😀', '😊', '👍', '❤️', '🔥', '✅', '📱', '💰', '🎉', '⭐', '📢', '👋']
 
-export default function MessageEditor({ value, onChange, placeholder = 'Digite sua mensagem...' }) {
+export default function MessageEditor({ value, onChange, placeholder = 'Digite sua mensagem...', showNomeButton = false }) {
   const ref = useRef(null)
   const [showEmojis, setShowEmojis] = useState(false)
 
@@ -34,12 +34,12 @@ export default function MessageEditor({ value, onChange, placeholder = 'Digite s
   }
 
   return (
-    <div className="border border-surface-200 rounded-xl overflow-hidden bg-white">
-      <div className="flex items-center gap-1 p-2 border-b border-surface-200 bg-surface-50">
+    <div className="border border-surface-200 rounded-xl overflow-hidden bg-white shadow-card">
+      <div className="flex items-center gap-0.5 px-1 sm:px-2 py-1.5 border-b border-surface-200 bg-surface-50/80 flex-wrap">
         <button
           type="button"
           onClick={() => insertAtCursor('*', '*')}
-          className="p-2 rounded-lg hover:bg-surface-200 text-gray-600"
+          className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-surface-200 text-stone-500 hover:text-stone-700 transition-colors touch-manipulation"
           title="Negrito"
         >
           <Bold className="w-4 h-4" />
@@ -47,31 +47,39 @@ export default function MessageEditor({ value, onChange, placeholder = 'Digite s
         <button
           type="button"
           onClick={() => insertAtCursor('_', '_')}
-          className="p-2 rounded-lg hover:bg-surface-200 text-gray-600"
+          className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-surface-200 text-stone-500 hover:text-stone-700 transition-colors touch-manipulation"
           title="Itálico"
         >
           <Italic className="w-4 h-4" />
         </button>
-        <div className="relative">
+        {showNomeButton && (
+          <button
+            type="button"
+            onClick={() => insertAtCursor('{nome}', '')}
+            className="flex items-center gap-1 px-2.5 py-2 min-h-[44px] rounded-lg hover:bg-primary-50 text-primary-600 hover:text-primary-700 text-xs font-semibold transition-colors touch-manipulation"
+            title="Inserir nome do contato"
+          >
+            <User className="w-3.5 h-3.5 shrink-0" />
+            <span>{'{nome}'}</span>
+          </button>
+        )}
+        <div className="relative ml-auto sm:ml-0">
           <button
             type="button"
             onClick={() => setShowEmojis((s) => !s)}
-            className="p-2 rounded-lg hover:bg-surface-200 text-gray-600"
+            className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-surface-200 text-stone-500 hover:text-stone-700 transition-colors touch-manipulation"
             title="Emoji"
           >
             <Smile className="w-4 h-4" />
           </button>
           {showEmojis && (
-            <div className="absolute left-0 top-full mt-1 p-2 rounded-lg bg-white border border-surface-200 shadow-lg z-10 flex flex-wrap gap-1 w-48">
+            <div className="absolute right-0 sm:left-0 top-full mt-1.5 p-2.5 rounded-xl bg-white border border-surface-200 shadow-lg z-10 flex flex-wrap gap-1 w-52 max-w-[calc(100vw-2rem)]">
               {EMOJIS.map((e) => (
                 <button
                   key={e}
                   type="button"
-                  onClick={() => {
-                    addEmoji(e)
-                    setShowEmojis(false)
-                  }}
-                  className="text-xl hover:bg-surface-100 rounded p-1"
+                  onClick={() => { addEmoji(e); setShowEmojis(false) }}
+                  className="text-xl hover:bg-surface-100 rounded-lg p-1.5 transition-colors"
                 >
                   {e}
                 </button>
@@ -86,7 +94,7 @@ export default function MessageEditor({ value, onChange, placeholder = 'Digite s
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={5}
-        className="w-full p-4 resize-none focus:ring-0 focus:outline-none text-gray-800 placeholder:text-gray-400"
+        className="w-full p-4 resize-none focus:ring-0 focus:outline-none text-stone-800 placeholder:text-stone-400 text-sm leading-relaxed"
       />
     </div>
   )

@@ -15,7 +15,6 @@ import {
 } from '../lib/firestore'
 import { criarInstancia, verificarStatus, buscarGrupos } from '../lib/evolutionApi'
 import {
-  Smartphone,
   QrCode,
   Users,
   Webhook,
@@ -26,6 +25,7 @@ import {
   Trash2,
   Star,
 } from 'lucide-react'
+import WhatsAppIcon from '../components/WhatsAppIcon'
 
 export default function Integracoes() {
   const [user] = useAuthState(auth)
@@ -303,34 +303,34 @@ export default function Integracoes() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-800">Integrações</h1>
-        <p className="text-gray-500 mt-1">Evolution API, grupos e webhook Kiwify.</p>
+        <h1 className="text-xl sm:text-2xl font-bold">Integrações</h1>
+        <p className="text-stone-500 mt-1 text-sm sm:text-base">Evolution API, grupos e webhook Kiwify.</p>
       </div>
 
       {/* Modal QR Code — overlay preto/50 */}
       {showQrModal && qrBase64 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowQrModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setShowQrModal(false)}>
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 relative"
+            className="bg-white rounded-2xl shadow-xl max-w-[95vw] sm:max-w-sm w-full p-4 sm:p-6 relative"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               onClick={() => setShowQrModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-100 text-gray-500"
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-100 text-stone-500"
               aria-label="Fechar"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-lg font-semibold text-gray-800 pr-10">Conectar WhatsApp</h3>
-            <p className="text-sm text-gray-500 mt-1 mb-4">Escaneie o QR Code com o WhatsApp (Dispositivos conectados).</p>
-            <div className="flex justify-center p-4 bg-gray-50 rounded-xl">
+            <h3 className="text-lg font-semibold text-stone-800 pr-10">Conectar WhatsApp</h3>
+            <p className="text-sm text-stone-500 mt-1 mb-4">Escaneie o QR Code com o WhatsApp (Dispositivos conectados).</p>
+            <div className="flex justify-center p-3 sm:p-4 bg-gray-50 rounded-xl">
               <img
                 src={qrBase64.startsWith('data:') ? qrBase64 : `data:image/png;base64,${qrBase64}`}
                 alt="QR Code WhatsApp"
-                className="w-56 h-56 object-contain"
+                className="w-48 h-48 sm:w-56 sm:h-56 object-contain"
               />
             </div>
             <p className="text-center text-sm text-amber-600 mt-4 flex items-center justify-center gap-2">
@@ -342,52 +342,40 @@ export default function Integracoes() {
       )}
 
       {/* Evolution API */}
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-surface-200 bg-surface-50/50">
-          <div className="flex items-center gap-2 text-gray-800">
-            <Smartphone className="w-5 h-5 text-primary-500" />
-            <h2 className="text-lg font-semibold">Evolution API (WhatsApp)</h2>
+      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
+          <div className="flex items-center gap-2 text-stone-800">
+            <WhatsAppIcon className="w-5 h-5 shrink-0" />
+            <h2 className="text-base sm:text-lg font-semibold">Integração</h2>
           </div>
-          <p className="text-sm text-gray-500 mt-1">
-            Crie uma instância e conecte seu WhatsApp para enviar mensagens.
-          </p>
-          <details className="mt-3 text-xs text-gray-600 bg-white/80 rounded-lg p-3 border border-surface-200">
-            <summary className="cursor-pointer font-medium">O que o n8n precisa fazer (webhook Evolution)</summary>
-            <ul className="mt-2 space-y-1 list-disc list-inside">
-              <li><strong>criar_instancia:</strong> chamar Evolution API para criar; responder com base64 do QR e hash/instanciaId.</li>
-              <li><strong>verificar_status:</strong> chamar Evolution API para checar conexão; responder com <code className="bg-surface-200 px-0.5 rounded">{'{ conectado: true }'}</code> ou <code className="bg-surface-200 px-0.5 rounded">{'{ state: "open" }'}</code> quando conectado.</li>
-              <li><strong>buscar_grupo:</strong> chamar Evolution API para listar grupos; responder com <code className="bg-surface-200 px-0.5 rounded">{'{ grupos: [...] }'}</code> ou <code className="bg-surface-200 px-0.5 rounded">{'{ groups: [...] }'}</code>.</li>
-            </ul>
-          </details>
         </div>
-        <div className="p-6 space-y-6">
-          <p className="text-sm font-medium text-gray-700">Adicionar nova instância</p>
-          <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome da instância</label>
+        <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
+          <p className="text-sm font-medium text-stone-700">Adicionar nova instância</p>
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+            <div className="w-full sm:w-56 min-w-0">
+              <label className="block text-sm font-medium text-stone-700 mb-1">Nome da instância</label>
               <input
                 type="text"
                 value={nomeInstancia}
                 onChange={(e) => setNomeInstancia(e.target.value)}
                 placeholder="minha_instancia"
-                className="w-56 px-3 py-2 rounded-lg border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full sm:w-56 px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm transition-all min-h-[44px]"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Número do WhatsApp</label>
+            <div className="w-full sm:w-44 min-w-0">
+              <label className="block text-sm font-medium text-stone-700 mb-1">Número do WhatsApp</label>
               <input
                 type="text"
                 value={numeroWhatsapp}
                 onChange={(e) => setNumeroWhatsapp(e.target.value)}
                 placeholder="5511999999999"
-                className="w-44 px-3 py-2 rounded-lg border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full sm:w-44 px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm transition-all min-h-[44px]"
               />
-             
             </div>
             <button
               onClick={handleCriarInstancia}
               disabled={criando}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 disabled:opacity-50"
+              className="btn-primary w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
               {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
               {criando ? 'Criando...' : 'Criar instância'}
@@ -396,19 +384,18 @@ export default function Integracoes() {
 
           {instances.length > 0 && (
             <div className="space-y-3">
-              <p className="text-sm font-medium text-gray-700">Suas instâncias — selecione qual usar para automações e mensagens</p>
+              <p className="text-sm font-medium text-stone-700">Suas instâncias — selecione qual usar para automações e mensagens</p>
               <div className="space-y-3">
                 {instances.map((inst) => {
                   const isPrincipal = selectedInstanceId === inst.id
-                  const gruposInst = Array.isArray(inst.grupos) ? inst.grupos : (inst.grupos?.grupos ?? inst.grupos?.groups ?? [])
                   return (
                     <div
                       key={inst.id}
-                      className={`p-4 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}
+                      className={`p-4 sm:p-5 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}
                     >
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="font-medium text-gray-800">{inst.nomeInstancia || 'Sem nome'}</span>
-                        {inst.numeroWhatsapp && <span className="text-sm text-gray-500">{inst.numeroWhatsapp}</span>}
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <span className="font-medium text-stone-800">{inst.nomeInstancia || 'Sem nome'}</span>
+                        {inst.numeroWhatsapp && <span className="text-sm text-stone-500">{inst.numeroWhatsapp}</span>}
                         {isPrincipal && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
                             <Star className="w-3 h-3" /> Principal (automações)
@@ -419,10 +406,10 @@ export default function Integracoes() {
                         ) : inst.qrCodeBase64 ? (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-600">Aguardando QR</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-500">Não conectado</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-stone-500">Não conectado</span>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col sm:flex-row flex-wrap gap-2 [&_button]:min-h-[44px] [&_button]:touch-manipulation [&_button]:w-full sm:[&_button]:w-auto">
                         {!isPrincipal && (
                           <button
                             type="button"
@@ -433,7 +420,7 @@ export default function Integracoes() {
                               setEvolution(evo)
                               toast.success(`"${inst.nomeInstancia}" é agora a instância principal para automações.`)
                             }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600"
+                            className="btn-primary text-sm py-1.5"
                           >
                             <Star className="w-3.5 h-3.5" /> Usar para automações
                           </button>
@@ -442,7 +429,7 @@ export default function Integracoes() {
                           type="button"
                           onClick={() => handleVerificarStatus(inst)}
                           disabled={verificando || !inst.hash}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-200 bg-white text-sm hover:bg-surface-50 disabled:opacity-50"
+                          className="btn-secondary text-sm py-1.5"
                         >
                           {verificando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                           Verificar conexão
@@ -450,26 +437,19 @@ export default function Integracoes() {
                         <button
                           type="button"
                           onClick={() => handleBuscarGrupos(inst)}
-                          disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-surface-200 bg-white text-sm hover:bg-surface-50 disabled:opacity-50"
+                          disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || Array.isArray(inst.grupos)}
+                          className="btn-secondary text-sm py-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                          {buscandoGruposId === inst.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
-                          Puxar grupos
+                          {buscandoGruposId === inst.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : Array.isArray(inst.grupos) ? (
+                            <Check className="w-3.5 h-3.5 text-green-600" />
+                          ) : (
+                            <Users className="w-3.5 h-3.5" />
+                          )}
+                          {Array.isArray(inst.grupos) ? 'Grupos puxados' : 'Puxar grupos'}
                         </button>
                       </div>
-                      {gruposInst.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-surface-200">
-                          <p className="text-xs font-medium text-gray-600 mb-2">Grupos desta instância ({gruposInst.length})</p>
-                          <div className="flex flex-wrap gap-2 max-h-24 overflow-auto">
-                            {gruposInst.slice(0, 8).map((g, i) => (
-                              <span key={g.id ?? i} className="px-2 py-1 rounded-lg bg-white border border-surface-200 text-xs truncate max-w-[140px]" title={g.nome ?? g.name ?? g.subject}>
-                                {g.nome ?? g.name ?? g.subject ?? 'Sem nome'}
-                              </span>
-                            ))}
-                            {gruposInst.length > 8 && <span className="text-xs text-gray-500">+{gruposInst.length - 8}</span>}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -478,28 +458,28 @@ export default function Integracoes() {
           )}
 
           {instances.length === 0 && !evolution?.nomeInstancia && (
-            <p className="text-sm text-gray-500">Nenhuma instância ainda. Crie uma acima e escaneie o QR Code no popup.</p>
+            <p className="text-sm text-stone-500">Nenhuma instância ainda. Crie uma acima e escaneie o QR Code no popup.</p>
           )}
         </div>
       </section>
 
       {/* Webhook Kiwify */}
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-surface-200 bg-surface-50/50">
-          <div className="flex items-center gap-2 text-gray-800">
-            <Webhook className="w-5 h-5 text-primary-500" />
-            <h2 className="text-lg font-semibold">Webhook Kiwify (Carrinho abandonado)</h2>
+      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
+          <div className="flex items-center gap-2 text-stone-800">
+            <Webhook className="w-5 h-5 text-primary-500 shrink-0" />
+            <h2 className="text-base sm:text-lg font-semibold">Webhook</h2>
           </div>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-xs sm:text-sm text-stone-500 mt-1">
             Cada clique em &quot;Criar webhook Kiwify&quot; gera um <strong>novo</strong> webhook (não substitui os anteriores).
             Use a URL na Kiwify; os webhooks antigos continuam válidos.
           </p>
         </div>
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4">
           <button
             onClick={handleCriarWebhookKiwify}
             disabled={criandoWebhook}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 disabled:opacity-50"
+            className="btn-primary w-full sm:w-auto min-h-[44px] touch-manipulation"
           >
             {criandoWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : <Webhook className="w-4 h-4" />}
             {criandoWebhook ? 'Criando...' : 'Criar webhook Kiwify'}
@@ -507,36 +487,36 @@ export default function Integracoes() {
 
           {webhooks.length > 0 && (
             <div className="space-y-3">
-              <p className="text-sm font-medium text-gray-700">Seus webhooks</p>
+              <p className="text-sm font-medium text-stone-700">Seus webhooks</p>
               {webhooks.map((w) => {
                 const url = w.webhookUrl ?? `https://us-central1-afiliadocdnx.cloudfunctions.net/kiwifyAbandonedCheckout?webhookId=${w.id}&userId=${user?.uid}`
                 return (
                   <div
                     key={w.id}
-                    className="p-3 rounded-lg bg-surface-50 border border-surface-200 space-y-2"
+                    className="p-3 sm:p-4 rounded-xl bg-surface-50 border border-surface-200 space-y-3"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                       <input
                         type="text"
                         defaultValue={w.nome || ''}
                         onBlur={(e) => handleSalvarNomeWebhook(w.id, e.target.value)}
                         placeholder="Ex: Webhook produto Kiwify"
-                        className="flex-1 text-sm font-medium text-gray-800 bg-white border border-surface-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="flex-1 min-w-0 text-sm font-medium text-stone-800 bg-white border border-surface-200 rounded-lg px-3 py-2.5 min-h-[44px] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       />
                       <button
                         onClick={() => handleExcluirWebhook(w.id)}
-                        className="p-2 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600"
+                        className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-red-50 text-stone-500 hover:text-red-600 touch-manipulation shrink-0"
                         title="Excluir webhook"
                         type="button"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 text-xs text-gray-600 truncate">{url}</code>
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <code className="flex-1 min-w-0 text-xs text-stone-600 truncate break-all">{url}</code>
                       <button
                         onClick={() => copyUrl(url, w.id)}
-                        className="p-2 rounded-lg hover:bg-surface-200 text-gray-600 shrink-0"
+                        className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-surface-200 text-stone-600 shrink-0 touch-manipulation"
                         title="Copiar URL"
                       >
                         {copiado === w.id ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}

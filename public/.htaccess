@@ -1,0 +1,14 @@
+# SPA no subpath /rmkt — só afeta este diretório, não mexe em codenxt.online
+# Coloque o conteúdo do build (index.html, assets, etc.) dentro de /rmkt/ no servidor.
+# Ao atualizar a página em codenxt.online/rmkt/qualquer-rota, o servidor envia index.html e o app mantém a rota.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /rmkt/
+
+  # Se for arquivo ou pasta que existe (ex.: assets, index.html), serve normal
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  # Senão, manda para index.html para o React Router resolver
+  RewriteRule . index.html [L]
+</IfModule>

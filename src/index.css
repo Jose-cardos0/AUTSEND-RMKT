@@ -2,6 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-surface-50 text-gray-800 antialiased;
+@layer base {
+  html {
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  body {
+    @apply bg-surface-50 text-stone-800 antialiased font-sans;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight text-stone-900;
+  }
+
+  input, select, textarea {
+    @apply text-stone-800 placeholder:text-stone-400;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    @apply border-primary-500 ring-2 ring-primary-500/15 outline-none;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-white font-medium
+           disabled:opacity-50 disabled:pointer-events-none transition-all;
+    background-color: #4a46de;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: #3f39c4;
+  }
+  .btn-primary:focus-visible {
+    outline: 2px solid #4a46de;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(74, 70, 222, 0.2);
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border bg-white font-medium
+           disabled:opacity-50 disabled:pointer-events-none transition-all;
+    border-color: #e2e5ea;
+    color: #44403c;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #f1f3f6;
+    border-color: #cdd1d9;
+  }
+  .btn-secondary:focus-visible {
+    outline: 2px solid #5b5eeb;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(91, 94, 235, 0.1);
+  }
+
+  .card {
+    @apply bg-white rounded-2xl;
+    border: 1px solid #e2e5ea;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  }
+
+  .card-elevated {
+    @apply bg-white rounded-2xl;
+    border: 1px solid #e2e5ea;
+    box-shadow: 0 4px 24px -4px rgba(91, 94, 235, 0.1), 0 2px 8px -2px rgba(0, 0, 0, 0.05);
+  }
 }

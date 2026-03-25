@@ -11,7 +11,6 @@ import {
   getEvolutionConfig,
 } from '../lib/firestore'
 import { enviarRemarketing } from '../lib/remarketingApi'
-import { enviarMensagemParaGrupos } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
 import toast from 'react-hot-toast'
 import { KIWIFY_EVENTS } from '../lib/constants'
@@ -23,8 +22,9 @@ import {
   Circle,
   Loader2,
   AlertCircle,
-  Users,
   Tag,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 export default function Remarketing() {
@@ -39,23 +39,10 @@ export default function Remarketing() {
   const [apenasNaoEnviados, setApenasNaoEnviados] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
-  const [grupos, setGrupos] = useState([])
-  const [evolutionConfig, setEvolutionConfig] = useState(null)
-  const [selectedGrupoIds, setSelectedGrupoIds] = useState(new Set())
-  const [mensagemGrupos, setMensagemGrupos] = useState('')
-  const [enviandoGrupos, setEnviandoGrupos] = useState(false)
-  const [filtroGrupos, setFiltroGrupos] = useState('')
   const [filtroTag, setFiltroTag] = useState('')
+  const [paginaContatos, setPaginaContatos] = useState(1)
 
-  const gruposFiltrados = useMemo(() => {
-    if (!filtroGrupos.trim()) return grupos
-    const q = filtroGrupos.toLowerCase().trim()
-    return grupos.filter(
-      (g) =>
-        (g.nome ?? g.name ?? g.subject ?? '').toLowerCase().includes(q) ||
-        (g.id ?? '').toLowerCase().includes(q)
-    )
-  }, [grupos, filtroGrupos])
+  const CONTATOS_POR_PAGINA = 10
 
   const eventTag = (eventoId) => {
     if (!eventoId || eventoId === 'unknown' || eventoId === 'false') return 'Outro'
@@ -67,8 +54,7 @@ export default function Remarketing() {
     Promise.all([
       getAbandonedCarts(user.uid),
       getLeads(user.uid),
-      getEvolutionConfig(user.uid),
-    ]).then(([cartsData, leadsData, evolution]) => {
+    ]).then(([cartsData, leadsData]) => {
       const leadKeys = new Set()
       const fromLeads = (leadsData || []).map((l) => {
         const key = l.telefone || l.email || l.id
@@ -105,10 +91,6 @@ export default function Remarketing() {
         return tb - ta
       })
       setCarts(merged)
-      setEvolutionConfig(evolution || null)
-      const g = evolution?.grupos
-      const gruposArray = Array.isArray(g) ? g : (g && typeof g === 'object' && Array.isArray(g.grupos) ? g.grupos : Array.isArray(g?.groups) ? g.groups : [])
-      setGrupos(gruposArray)
       setLoading(false)
     })
   }, [user?.uid])
@@ -142,6 +124,17 @@ export default function Remarketing() {
     if (filtroTag) list = list.filter((c) => c.tag === filtroTag)
     return list
   }, [carts, filtroNome, filtroDataInicio, filtroDataFim, apenasNaoEnviados, filtroTag])
+
+  useEffect(() => {
+    setPaginaContatos(1)
+  }, [filtroNome, filtroDataInicio, filtroDataFim, apenasNaoEnviados, filtroTag])
+
+  const totalPaginasContatos = Math.max(1, Math.ceil(filtered.length / CONTATOS_POR_PAGINA))
+  const paginaContatosAtual = Math.min(paginaContatos, totalPaginasContatos)
+  const filteredPagina = useMemo(
+    () => filtered.slice((paginaContatosAtual - 1) * CONTATOS_POR_PAGINA, paginaContatosAtual * CONTATOS_POR_PAGINA),
+    [filtered, paginaContatosAtual]
+  )
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) => {
@@ -231,58 +224,6 @@ export default function Remarketing() {
     }
   }
 
-  const toggleGrupo = (id) => {
-    setSelectedGrupoIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const selectAllGrupos = () => {
-    const list = gruposFiltrados
-    const allSelected = list.length > 0 && list.every((g) => selectedGrupoIds.has(g.id))
-    if (allSelected) {
-      const next = new Set(selectedGrupoIds)
-      list.forEach((g) => next.delete(g.id))
-      setSelectedGrupoIds(next)
-    } else {
-      const next = new Set(selectedGrupoIds)
-      list.forEach((g) => next.add(g.id))
-      setSelectedGrupoIds(next)
-    }
-  }
-
-  const selectedGrupos = useMemo(
-    () => grupos.filter((g) => selectedGrupoIds.has(g.id)),
-    [grupos, selectedGrupoIds]
-  )
-
-  const handleEnviarParaGrupos = async () => {
-    if (selectedGrupos.length === 0 || !mensagemGrupos.trim()) {
-      toast.error('Selecione pelo menos um grupo e escreva a mensagem.')
-      return
-    }
-    setEnviandoGrupos(true)
-    setMsg({ type: '', text: '' })
-    try {
-      const evolutionAtual = await getEvolutionConfig(user.uid)
-      if (!evolutionAtual?.nomeInstancia) {
-        toast.error('Nenhuma instância conectada. Vá em Integrações, crie e conecte sua instância do WhatsApp.')
-        return
-      }
-      await enviarMensagemParaGrupos(selectedGrupos, mensagemGrupos.trim(), evolutionAtual)
-      toast.success(`Mensagem enviada para ${selectedGrupos.length} grupo(s).`)
-      setMensagemGrupos('')
-      setSelectedGrupoIds(new Set())
-    } catch (err) {
-      toast.error(err.message || 'Erro ao enviar para grupos')
-    } finally {
-      setEnviandoGrupos(false)
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -292,10 +233,9 @@ export default function Remarketing() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-800">Remarketing</h1>
-        <p className="text-gray-500 mt-1">Todos os leads do Kiwify (carrinho abandonado, compra aprovada, etc.). Filtre por tag e envie a mensagem.</p>
+        <h1 className="text-xl sm:text-2xl font-bold">Remarketing</h1>
       </div>
 
       {msg.text && (
@@ -311,223 +251,166 @@ export default function Remarketing() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-surface-200 flex flex-wrap gap-3 items-center">
-              <div className="relative flex-1 min-w-[120px]">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={filtroNome}
-                  onChange={(e) => setFiltroNome(e.target.value)}
-                  placeholder="Nome, e-mail ou telefone"
-                  className="w-full pl-9 pr-3 py-2 rounded-lg border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
-                />
-              </div>
-              <input
-                type="date"
-                value={filtroDataInicio}
-                onChange={(e) => setFiltroDataInicio(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-surface-200 text-sm"
-              />
-              <input
-                type="date"
-                value={filtroDataFim}
-                onChange={(e) => setFiltroDataFim(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-surface-200 text-sm"
-              />
-              <div className="flex items-center gap-1.5">
-                <Tag className="w-4 h-4 text-gray-400 shrink-0" />
-                <select
-                  value={filtroTag}
-                  onChange={(e) => setFiltroTag(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                >
-                  <option value="">Todos os eventos</option>
-                  {KIWIFY_EVENTS.map((e) => (
-                    <option key={e.id} value={e.label}>{e.label}</option>
-                  ))}
-                </select>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={apenasNaoEnviados}
-                  onChange={(e) => setApenasNaoEnviados(e.target.checked)}
-                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
-                />
-                Apenas não enviados
-              </label>
-              <button
-                type="button"
-                onClick={selectAll}
-                className="text-sm font-medium text-primary-600 hover:underline"
-              >
-                {selectedIds.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'}
-              </button>
-            </div>
-            <div className="max-h-[400px] overflow-auto">
-              {filtered.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  Nenhum lead encontrado ou os filtros não retornaram resultados.
-                </div>
-              ) : (
-                <ul className="divide-y divide-surface-200">
-                  {filtered.map((cart, index) => (
-                    <li
-                      key={cart.id ? `${cart.id}-${index}` : `row-${index}`}
-                      className="flex items-center gap-3 p-4 hover:bg-surface-50 cursor-pointer"
-                      onClick={() => toggleSelect(cart.id)}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleSelect(cart.id)
-                        }}
-                        className="shrink-0 text-gray-400 hover:text-primary-500"
-                      >
-                        {cart.remarketingEnviado ? (
-                          <CheckCircle2 className="w-5 h-5 text-green-500" />
-                        ) : selectedIds.has(cart.id) ? (
-                          <CheckCircle2 className="w-5 h-5 text-primary-500" />
-                        ) : (
-                          <Circle className="w-5 h-5" />
-                        )}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 truncate">
-                          {cart.nome || cart.name || cart.email || 'Sem nome'}
-                        </p>
-                        <p className="text-sm text-gray-500 truncate">
-                          {cart.telefone || cart.phone || cart.numero || '—'} · {cart.email || '—'}
-                        </p>
-                        {cart.tag && (
-                          <span className="inline-flex items-center mt-1 text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full">
-                            {cart.tag}
-                          </span>
-                        )}
-                      </div>
-                      {cart.remarketingEnviado && (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">
-                          Enviado
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Mensagem de remarketing — em cima */}
+      <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-3">Mensagem de remarketing</h3>
+        <MessageEditor
+          value={mensagem}
+          onChange={setMensagem}
+          placeholder="Olá {nome}, você deixou itens no carrinho. Posso te ajudar?"
+          showNomeButton
+        />
+        <p className="text-xs text-stone-500 mt-2">
+          Use *texto* para negrito e _texto_ para itálico no WhatsApp.
+        </p>
+        <button
+          onClick={handleEnviar}
+          disabled={enviando || selectedCarts.length === 0 || !mensagem.trim()}
+          className="btn-primary mt-4 w-full py-3 min-h-[48px] touch-manipulation"
+        >
+          {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          {enviando ? 'Enviando...' : `Enviar para ${selectedCarts.length} contato(s)`}
+        </button>
+      </div>
 
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-surface-200 shadow-sm p-6">
-            <h3 className="font-semibold text-gray-800 mb-3">Mensagem de remarketing</h3>
-            <MessageEditor
-              value={mensagem}
-              onChange={setMensagem}
-              placeholder="Olá {nome}, você deixou itens no carrinho. Posso te ajudar?"
+      {/* Lista de contatos — abaixo da mensagem, 10 por página */}
+      <div className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-surface-200 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
+          <div className="relative w-full sm:flex-1 sm:min-w-[140px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+            <input
+              type="text"
+              value={filtroNome}
+              onChange={(e) => setFiltroNome(e.target.value)}
+              placeholder="Nome, e-mail ou telefone"
+              className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
             />
-            <p className="text-xs text-gray-500 mt-2">
-              Use *texto* para negrito e _texto_ para itálico no WhatsApp.
-            </p>
+          </div>
+          <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+            <input
+              type="date"
+              value={filtroDataInicio}
+              onChange={(e) => setFiltroDataInicio(e.target.value)}
+              className="px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+            />
+            <input
+              type="date"
+              value={filtroDataFim}
+              onChange={(e) => setFiltroDataFim(e.target.value)}
+              className="px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Tag className="w-4 h-4 text-stone-400 shrink-0" />
+              <select
+                value={filtroTag}
+                onChange={(e) => setFiltroTag(e.target.value)}
+                className="flex-1 min-w-0 min-h-[44px] px-3 py-2 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              >
+                <option value="">Todos os eventos</option>
+                {KIWIFY_EVENTS.map((e) => (
+                  <option key={e.id} value={e.label}>{e.label}</option>
+                ))}
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer min-h-[44px] py-1">
+              <input
+                type="checkbox"
+                checked={apenasNaoEnviados}
+                onChange={(e) => setApenasNaoEnviados(e.target.checked)}
+                className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-4 h-4"
+              />
+              Apenas não enviados
+            </label>
             <button
-              onClick={handleEnviar}
-              disabled={enviando || selectedCarts.length === 0 || !mensagem.trim()}
-              className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 disabled:opacity-50"
+              type="button"
+              onClick={selectAll}
+              className="text-sm font-medium text-primary-600 hover:underline py-2 touch-manipulation"
             >
-              {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {enviando ? 'Enviando...' : `Enviar para ${selectedCarts.length} contato(s)`}
+              {selectedIds.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'}
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Enviar para grupos do WhatsApp */}
-      <div className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-surface-200 bg-surface-50/50 flex items-center gap-2">
-          <Users className="w-5 h-5 text-primary-500" />
-          <h2 className="text-lg font-semibold text-gray-800">Enviar para grupos do WhatsApp</h2>
-        </div>
-        <div className="p-6 space-y-4">
-          {grupos.length === 0 ? (
-            <p className="text-sm text-gray-500">Nenhum grupo salvo. Vá em Integrações, conecte o WhatsApp e clique em Puxar grupos.</p>
+        <div className="min-h-[200px]">
+          {filtered.length === 0 ? (
+            <div className="p-6 sm:p-8 text-center text-stone-500 text-sm">
+              Nenhum lead encontrado ou os filtros não retornaram resultados.
+            </div>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    value={filtroGrupos}
-                    onChange={(e) => setFiltroGrupos(e.target.value)}
-                    placeholder="Filtrar por nome ou ID do grupo"
-                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm text-gray-600">
-                    {gruposFiltrados.length} de {grupos.length} grupo(s)
-                  </p>
+            <ul className="divide-y divide-surface-200">
+              {filteredPagina.map((cart, index) => (
+                <li
+                  key={cart.id ? `${cart.id}-${index}` : `row-${index}`}
+                  className="flex items-center gap-3 p-3 sm:p-4 min-h-[56px] hover:bg-surface-50 active:bg-surface-100 cursor-pointer touch-manipulation"
+                  onClick={() => toggleSelect(cart.id)}
+                >
                   <button
                     type="button"
-                    onClick={selectAllGrupos}
-                    className="text-sm font-medium text-primary-600 hover:underline"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleSelect(cart.id)
+                    }}
+                    className="shrink-0 p-1 min-w-[44px] min-h-[44px] flex items-center justify-center -m-1 rounded-lg text-stone-400 hover:text-primary-500 active:bg-primary-50"
                   >
-                    {gruposFiltrados.length > 0 && gruposFiltrados.every((g) => selectedGrupoIds.has(g.id))
-                      ? 'Desmarcar todos'
-                      : 'Selecionar todos'}
+                    {cart.remarketingEnviado ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    ) : selectedIds.has(cart.id) ? (
+                      <CheckCircle2 className="w-5 h-5 text-primary-500" />
+                    ) : (
+                      <Circle className="w-5 h-5" />
+                    )}
                   </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-64 overflow-auto">
-                {gruposFiltrados.map((g, index) => (
-                  <button
-                    key={g.id ? `${g.id}-${index}` : `grupo-${index}`}
-                    type="button"
-                    onClick={() => toggleGrupo(g.id)}
-                    className={`
-                      p-3 rounded-xl border text-left transition text-sm
-                      ${selectedGrupoIds.has(g.id)
-                        ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
-                        : 'border-surface-200 bg-white hover:bg-surface-50'}
-                    `}
-                  >
-                    <div className="flex items-start gap-2">
-                      {selectedGrupoIds.has(g.id) ? (
-                        <CheckCircle2 className="w-4 h-4 text-primary-600 shrink-0 mt-0.5" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-800 truncate">{g.nome ?? g.name ?? g.subject ?? 'Sem nome'}</p>
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{g.id}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Mensagem para os grupos</label>
-                <MessageEditor
-                  value={mensagemGrupos}
-                  onChange={setMensagemGrupos}
-                  placeholder="Digite a mensagem que será enviada para os grupos selecionados..."
-                />
-              </div>
-              <button
-                onClick={handleEnviarParaGrupos}
-                disabled={enviandoGrupos || selectedGrupos.length === 0 || !mensagemGrupos.trim() || !evolutionConfig?.nomeInstancia}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 disabled:opacity-50"
-              >
-                {enviandoGrupos ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {enviandoGrupos ? 'Enviando...' : `Enviar para ${selectedGrupos.length} grupo(s)`}
-              </button>
-            </>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-stone-800 truncate">
+                      {cart.nome || cart.name || cart.email || 'Sem nome'}
+                    </p>
+                    <p className="text-sm text-stone-500 truncate">
+                      {cart.telefone || cart.phone || cart.numero || '—'} · {cart.email || '—'}
+                    </p>
+                    {cart.tag && (
+                      <span className="inline-flex items-center mt-1 text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full">
+                        {cart.tag}
+                      </span>
+                    )}
+                  </div>
+                  {cart.remarketingEnviado && (
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">
+                      Enviado
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
+        {filtered.length > CONTATOS_POR_PAGINA && (
+          <div className="px-4 py-3 sm:py-4 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
+            <p className="text-xs sm:text-sm text-stone-600 order-2 sm:order-1 text-center sm:text-left">
+              Página {paginaContatosAtual} de {totalPaginasContatos} · {filtered.length} contato(s)
+            </p>
+            <div className="flex items-center gap-2 order-1 sm:order-2 justify-center sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setPaginaContatos((p) => Math.max(1, p - 1))}
+                disabled={paginaContatosAtual <= 1}
+                className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaginaContatos((p) => Math.min(totalPaginasContatos, p + 1))}
+                disabled={paginaContatosAtual >= totalPaginasContatos}
+                className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
+              >
+                Próxima
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

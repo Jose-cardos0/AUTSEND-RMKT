@@ -4,11 +4,13 @@ import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth } from '../lib/firebase'
 import { getEvolutionConfig, getDisparos, setDisparo, updateDisparo, deleteDisparo } from '../lib/firestore'
-import { enviarUmaMensagemLead } from '../lib/mensagemApi'
+import { enviarMensagemWhatsApp } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
-import { Send, Loader2, AlertCircle, UserPlus, Smartphone, Download, Upload, Clock, History, Trash2 } from 'lucide-react'
+import { Send, Loader2, AlertCircle, UserPlus, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import WhatsAppIcon from '../components/WhatsAppIcon'
 
 const MINUTOS_POR_MENSAGEM = 5
+const ITEMS_POR_PAGINA_TIMELINE = 5
 const STORAGE_KEY = (uid) => `enviarMensagem_historico_${uid}`
 
 function loadHistoricoLocal(uid) {
@@ -34,6 +36,7 @@ export default function EnviarMensagem() {
   const [disparoAtual, setDisparoAtual] = useState(null)
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [historico, setHistorico] = useState([])
+  const [paginaTimeline, setPaginaTimeline] = useState(1)
   const [tick, setTick] = useState(0)
   const [confirmExcluir, setConfirmExcluir] = useState(null)
 
@@ -207,12 +210,15 @@ export default function EnviarMensagem() {
       toast('O envio pode continuar em segundo plano. Acompanhe na linha do tempo.', { icon: 'ℹ️' })
     }, TIMEOUT_MS)
     try {
-      for (let i = 0; i < contatos.length; i++) {
-        await enviarUmaMensagemLead(contatos[i], mensagem.trim(), evolutionAtual, disparoId, nome)
-        enviados++
-        setEnviadosCount(enviados)
-        atualizarItemHistorico(disparoId, { enviadosCount: enviados })
-      }
+      const msgBase = mensagem.trim()
+      // Um único POST: array completo no n8n (pausa de 5 min entre envios fica no fluxo n8n)
+      await enviarMensagemWhatsApp(contatos, msgBase, evolutionAtual, {
+        disparoId,
+        nomeDisparo: nome,
+        intervaloMinutos: MINUTOS_POR_MENSAGEM,
+      })
+      enviados = total
+      setEnviadosCount(total)
       clearTimeout(timeoutId)
       atualizarItemHistorico(disparoId, { enviadosCount: total })
       setMsg({ type: 'success', text: `Enviado. Demorará ${tempoMin} min.` })
@@ -242,6 +248,13 @@ export default function EnviarMensagem() {
   const totalContatos = contatos.length
   const tempoEstimadoMin = totalContatos * MINUTOS_POR_MENSAGEM
 
+  const totalPaginasTimeline = Math.max(1, Math.ceil(historico.length / ITEMS_POR_PAGINA_TIMELINE))
+  const paginaAtual = Math.min(paginaTimeline, totalPaginasTimeline)
+  const historicoPagina = historico.slice(
+    (paginaAtual - 1) * ITEMS_POR_PAGINA_TIMELINE,
+    paginaAtual * ITEMS_POR_PAGINA_TIMELINE
+  )
+
   const handleExcluirDisparo = (disparoId, nomeDisparo) => {
     setConfirmExcluir({ disparoId, nomeDisparo })
   }
@@ -253,6 +266,7 @@ export default function EnviarMensagem() {
     try {
       await deleteDisparo(user.uid, disparoId)
       setHistorico((prev) => prev.filter((item) => item.disparoId !== disparoId))
+      setPaginaTimeline(1)
       toast.success('Disparo removido da linha do tempo.')
     } catch (err) {
       toast.error(err.message || 'Erro ao excluir.')
@@ -260,17 +274,17 @@ export default function EnviarMensagem() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-800">Enviar mensagem</h1>
-        <p className="text-gray-500 mt-1">
+        <h1 className="text-xl sm:text-2xl font-bold">Enviar mensagem</h1>
+        <p className="text-stone-500 mt-1 text-sm sm:text-base">
           Envie mensagens para uma lista de leads (números separados por linha ou importe planilha). Conecta ao webhook WhatsApp.
         </p>
       </div>
 
       {evolution?.nomeInstancia && (
-        <div className="flex items-center gap-2 p-3 rounded-xl bg-primary-50 border border-primary-200 text-primary-800 text-sm">
-          <Smartphone className="w-4 h-4 shrink-0" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 p-3 sm:p-4 rounded-xl bg-primary-50 border border-primary-200 text-primary-800 text-xs sm:text-sm">
+          <WhatsAppIcon className="w-4 h-4 shrink-0" />
           <span><strong>Instância selecionada (Integrações):</strong> {evolution.nomeInstancia}</span>
           {evolution.numeroWhatsapp && <span className="text-primary-600"> — {evolution.numeroWhatsapp}</span>}
         </div>
@@ -297,14 +311,14 @@ export default function EnviarMensagem() {
 
       {/* Popup: confirmar exclusão da linha do tempo */}
       {confirmExcluir && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setConfirmExcluir(null)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <p className="text-gray-800 font-medium">Excluir &quot;{confirmExcluir.nomeDisparo}&quot; da linha do tempo?</p>
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setConfirmExcluir(null)} className="px-4 py-2 rounded-lg border border-surface-200 hover:bg-surface-50 text-sm font-medium">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setConfirmExcluir(null)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-[95vw] sm:max-w-sm w-full p-4 sm:p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-stone-800 font-medium text-sm sm:text-base">Excluir &quot;{confirmExcluir.nomeDisparo}&quot; da linha do tempo?</p>
+            <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
+              <button type="button" onClick={() => setConfirmExcluir(null)} className="px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 hover:bg-surface-50 text-sm font-medium touch-manipulation">
                 Cancelar
               </button>
-              <button type="button" onClick={confirmarExcluirDisparo} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 text-sm font-medium">
+              <button type="button" onClick={confirmarExcluirDisparo} className="px-4 py-2.5 min-h-[44px] rounded-xl bg-red-500 text-white hover:bg-red-600 text-sm font-medium touch-manipulation">
                 Excluir
               </button>
             </div>
@@ -314,23 +328,23 @@ export default function EnviarMensagem() {
 
       {/* Modal: nome do disparo */}
       {showNomeDisparoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowNomeDisparoModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-gray-800">Nome do disparo</h3>
-            <p className="text-sm text-gray-500">Dê um nome para identificar este envio (ex: Campanha Black Friday).</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setShowNomeDisparoModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-[95vw] sm:max-w-md w-full p-4 sm:p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base sm:text-lg font-semibold text-stone-800">Nome do disparo</h3>
+            <p className="text-xs sm:text-sm text-stone-500">Dê um nome para identificar este envio (ex: Campanha Black Friday).</p>
             <input
               type="text"
               value={nomeDisparoInput}
               onChange={(e) => setNomeDisparoInput(e.target.value)}
               placeholder="Ex: Campanha Black Friday"
-              className="w-full px-4 py-2 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="w-full px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-base"
               autoFocus
             />
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={() => setShowNomeDisparoModal(false)} className="px-4 py-2 rounded-lg border border-surface-200 hover:bg-surface-50">
+            <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
+              <button type="button" onClick={() => setShowNomeDisparoModal(false)} className="btn-secondary min-h-[44px] touch-manipulation">
                 Voltar
               </button>
-              <button type="button" onClick={confirmarEnvio} className="px-4 py-2 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600">
+              <button type="button" onClick={confirmarEnvio} className="btn-primary min-h-[44px] touch-manipulation">
                 Iniciar envio
               </button>
             </div>
@@ -338,67 +352,66 @@ export default function EnviarMensagem() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-surface-200 shadow-sm p-6">
-          <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-            <UserPlus className="w-4 h-4" />
-            Lista de contatos
-          </h3>
-          <p className="text-sm text-gray-500 mb-3">
-            Um contato por linha. Formato: número ou número,nome. Ou importe planilha Excel (coluna C = nome, coluna G = telefone).
+      {/* Mensagem — em cima */}
+      <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-3">Mensagem</h3>
+        <MessageEditor
+          value={mensagem}
+          onChange={setMensagem}
+          placeholder="Digite a mensagem. Use {nome} para o nome do contato (formato lista: número,nome)."
+          showNomeButton
+        />
+        {totalContatos > 0 && (
+          <p className="mt-3 text-sm text-stone-600">
+            Tempo estimado total: <strong>{tempoEstimadoMin} min</strong> ({totalContatos} contato(s)).
           </p>
-          <div className="flex flex-wrap gap-2 mb-3">
-            <button type="button" onClick={handleBaixarExemplo} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-200 bg-white text-sm font-medium hover:bg-surface-50">
-              <Download className="w-4 h-4" /> Baixar planilha exemplo
-            </button>
-            <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-200 bg-white text-sm font-medium hover:bg-surface-50 cursor-pointer">
-              <Upload className="w-4 h-4" /> Subir planilha Excel
-              <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
-            </label>
-          </div>
-          <textarea
-            value={lista}
-            onChange={(e) => setLista(e.target.value)}
-            placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
-            rows={12}
-            className="w-full p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none text-sm font-mono"
-          />
-        </div>
+        )}
+        <button
+          onClick={iniciarEnvio}
+          disabled={!lista.trim() || !mensagem.trim() || !evolution?.nomeInstancia}
+          className="btn-primary mt-4 w-full py-3 min-h-[48px] touch-manipulation"
+        >
+          <Send className="w-4 h-4" />
+          Enviar mensagem
+        </button>
+      </div>
 
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-surface-200 shadow-sm p-6">
-            <h3 className="font-semibold text-gray-800 mb-3">Mensagem</h3>
-            <MessageEditor
-              value={mensagem}
-              onChange={setMensagem}
-              placeholder="Digite a mensagem que será enviada para todos os contatos..."
-            />
-            {totalContatos > 0 && (
-              <p className="mt-3 text-sm text-gray-600">
-                Tempo estimado total: <strong>{tempoEstimadoMin} min</strong> ({totalContatos} contato(s)).
-              </p>
-            )}
-            <button
-              onClick={iniciarEnvio}
-              disabled={!lista.trim() || !mensagem.trim() || !evolution?.nomeInstancia}
-              className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600 disabled:opacity-50"
-            >
-              <Send className="w-4 h-4" />
-              Enviar mensagem
-            </button>
-          </div>
+      {/* Lista de contatos — abaixo da mensagem */}
+      <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
+        <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-2 flex items-center gap-2">
+          <UserPlus className="w-4 h-4 shrink-0" />
+          Lista de contatos
+        </h3>
+        <p className="text-xs sm:text-sm text-stone-500 mb-3">
+          Um contato por linha. Formato: número ou número,nome (primeiro o número, depois o nome). Use {'{nome}'} na mensagem para personalizar. Ou importe planilha Excel (coluna C = nome, coluna G = telefone).
+        </p>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-2 mb-3">
+          <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] w-full sm:w-auto touch-manipulation">
+            <Download className="w-4 h-4" /> Baixar planilha exemplo
+          </button>
+          <label className="btn-secondary text-sm py-2.5 min-h-[44px] w-full sm:w-auto cursor-pointer touch-manipulation flex items-center justify-center">
+            <Upload className="w-4 h-4" /> Subir planilha Excel
+            <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
+          </label>
         </div>
+        <textarea
+          value={lista}
+          onChange={(e) => setLista(e.target.value)}
+          placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
+          rows={8}
+          className="w-full p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none text-sm font-mono min-h-[160px] sm:min-h-[240px]"
+        />
       </div>
 
       {/* Histórico de envios — salvo em localStorage, countdown decrescente */}
       {historico.length > 0 && (
-        <div className="bg-white rounded-2xl border border-surface-200 shadow-sm p-6">
-          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <History className="w-4 h-4" />
+        <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
+          <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-4 flex items-center gap-2">
+            <History className="w-4 h-4 shrink-0" />
             Linha do tempo de envios
           </h3>
-          <ul className="space-y-3">
-            {historico.map((item) => {
+          <ul className="space-y-2 sm:space-y-3">
+            {historicoPagina.map((item) => {
               const remaining = getRemainingMin(item.endTime)
               const isAtual = disparoAtual?.id === item.disparoId
               const emEnvio = item.status === 'enviando' && remaining > 0
@@ -407,12 +420,12 @@ export default function EnviarMensagem() {
               return (
                 <li
                   key={item.disparoId}
-                  className={`p-4 rounded-xl border ${emEnvio ? 'bg-primary-50/50 border-primary-200' : item.status === 'cancelado' || item.status === 'erro' ? 'bg-red-50/50 border-red-200' : 'bg-surface-50 border-surface-200'}`}
+                  className={`p-3 sm:p-4 rounded-xl border ${emEnvio ? 'bg-primary-50/50 border-primary-200' : item.status === 'cancelado' || item.status === 'erro' ? 'bg-red-50/50 border-red-200' : 'bg-surface-50 border-surface-200'}`}
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-2 sm:gap-3">
                     <div>
-                      <span className="font-medium text-gray-800">{item.nomeDisparo}</span>
-                      <span className="text-sm text-gray-500 ml-2">
+                      <span className="font-medium text-stone-800">{item.nomeDisparo}</span>
+                      <span className="text-sm text-stone-500 ml-2">
                         {emEnvio ? (
                           <>{restantes}/{item.total} restantes · 1 a cada {MINUTOS_POR_MENSAGEM} min</>
                         ) : (
@@ -442,7 +455,7 @@ export default function EnviarMensagem() {
                         </span>
                       )}
                       {item.status !== 'cancelado' && item.status !== 'erro' && (
-                        <span className="inline-flex items-center gap-1 text-sm text-gray-600">
+                        <span className="inline-flex items-center gap-1 text-sm text-stone-600">
                           <Clock className="w-4 h-4" />
                           {remaining > 0 ? `Tempo restante: ${remaining} min` : 'Concluído'}
                         </span>
@@ -450,7 +463,7 @@ export default function EnviarMensagem() {
                       <button
                         type="button"
                         onClick={() => handleExcluirDisparo(item.disparoId, item.nomeDisparo)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                        className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation"
                         title="Excluir da linha do tempo"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -474,6 +487,33 @@ export default function EnviarMensagem() {
               )
             })}
           </ul>
+          {totalPaginasTimeline > 1 && (
+            <div className="mt-4 pt-4 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm text-stone-600 order-2 sm:order-1 text-center sm:text-left">
+                Página {paginaAtual} de {totalPaginasTimeline} · {historico.length} envio(s)
+              </p>
+              <div className="flex items-center gap-2 order-1 sm:order-2 justify-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPaginaTimeline((p) => Math.max(1, p - 1))}
+                  disabled={paginaAtual <= 1}
+                  className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaginaTimeline((p) => Math.min(totalPaginasTimeline, p + 1))}
+                  disabled={paginaAtual >= totalPaginasTimeline}
+                  className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
+                >
+                  Próxima
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
