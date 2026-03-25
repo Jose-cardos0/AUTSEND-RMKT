@@ -51,10 +51,16 @@ export async function enviarMensagemWhatsApp(contatos, mensagem, evolution, extr
     disparoId,
     nomeDisparo,
     intervaloMinutos,
-    contatos: contatos.map((c) => ({
-      telefone: String(c.telefone || '').replace(/\D/g, '') || c.telefone,
-      nome: c.nome || '',
-    })),
+    contatos: contatos.map((c) => {
+      const nome = (c.nome || '').trim()
+      const telefone = String(c.telefone || '').replace(/\D/g, '') || c.telefone
+      return {
+        telefone,
+        nome,
+        // Já vai pronto para o n8n: um array com numero + nome + mensagem por contato
+        mensagem: (mensagem || '').replace(/\{nome\}/gi, nome),
+      }
+    }),
     mensagem: mensagem || '',
     ...buildEvolutionPayload(evolution),
   }

@@ -25,6 +25,8 @@ import {
   Tag,
   ChevronLeft,
   ChevronRight,
+  Users,
+  Filter,
 } from 'lucide-react'
 
 export default function Remarketing() {
@@ -155,6 +157,12 @@ export default function Remarketing() {
     [filtered, selectedIds]
   )
 
+  const resumo = useMemo(() => {
+    const total = carts.length
+    const enviados = carts.filter((c) => c.remarketingEnviado).length
+    return { total, enviados, pendentes: Math.max(0, total - enviados) }
+  }, [carts])
+
   const handleEnviar = async () => {
     if (!user?.uid || selectedCarts.length === 0 || !mensagem.trim()) {
       toast.error('Selecione pelo menos um contato e escreva a mensagem.')
@@ -234,8 +242,25 @@ export default function Remarketing() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold">Remarketing</h1>
+      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold">Remarketing</h1>
+          <p className="text-sm text-stone-500 mt-1">Selecione contatos, personalize a mensagem e dispare com controle.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="rounded-xl border border-surface-200 bg-white px-3 py-2 text-center">
+            <p className="text-[11px] uppercase tracking-wide text-stone-500">Total</p>
+            <p className="text-sm font-semibold text-stone-800">{resumo.total}</p>
+          </div>
+          <div className="rounded-xl border border-green-200 bg-green-50/70 px-3 py-2 text-center">
+            <p className="text-[11px] uppercase tracking-wide text-green-600">Enviados</p>
+            <p className="text-sm font-semibold text-green-700">{resumo.enviados}</p>
+          </div>
+          <div className="rounded-xl border border-primary-200 bg-primary-50/70 px-3 py-2 text-center">
+            <p className="text-[11px] uppercase tracking-wide text-primary-600">Selecionados</p>
+            <p className="text-sm font-semibold text-primary-700">{selectedCarts.length}</p>
+          </div>
+        </div>
       </div>
 
       {msg.text && (
@@ -275,33 +300,45 @@ export default function Remarketing() {
 
       {/* Lista de contatos — abaixo da mensagem, 10 por página */}
       <div className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-surface-200 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
-          <div className="relative w-full sm:flex-1 sm:min-w-[140px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-            <input
-              type="text"
-              value={filtroNome}
-              onChange={(e) => setFiltroNome(e.target.value)}
-              placeholder="Nome, e-mail ou telefone"
-              className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
-            />
+        <div className="p-4 sm:p-5 border-b border-surface-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-stone-700">
+              <Users className="w-4 h-4" />
+              <p className="text-sm font-semibold">Lista de contatos</p>
+            </div>
+            <button
+              type="button"
+              onClick={selectAll}
+              className="text-sm font-medium text-primary-600 hover:underline py-1 touch-manipulation"
+            >
+              {selectedIds.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'}
+            </button>
           </div>
-          <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2 sm:gap-3 items-center">
+            <div className="relative md:col-span-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <input
+                type="text"
+                value={filtroNome}
+                onChange={(e) => setFiltroNome(e.target.value)}
+                placeholder="Nome, e-mail ou telefone"
+                className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+              />
+            </div>
             <input
               type="date"
               value={filtroDataInicio}
               onChange={(e) => setFiltroDataInicio(e.target.value)}
-              className="px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+              className="md:col-span-2 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
             />
             <input
               type="date"
               value={filtroDataFim}
               onChange={(e) => setFiltroDataFim(e.target.value)}
-              className="px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+              className="md:col-span-2 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
             />
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 md:col-span-2 min-w-0">
               <Tag className="w-4 h-4 text-stone-400 shrink-0" />
               <select
                 value={filtroTag}
@@ -314,7 +351,7 @@ export default function Remarketing() {
                 ))}
               </select>
             </div>
-            <label className="flex items-center gap-2 text-sm text-stone-600 cursor-pointer min-h-[44px] py-1">
+            <label className="md:col-span-2 flex items-center gap-2 text-sm text-stone-600 cursor-pointer min-h-[44px] py-1">
               <input
                 type="checkbox"
                 checked={apenasNaoEnviados}
@@ -323,13 +360,11 @@ export default function Remarketing() {
               />
               Apenas não enviados
             </label>
-            <button
-              type="button"
-              onClick={selectAll}
-              className="text-sm font-medium text-primary-600 hover:underline py-2 touch-manipulation"
-            >
-              {selectedIds.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'}
-            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-stone-500">
+            <Filter className="w-3.5 h-3.5" />
+            <span>{filtered.length} contato(s) após filtros</span>
           </div>
         </div>
         <div className="min-h-[200px]">
@@ -339,48 +374,85 @@ export default function Remarketing() {
             </div>
           ) : (
             <ul className="divide-y divide-surface-200">
-              {filteredPagina.map((cart, index) => (
+              {filteredPagina.map((cart, index) => {
+                const isSelected = selectedIds.has(cart.id)
+                return (
                 <li
                   key={cart.id ? `${cart.id}-${index}` : `row-${index}`}
-                  className="flex items-center gap-3 p-3 sm:p-4 min-h-[56px] hover:bg-surface-50 active:bg-surface-100 cursor-pointer touch-manipulation"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      toggleSelect(cart.id)
+                    }
+                  }}
+                  className={`
+                    flex px-2 sm:px-4 py-3 sm:py-3.5 min-h-[56px] cursor-pointer touch-manipulation
+                    transition-colors duration-150
+                    ${isSelected
+                      ? 'bg-primary-50/95 ring-inset ring-1 ring-primary-200/80 border-l-[3px] border-primary-500'
+                      : 'border-l-[3px] border-transparent hover:bg-surface-50/90 active:bg-surface-100/90'
+                    }
+                  `}
                   onClick={() => toggleSelect(cart.id)}
                 >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleSelect(cart.id)
-                    }}
-                    className="shrink-0 p-1 min-w-[44px] min-h-[44px] flex items-center justify-center -m-1 rounded-lg text-stone-400 hover:text-primary-500 active:bg-primary-50"
-                  >
-                    {cart.remarketingEnviado ? (
-                      <CheckCircle2 className="w-5 h-5 text-green-500" />
-                    ) : selectedIds.has(cart.id) ? (
-                      <CheckCircle2 className="w-5 h-5 text-primary-500" />
-                    ) : (
-                      <Circle className="w-5 h-5" />
-                    )}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-stone-800 truncate">
-                      {cart.nome || cart.name || cart.email || 'Sem nome'}
-                    </p>
-                    <p className="text-sm text-stone-500 truncate">
-                      {cart.telefone || cart.phone || cart.numero || '—'} · {cart.email || '—'}
-                    </p>
-                    {cart.tag && (
-                      <span className="inline-flex items-center mt-1 text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full">
-                        {cart.tag}
-                      </span>
-                    )}
+                  <div className="flex items-start sm:items-center gap-3 w-full min-w-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleSelect(cart.id)
+                      }}
+                      className={`
+                        shrink-0 p-1 min-w-[44px] min-h-[44px] flex items-center justify-center -m-1 rounded-lg touch-manipulation
+                        ${isSelected ? 'text-primary-600 bg-primary-100/60' : 'text-stone-400 hover:text-primary-500 hover:bg-primary-50/50'}
+                      `}
+                      aria-pressed={isSelected}
+                      aria-label={isSelected ? 'Desmarcar contato' : 'Selecionar contato'}
+                    >
+                      {cart.remarketingEnviado ? (
+                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      ) : isSelected ? (
+                        <CheckCircle2 className="w-5 h-5 text-primary-600" />
+                      ) : (
+                        <Circle className="w-5 h-5" />
+                      )}
+                    </button>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-x-4 md:gap-y-1 flex-1 min-w-0 items-start md:items-center w-full">
+                      <div className="md:col-span-4 min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <p className="font-semibold text-stone-800 truncate">
+                            {cart.nome || cart.name || cart.email || 'Sem nome'}
+                          </p>
+                          {cart.remarketingEnviado && (
+                            <span className="text-[11px] font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">
+                              Enviado
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="md:col-span-2 text-sm text-stone-600 tabular-nums md:text-right md:justify-self-end truncate">
+                        {(cart.telefone || cart.phone || cart.numero || '—').toString()}
+                      </p>
+                      <p className="md:col-span-3 text-sm text-stone-500 truncate md:text-right">
+                        {cart.email || '—'}
+                      </p>
+                      <div className="md:col-span-3 flex md:justify-end min-w-0">
+                        {cart.tag ? (
+                          <span className="inline-flex items-center max-w-full text-xs font-medium bg-primary-100/80 text-primary-800 px-2.5 py-1 rounded-full truncate">
+                            {cart.tag}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-stone-400">—</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {cart.remarketingEnviado && (
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">
-                      Enviado
-                    </span>
-                  )}
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
         </div>

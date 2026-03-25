@@ -159,6 +159,11 @@ export async function setSelectedInstance(uid, instanceId) {
   await setDoc(userEvolutionRef(uid), { selectedInstanceId: instanceId }, { merge: true })
 }
 
+export async function deleteInstance(uid, instanceId) {
+  const ref = doc(db, 'users', uid, 'instances', instanceId)
+  await deleteDoc(ref)
+}
+
 const WEBHOOK_BASE_URL = 'https://us-central1-afiliadocdnx.cloudfunctions.net/kiwifyAbandonedCheckout'
 
 export async function createWebhook(uid, payload) {

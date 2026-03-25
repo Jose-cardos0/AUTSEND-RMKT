@@ -402,16 +402,16 @@ export default function Automacoes() {
         <h2 className="text-xs sm:text-sm font-semibold text-stone-500 uppercase tracking-wider mb-3 flex items-center gap-2">
           <Package className="w-4 h-4 shrink-0" /> Produtos
         </h2>
-        <div className="flex overflow-x-auto gap-2 sm:gap-3 pb-2 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0 flex-wrap sm:flex-wrap">
+        <div className="flex overflow-x-auto gap-2 sm:gap-3 p-1">
           {uniqueProducts.map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setSelectedProduto(p)}
-              className={`px-3 sm:px-4 py-2.5 min-h-[44px] rounded-xl border text-sm font-medium transition shadow-card whitespace-nowrap touch-manipulation shrink-0 ${
+              className={`px-3.5 sm:px-4 py-2.5 min-h-[42px] rounded-xl border text-sm font-semibold transition-all duration-200 whitespace-nowrap touch-manipulation shrink-0 ${
                 selectedProduto === p
-                  ? 'border-primary-500 bg-primary-50 text-primary-700 ring-1 ring-primary-500'
-                  : 'border-surface-200 bg-white text-stone-800 hover:bg-surface-50'
+                  ? 'border-primary-600 bg-white text-primary-700 shadow-soft ring-2 ring-primary-200'
+                  : 'border-transparent bg-transparent text-stone-700 hover:bg-white hover:border-surface-200'
               }`}
             >
               {p}

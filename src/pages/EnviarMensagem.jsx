@@ -103,22 +103,32 @@ export default function EnviarMensagem() {
     return lines.map((line) => {
       const parts = line.split(/[\t,;]/).map((p) => p.trim())
       const telefone = (parts[0] || '').replace(/\D/g, '') || parts[0]
-      const nome = parts[1] || ''
+      // Tudo após o primeiro separador vira nome (permite vírgula no nome: 55...,Silva, João)
+      const nome = parts.slice(1).join(', ').trim()
       return { telefone, nome }
     })
   }
 
+  /** Primeira linha é cabeçalho se a coluna A não parece telefone (ex.: "Número", vazio). */
+  const primeiraLinhaEhCabecalhoPlanilha = (row) => {
+    if (!row || row.length === 0) return false
+    const raw = row[0]
+    const digits = String(raw ?? '').replace(/\D/g, '')
+    return digits.length < 10
+  }
+
   const handleBaixarExemplo = () => {
     const wsData = [
-      ['Cart Id', 'Type', 'Product name', 'Customer Name', 'Customer Email', 'Customer Document Number', 'Customer Phone', 'Creation Date', 'Checkout Link'],
-      ['@hx20dzpx18131ndjw', 'producer', 'Jose', 'Allison J S Souza', 'erik15branca@gmail.com', '07499980595', '+5579998490493', '01/03/2020, 21:35', 'https://pay.kiwify.com.br/...'],
-      ['@abc123', 'producer', 'Jose', 'teste real jos', 'kekocelular1599@gmail.com', '03830892128', '+5579999062401', '01/03/2026, 13:58', 'https://pay.kiwify.com.br/...'],
+      ['Número', 'Nome'],
+      ['5511999999999', 'Exemplo um'],
+      ['5521988888888', 'João'],
+      ['5531977777777', 'Maria'],
     ]
     const ws = XLSX.utils.aoa_to_sheet(wsData)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Leads')
-    XLSX.writeFile(wb, 'planilha_leads_exemplo.xlsx')
-    toast.success('Planilha exemplo baixada. Use as colunas C (nome) e G (telefone).')
+    XLSX.utils.book_append_sheet(wb, ws, 'Contatos')
+    XLSX.writeFile(wb, 'planilha_contatos_exemplo.xlsx')
+    toast.success('Planilha exemplo: coluna A = número, coluna B = nome.')
   }
 
   const handleUploadExcel = (e) => {
@@ -132,14 +142,19 @@ export default function EnviarMensagem() {
         const firstSheet = wb.Sheets[wb.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: '' })
         const lines = []
-        for (let i = 1; i < rows.length; i++) {
+        let start = 0
+        if (rows.length > 0 && primeiraLinhaEhCabecalhoPlanilha(rows[0])) start = 1
+        for (let i = start; i < rows.length; i++) {
           const row = rows[i]
-          const colC = row[2] != null ? String(row[2]).trim() : ''
-          const colG = row[6] != null ? String(row[6]).trim().replace(/\D/g, '') : ''
-          if (colG) lines.push(`${colG},${colC}`)
+          const numRaw = row[0] != null ? String(row[0]).trim() : ''
+          const nome = row[1] != null ? String(row[1]).trim() : ''
+          const telNorm = numRaw.replace(/\D/g, '')
+          if (telNorm.length >= 8) {
+            lines.push(`${telNorm},${nome}`)
+          }
         }
         setLista(lines.join('\n'))
-        toast.success(`${lines.length} contato(s) importado(s) da planilha (coluna C = nome, G = telefone).`)
+        toast.success(`${lines.length} contato(s) importado(s) (colunas A = número, B = nome — igual à lista manual).`)
       } catch (err) {
         toast.error('Erro ao ler planilha. Verifique se é um Excel válido.')
       }
@@ -383,7 +398,7 @@ export default function EnviarMensagem() {
           Lista de contatos
         </h3>
         <p className="text-xs sm:text-sm text-stone-500 mb-3">
-          Um contato por linha. Formato: número ou número,nome (primeiro o número, depois o nome). Use {'{nome}'} na mensagem para personalizar. Ou importe planilha Excel (coluna C = nome, coluna G = telefone).
+          Um contato por linha. Formato: número ou número,nome (número primeiro). Use {'{nome}'} na mensagem para personalizar. Planilha Excel: só duas colunas — <strong className="text-stone-700">A = número</strong>, <strong className="text-stone-700">B = nome</strong> (igual a digitar na lista).
         </p>
         <div className="flex flex-col sm:flex-row flex-wrap gap-2 mb-3">
           <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] w-full sm:w-auto touch-manipulation">

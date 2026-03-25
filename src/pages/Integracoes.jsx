@@ -8,6 +8,7 @@ import {
   addInstance,
   updateInstance,
   setSelectedInstance,
+  deleteInstance,
   createWebhook,
   getWebhooks,
   updateWebhook,
@@ -20,6 +21,9 @@ import {
   Webhook,
   Copy,
   Check,
+  ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   X,
   Trash2,
@@ -45,7 +49,9 @@ export default function Integracoes() {
   const [copiado, setCopiado] = useState(null)
   const [criandoWebhook, setCriandoWebhook] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
+  const [paginaInstancias, setPaginaInstancias] = useState(1)
   const pollingRef = useRef(null)
+  const INSTANCIAS_POR_PAGINA = 3
 
   useEffect(() => {
     if (!user?.uid) return
@@ -116,6 +122,11 @@ export default function Integracoes() {
       if (pollingRef.current) clearInterval(pollingRef.current)
     }
   }, [showQrModal, qrBase64, user?.uid, instanceEmConexao])
+
+  useEffect(() => {
+    const totalPaginas = Math.max(1, Math.ceil(instances.length / INSTANCIAS_POR_PAGINA))
+    if (paginaInstancias > totalPaginas) setPaginaInstancias(totalPaginas)
+  }, [instances.length, paginaInstancias])
 
   const handleCriarInstancia = async () => {
     if (!user?.uid) return
@@ -263,6 +274,30 @@ export default function Integracoes() {
     }
   }
 
+  const handleExcluirInstancia = async (inst) => {
+    if (!user?.uid || !inst?.id) return
+    const nome = inst.nomeInstancia || 'esta instância'
+    const ok = window.confirm(`Excluir "${nome}"? Esta ação desconecta e remove a instância.`)
+    if (!ok) return
+    try {
+      await deleteInstance(user.uid, inst.id)
+      const updated = await getInstances(user.uid)
+      setInstances(updated)
+
+      if (selectedInstanceId === inst.id) {
+        const nextPrincipal = updated[0]?.id ?? null
+        await setSelectedInstance(user.uid, nextPrincipal)
+        setSelectedInstanceId(nextPrincipal)
+      }
+
+      const evo = await getEvolutionConfig(user.uid)
+      setEvolution(evo)
+      toast.success('Instância excluída com sucesso.')
+    } catch (err) {
+      toast.error(err.message || 'Erro ao excluir instância')
+    }
+  }
+
   const copyUrl = (url, id) => {
     navigator.clipboard.writeText(url)
     setCopiado(id)
@@ -301,6 +336,13 @@ export default function Integracoes() {
       </div>
     )
   }
+
+  const totalPaginasInstancias = Math.max(1, Math.ceil(instances.length / INSTANCIAS_POR_PAGINA))
+  const paginaInstanciasAtual = Math.min(paginaInstancias, totalPaginasInstancias)
+  const instanciasPagina = instances.slice(
+    (paginaInstanciasAtual - 1) * INSTANCIAS_POR_PAGINA,
+    paginaInstanciasAtual * INSTANCIAS_POR_PAGINA
+  )
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -386,74 +428,121 @@ export default function Integracoes() {
             <div className="space-y-3">
               <p className="text-sm font-medium text-stone-700">Suas instâncias — selecione qual usar para automações e mensagens</p>
               <div className="space-y-3">
-                {instances.map((inst) => {
+                {instanciasPagina.map((inst) => {
                   const isPrincipal = selectedInstanceId === inst.id
                   return (
                     <div
                       key={inst.id}
                       className={`p-4 sm:p-5 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}
                     >
-                      <div className="flex flex-wrap items-center gap-2 mb-3">
-                        <span className="font-medium text-stone-800">{inst.nomeInstancia || 'Sem nome'}</span>
-                        {inst.numeroWhatsapp && <span className="text-sm text-stone-500">{inst.numeroWhatsapp}</span>}
-                        {isPrincipal && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
-                            <Star className="w-3 h-3" /> Principal (automações)
-                          </span>
-                        )}
-                        {inst.conectado === true ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Conectado</span>
-                        ) : inst.qrCodeBase64 ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-amber-600">Aguardando QR</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-stone-500">Não conectado</span>
-                        )}
-                      </div>
-                      <div className="flex flex-col sm:flex-row flex-wrap gap-2 [&_button]:min-h-[44px] [&_button]:touch-manipulation [&_button]:w-full sm:[&_button]:w-auto">
-                        {!isPrincipal && (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-stone-800 break-all">{inst.nomeInstancia || 'Sem nome'}</p>
+                          {inst.numeroWhatsapp && (
+                            <p className="text-sm text-stone-500 mt-0.5">{inst.numeroWhatsapp}</p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {isPrincipal && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
+                                <Star className="w-3 h-3" /> Principal
+                              </span>
+                            )}
+                            {inst.conectado === true ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Conectado</span>
+                            ) : inst.qrCodeBase64 ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-amber-600">Aguardando QR</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs text-stone-500">Não conectado</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {!isPrincipal && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await setSelectedInstance(user.uid, inst.id)
+                                setSelectedInstanceId(inst.id)
+                                const evo = await getEvolutionConfig(user.uid)
+                                setEvolution(evo)
+                                toast.success(`"${inst.nomeInstancia}" é agora a instância principal para automações.`)
+                              }}
+                              className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation"
+                              title="Definir como principal"
+                              aria-label="Definir como principal"
+                            >
+                              <Star className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={async () => {
-                              await setSelectedInstance(user.uid, inst.id)
-                              setSelectedInstanceId(inst.id)
-                              const evo = await getEvolutionConfig(user.uid)
-                              setEvolution(evo)
-                              toast.success(`"${inst.nomeInstancia}" é agora a instância principal para automações.`)
-                            }}
-                            className="btn-primary text-sm py-1.5"
+                            onClick={() => handleVerificarStatus(inst)}
+                            disabled={verificando || !inst.hash}
+                            className="p-2.5 rounded-lg border border-surface-200 bg-white text-stone-700 hover:bg-surface-100 transition-colors touch-manipulation disabled:opacity-60"
+                            title="Verificar conexão"
+                            aria-label="Verificar conexão"
                           >
-                            <Star className="w-3.5 h-3.5" /> Usar para automações
+                            {verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleVerificarStatus(inst)}
-                          disabled={verificando || !inst.hash}
-                          className="btn-secondary text-sm py-1.5"
-                        >
-                          {verificando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                          Verificar conexão
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleBuscarGrupos(inst)}
-                          disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || Array.isArray(inst.grupos)}
-                          className="btn-secondary text-sm py-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
-                        >
-                          {buscandoGruposId === inst.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : Array.isArray(inst.grupos) ? (
-                            <Check className="w-3.5 h-3.5 text-green-600" />
-                          ) : (
-                            <Users className="w-3.5 h-3.5" />
-                          )}
-                          {Array.isArray(inst.grupos) ? 'Grupos puxados' : 'Puxar grupos'}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleBuscarGrupos(inst)}
+                            disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || Array.isArray(inst.grupos)}
+                            className="p-2.5 rounded-lg border border-surface-200 bg-white text-stone-700 hover:bg-surface-100 transition-colors touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed"
+                            title={Array.isArray(inst.grupos) ? 'Grupos já puxados' : 'Puxar grupos'}
+                            aria-label={Array.isArray(inst.grupos) ? 'Grupos já puxados' : 'Puxar grupos'}
+                          >
+                            {buscandoGruposId === inst.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : Array.isArray(inst.grupos) ? (
+                              <Check className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <Users className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleExcluirInstancia(inst)}
+                            className="p-2.5 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation"
+                            title="Excluir instância"
+                            aria-label="Excluir instância"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )
                 })}
               </div>
+              {instances.length > INSTANCIAS_POR_PAGINA && (
+                <div className="pt-1 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <p className="text-sm text-stone-600">
+                    Página {paginaInstanciasAtual} de {totalPaginasInstancias} · {instances.length} instância(s)
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaginaInstancias((p) => Math.max(1, p - 1))}
+                      disabled={paginaInstanciasAtual <= 1}
+                      className="p-2 rounded-lg border border-surface-200 bg-white text-stone-700 hover:bg-surface-50 disabled:opacity-50"
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaginaInstancias((p) => Math.min(totalPaginasInstancias, p + 1))}
+                      disabled={paginaInstanciasAtual >= totalPaginasInstancias}
+                      className="p-2 rounded-lg border border-surface-200 bg-white text-stone-700 hover:bg-surface-50 disabled:opacity-50"
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
