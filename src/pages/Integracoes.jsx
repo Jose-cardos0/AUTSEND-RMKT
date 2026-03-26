@@ -30,6 +30,8 @@ import {
   Star,
 } from 'lucide-react'
 import WhatsAppIcon from '../components/WhatsAppIcon'
+import PageShell, { Panel } from '../components/PageShell'
+import PageLoader from '../components/PageLoader'
 
 export default function Integracoes() {
   const [user] = useAuthState(auth)
@@ -275,16 +277,21 @@ export default function Integracoes() {
   }
 
   const handleExcluirInstancia = async (inst) => {
-    if (!user?.uid || !inst?.id) return
+    if (!user?.uid) return
+    const docId = inst?.id
+    if (!docId) {
+      toast.error('ID da instância inválido. Recarregue a página e tente de novo.')
+      return
+    }
     const nome = inst.nomeInstancia || 'esta instância'
     const ok = window.confirm(`Excluir "${nome}"? Esta ação desconecta e remove a instância.`)
     if (!ok) return
     try {
-      await deleteInstance(user.uid, inst.id)
+      await deleteInstance(user.uid, docId)
       const updated = await getInstances(user.uid)
       setInstances(updated)
 
-      if (selectedInstanceId === inst.id) {
+      if (selectedInstanceId === docId) {
         const nextPrincipal = updated[0]?.id ?? null
         await setSelectedInstance(user.uid, nextPrincipal)
         setSelectedInstanceId(nextPrincipal)
@@ -330,11 +337,7 @@ export default function Integracoes() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
-      </div>
-    )
+    return <PageLoader className="flex-1 min-h-0 py-10" />
   }
 
   const totalPaginasInstancias = Math.max(1, Math.ceil(instances.length / INSTANCIAS_POR_PAGINA))
@@ -345,17 +348,17 @@ export default function Integracoes() {
   )
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold">Integrações</h1>
-        <p className="text-stone-500 mt-1 text-sm sm:text-base">Evolution API, grupos e webhook Kiwify.</p>
-      </div>
-
+    <PageShell
+      fill
+      badge="Conexões"
+      title="Integrações"
+      subtitle="Evolution API, grupos do WhatsApp e webhooks Kiwify — tudo em um só lugar."
+    >
       {/* Modal QR Code — overlay preto/50 */}
       {showQrModal && qrBase64 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setShowQrModal(false)}>
           <div
-            className="bg-white rounded-2xl shadow-xl max-w-[95vw] sm:max-w-sm w-full p-4 sm:p-6 relative"
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl shadow-primary-900/10 border border-surface-200/80 max-w-[95vw] sm:max-w-sm w-full p-4 sm:p-6 relative"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -383,15 +386,9 @@ export default function Integracoes() {
         </div>
       )}
 
-      {/* Evolution API */}
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
-          <div className="flex items-center gap-2 text-stone-800">
-            <WhatsAppIcon className="w-5 h-5 shrink-0" />
-            <h2 className="text-base sm:text-lg font-semibold">Integração</h2>
-          </div>
-        </div>
-        <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
+      <Panel title="WhatsApp (Evolution)" icon={WhatsAppIcon} flexFill>
+          <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft space-y-4 pr-0.5">
           <p className="text-sm font-medium text-stone-700">Adicionar nova instância</p>
           <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
             <div className="w-full sm:w-56 min-w-0">
@@ -503,7 +500,10 @@ export default function Integracoes() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleExcluirInstancia(inst)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleExcluirInstancia(inst)
+                            }}
                             className="p-2.5 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation"
                             title="Excluir instância"
                             aria-label="Excluir instância"
@@ -549,22 +549,21 @@ export default function Integracoes() {
           {instances.length === 0 && !evolution?.nomeInstancia && (
             <p className="text-sm text-stone-500">Nenhuma instância ainda. Crie uma acima e escaneie o QR Code no popup.</p>
           )}
-        </div>
-      </section>
-
-      {/* Webhook Kiwify */}
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
-          <div className="flex items-center gap-2 text-stone-800">
-            <Webhook className="w-5 h-5 text-primary-500 shrink-0" />
-            <h2 className="text-base sm:text-lg font-semibold">Webhook</h2>
           </div>
-          <p className="text-xs sm:text-sm text-stone-500 mt-1">
+      </Panel>
+
+      <Panel
+        flexFill
+        title="Webhook Kiwify"
+        icon={Webhook}
+        description={
+          <>
             Cada clique em &quot;Criar webhook Kiwify&quot; gera um <strong>novo</strong> webhook (não substitui os anteriores).
             Use a URL na Kiwify; os webhooks antigos continuam válidos.
-          </p>
-        </div>
-        <div className="p-4 sm:p-6 space-y-4">
+          </>
+        }
+      >
+          <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft space-y-4 pr-0.5">
           <button
             onClick={handleCriarWebhookKiwify}
             disabled={criandoWebhook}
@@ -616,8 +615,9 @@ export default function Integracoes() {
               })}
             </div>
           )}
-        </div>
-      </section>
-    </div>
+          </div>
+      </Panel>
+      </div>
+    </PageShell>
   )
 }

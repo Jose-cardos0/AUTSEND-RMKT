@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../lib/firebase'
@@ -53,12 +54,25 @@ export default function Login() {
       >
         <WhatsAppIcon className="w-6 h-6 sm:w-7 sm:h-7" white />
       </a>
-      <div className="w-full max-w-[420px]">
-        <div className="card-elevated p-6 sm:p-8 lg:p-10">
+      <div className="w-full max-w-[440px]">
+        <motion.div
+          initial={{ opacity: 0, y: 20, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+          className="relative rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_25px_50px_-12px_rgba(74,70,222,0.2),0_0_0_1px_rgba(255,255,255,0.9)_inset]"
+        >
+          <div className="absolute -inset-px rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary-400/20 via-transparent to-violet-400/15 -z-10 blur-sm" />
           <div className="flex justify-center mb-6 sm:mb-8">
-            <img src={logo} alt="CODE NXT" className="h-10 sm:h-12 w-auto" />
+            <motion.img
+              src={logo}
+              alt="CODE NXT"
+              className="h-10 sm:h-12 w-auto drop-shadow-sm"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
+            />
           </div>
-          <p className="text-xs sm:text-sm text-stone-500 text-center mb-6 sm:mb-8 uppercase tracking-widest font-medium">
+          <p className="text-[11px] sm:text-xs text-primary-600/90 text-center mb-6 sm:mb-8 uppercase tracking-[0.2em] font-bold">
             {isSignUp ? 'Criar conta' : 'Remarketing'}
           </p>
 
@@ -110,17 +124,19 @@ export default function Login() {
                 </button>
               </div>
             </div>
-            <button
+            <motion.button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full py-3 min-h-[48px] text-sm touch-manipulation"
+              whileHover={{ scale: loading ? 1 : 1.01 }}
+              whileTap={{ scale: loading ? 1 : 0.99 }}
+              className="btn-primary w-full py-3 min-h-[48px] text-sm touch-manipulation rounded-xl"
             >
               {loading ? 'Aguarde...' : isSignUp ? 'Criar conta' : 'Entrar'}
               {!loading && <ArrowRight className="w-4 h-4" />}
-            </button>
+            </motion.button>
           </form>
 
-          <div className="mt-5 sm:mt-6 pt-5 sm:pt-6 border-t border-surface-200">
+          <div className="mt-5 sm:mt-6 pt-5 sm:pt-6 border-t border-surface-200/80">
             <p className="text-center text-sm text-stone-500">
               {isSignUp ? 'Já tem conta?' : 'Não tem conta?'}{' '}
               <button
@@ -132,7 +148,7 @@ export default function Login() {
               </button>
             </p>
           </div>
-        </div>
+        </motion.div>
       </div>
     </ParticlesBackground>
   )

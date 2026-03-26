@@ -4,9 +4,10 @@ import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth } from '../lib/firebase'
 import { getEvolutionConfig, getDisparos, setDisparo, updateDisparo, deleteDisparo } from '../lib/firestore'
-import { enviarMensagemWhatsApp } from '../lib/mensagemApi'
+import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
 import { Send, Loader2, AlertCircle, UserPlus, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import PageShell from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 
 const MINUTOS_POR_MENSAGEM = 5
@@ -101,10 +102,14 @@ export default function EnviarMensagem() {
       .map((line) => line.trim())
       .filter(Boolean)
     return lines.map((line) => {
-      const parts = line.split(/[\t,;]/).map((p) => p.trim())
+      const normalized = line
+        .replace(/\uFF0C/g, ',')
+        .replace(/\uFF1B/g, ';')
+        .replace(/\u3000/g, ' ')
+      const parts = normalized.split(/[\t,;]/).map((p) => p.trim())
       const telefone = (parts[0] || '').replace(/\D/g, '') || parts[0]
       // Tudo após o primeiro separador vira nome (permite vírgula no nome: 55...,Silva, João)
-      const nome = parts.slice(1).join(', ').trim()
+      const nome = normalizeNomeContato(parts.slice(1).join(', '))
       return { telefone, nome }
     })
   }
@@ -147,7 +152,7 @@ export default function EnviarMensagem() {
         for (let i = start; i < rows.length; i++) {
           const row = rows[i]
           const numRaw = row[0] != null ? String(row[0]).trim() : ''
-          const nome = row[1] != null ? String(row[1]).trim() : ''
+          const nome = normalizeNomeContato(row[1] != null ? String(row[1]) : '')
           const telNorm = numRaw.replace(/\D/g, '')
           if (telNorm.length >= 8) {
             lines.push(`${telNorm},${nome}`)
@@ -289,16 +294,14 @@ export default function EnviarMensagem() {
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold">Enviar mensagem</h1>
-        <p className="text-stone-500 mt-1 text-sm sm:text-base">
-          Envie mensagens para uma lista de leads (números separados por linha ou importe planilha). Conecta ao webhook WhatsApp.
-        </p>
-      </div>
-
+    <PageShell
+      fill
+      badge="WhatsApp"
+      title="Disparos em massa"
+      subtitle="Lista, Excel ou colagem — envio único ao n8n com intervalo entre mensagens."
+    >
       {evolution?.nomeInstancia && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 p-3 sm:p-4 rounded-xl bg-primary-50 border border-primary-200 text-primary-800 text-xs sm:text-sm">
+        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 p-2.5 sm:p-3 rounded-xl bg-gradient-to-r from-primary-50 to-violet-50/60 border border-primary-200/80 text-primary-900 text-xs shadow-sm">
           <WhatsAppIcon className="w-4 h-4 shrink-0" />
           <span><strong>Instância selecionada (Integrações):</strong> {evolution.nomeInstancia}</span>
           {evolution.numeroWhatsapp && <span className="text-primary-600"> — {evolution.numeroWhatsapp}</span>}
@@ -308,19 +311,19 @@ export default function EnviarMensagem() {
       {msg.text && (
         <div
           className={`
-            flex items-center gap-2 p-4 rounded-xl border
+            shrink-0 flex items-center gap-2 p-2.5 rounded-xl border text-sm
             ${msg.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : ''}
             ${msg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : ''}
           `}
         >
-          <AlertCircle className="w-5 h-5 shrink-0" />
-          <span>{msg.text}</span>
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="line-clamp-2">{msg.text}</span>
         </div>
       )}
 
       {(!evolution?.nomeInstancia || !evolution?.hash) && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
-          Conecte e selecione uma instância do WhatsApp em <strong>Integrações</strong> para enviar mensagens.
+        <div className="shrink-0 p-2.5 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/90 text-amber-900 text-xs sm:text-sm shadow-sm">
+          Conecte uma instância em <strong>Integrações</strong> para enviar.
         </div>
       )}
 
@@ -367,65 +370,71 @@ export default function EnviarMensagem() {
         </div>
       )}
 
-      {/* Mensagem — em cima */}
-      <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
-        <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-3">Mensagem</h3>
-        <MessageEditor
-          value={mensagem}
-          onChange={setMensagem}
-          placeholder="Digite a mensagem. Use {nome} para o nome do contato (formato lista: número,nome)."
-          showNomeButton
-        />
-        {totalContatos > 0 && (
-          <p className="mt-3 text-sm text-stone-600">
-            Tempo estimado total: <strong>{tempoEstimadoMin} min</strong> ({totalContatos} contato(s)).
-          </p>
-        )}
-        <button
-          onClick={iniciarEnvio}
-          disabled={!lista.trim() || !mensagem.trim() || !evolution?.nomeInstancia}
-          className="btn-primary mt-4 w-full py-3 min-h-[48px] touch-manipulation"
-        >
-          <Send className="w-4 h-4" />
-          Enviar mensagem
-        </button>
-      </div>
+      <div
+        className={`flex flex-1 min-h-0 gap-2 overflow-hidden min-w-0 ${historico.length > 0 ? 'flex-col lg:flex-row' : 'flex-col'}`}
+      >
+        <div className="flex flex-col flex-1 min-h-0 gap-2 min-w-0 lg:min-w-[48%] overflow-hidden">
+          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-h-0 overflow-hidden">
+            <h3 className="text-sm font-semibold text-stone-800 shrink-0 mb-2">Mensagem</h3>
+            <MessageEditor
+              fillHeight
+              className="flex-1 min-h-0"
+              value={mensagem}
+              onChange={setMensagem}
+              placeholder="Use {nome} — lista: número,nome"
+              showNomeButton
+              rows={3}
+            />
+            {totalContatos > 0 && (
+              <p className="mt-2 text-xs text-stone-600 shrink-0">
+                ~<strong>{tempoEstimadoMin} min</strong> · {totalContatos} contato(s)
+              </p>
+            )}
+            <button
+              onClick={iniciarEnvio}
+              disabled={!lista.trim() || !mensagem.trim() || !evolution?.nomeInstancia}
+              className="btn-primary mt-2 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
+            >
+              <Send className="w-4 h-4" />
+              Enviar mensagem
+            </button>
+          </div>
 
-      {/* Lista de contatos — abaixo da mensagem */}
-      <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
-        <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-2 flex items-center gap-2">
-          <UserPlus className="w-4 h-4 shrink-0" />
-          Lista de contatos
-        </h3>
-        <p className="text-xs sm:text-sm text-stone-500 mb-3">
-          Um contato por linha. Formato: número ou número,nome (número primeiro). Use {'{nome}'} na mensagem para personalizar. Planilha Excel: só duas colunas — <strong className="text-stone-700">A = número</strong>, <strong className="text-stone-700">B = nome</strong> (igual a digitar na lista).
-        </p>
-        <div className="flex flex-col sm:flex-row flex-wrap gap-2 mb-3">
-          <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] w-full sm:w-auto touch-manipulation">
-            <Download className="w-4 h-4" /> Baixar planilha exemplo
-          </button>
-          <label className="btn-secondary text-sm py-2.5 min-h-[44px] w-full sm:w-auto cursor-pointer touch-manipulation flex items-center justify-center">
-            <Upload className="w-4 h-4" /> Subir planilha Excel
-            <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
-          </label>
+          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-h-0 overflow-hidden">
+            <h3 className="text-sm font-semibold text-stone-800 shrink-0 mb-1 flex items-center gap-2">
+              <UserPlus className="w-4 h-4 shrink-0" />
+              Lista de contatos
+            </h3>
+            <p className="text-[11px] text-stone-500 mb-2 shrink-0 line-clamp-3">
+              Uma linha por contato: <strong className="text-stone-600">número</strong> ou <strong className="text-stone-600">número,nome</strong>. Excel: col. A número, B nome. Vários contatos no n8n:{' '}
+              <code className="bg-surface-100 px-1 rounded">contatos[].mensagem</code> ou <code className="bg-surface-100 px-1 rounded">mensagens</code>.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-2 shrink-0">
+              <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-xs py-2 min-h-[40px] px-3 touch-manipulation">
+                <Download className="w-3.5 h-3.5" /> Exemplo Excel
+              </button>
+              <label className="btn-secondary text-xs py-2 min-h-[40px] px-3 cursor-pointer touch-manipulation flex items-center justify-center gap-1">
+                <Upload className="w-3.5 h-3.5" /> Subir Excel
+                <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
+              </label>
+            </div>
+            <textarea
+              value={lista}
+              onChange={(e) => setLista(e.target.value)}
+              placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
+              className="flex-1 min-h-0 w-full p-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none text-xs sm:text-sm font-mono overflow-y-auto scroll-y-soft min-h-[100px]"
+            />
+          </div>
         </div>
-        <textarea
-          value={lista}
-          onChange={(e) => setLista(e.target.value)}
-          placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
-          rows={8}
-          className="w-full p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none text-sm font-mono min-h-[160px] sm:min-h-[240px]"
-        />
-      </div>
 
-      {/* Histórico de envios — salvo em localStorage, countdown decrescente */}
       {historico.length > 0 && (
-        <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
-          <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-4 flex items-center gap-2">
+        <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden lg:max-w-[min(520px,50%)]">
+          <h3 className="text-sm font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
             <History className="w-4 h-4 shrink-0" />
-            Linha do tempo de envios
+            Linha do tempo
           </h3>
-          <ul className="space-y-2 sm:space-y-3">
+          <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft pr-0.5">
+          <ul className="space-y-2">
             {historicoPagina.map((item) => {
               const remaining = getRemainingMin(item.endTime)
               const isAtual = disparoAtual?.id === item.disparoId
@@ -435,7 +444,7 @@ export default function EnviarMensagem() {
               return (
                 <li
                   key={item.disparoId}
-                  className={`p-3 sm:p-4 rounded-xl border ${emEnvio ? 'bg-primary-50/50 border-primary-200' : item.status === 'cancelado' || item.status === 'erro' ? 'bg-red-50/50 border-red-200' : 'bg-surface-50 border-surface-200'}`}
+                  className={`p-2.5 sm:p-3 rounded-xl border text-sm ${emEnvio ? 'bg-primary-50/50 border-primary-200' : item.status === 'cancelado' || item.status === 'erro' ? 'bg-red-50/50 border-red-200' : 'bg-surface-50 border-surface-200'} ${isAtual ? 'ring-2 ring-primary-300/60' : ''}`}
                 >
                   <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-2 sm:gap-3">
                     <div>
@@ -502,8 +511,9 @@ export default function EnviarMensagem() {
               )
             })}
           </ul>
+          </div>
           {totalPaginasTimeline > 1 && (
-            <div className="mt-4 pt-4 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
+            <div className="shrink-0 mt-2 pt-2 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-2">
               <p className="text-xs sm:text-sm text-stone-600 order-2 sm:order-1 text-center sm:text-left">
                 Página {paginaAtual} de {totalPaginasTimeline} · {historico.length} envio(s)
               </p>
@@ -531,6 +541,7 @@ export default function EnviarMensagem() {
           )}
         </div>
       )}
-    </div>
+      </div>
+    </PageShell>
   )
 }

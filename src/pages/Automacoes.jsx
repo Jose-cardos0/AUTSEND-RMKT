@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { motion } from 'framer-motion'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
@@ -30,6 +31,8 @@ import {
   Filter,
   Send,
 } from 'lucide-react'
+import PageShell, { Panel } from '../components/PageShell'
+import PageLoader from '../components/PageLoader'
 
 const eventLabel = (id) => {
     if (!id || id === 'unknown' || id === 'false') return 'Outro'
@@ -38,24 +41,29 @@ const eventLabel = (id) => {
 
 function StatCard({ label, value, icon: Icon, color }) {
   const colors = {
-    blue: 'bg-blue-50 text-blue-600 border-blue-100',
-    green: 'bg-green-50 text-green-600 border-green-100',
-    red: 'bg-red-50 text-red-600 border-red-100',
-    amber: 'bg-amber-50 text-amber-600 border-amber-100',
-    purple: 'bg-purple-50 text-purple-600 border-purple-100',
+    blue: 'from-sky-50 to-blue-50/80 text-blue-700 border-blue-100/90 shadow-blue-500/5',
+    green: 'from-emerald-50 to-green-50/80 text-emerald-700 border-emerald-100/90 shadow-emerald-500/5',
+    red: 'from-rose-50 to-red-50/80 text-rose-700 border-rose-100/90 shadow-rose-500/5',
+    amber: 'from-amber-50 to-orange-50/70 text-amber-800 border-amber-100/90 shadow-amber-500/5',
+    purple: 'from-violet-50 to-purple-50/80 text-violet-700 border-violet-100/90 shadow-violet-500/5',
   }
   return (
-    <div className={`rounded-2xl border p-4 sm:p-5 ${colors[color] || colors.blue}`}>
-      <div className="flex items-center justify-between">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3, transition: { type: 'spring', stiffness: 400, damping: 22 } }}
+      className={`rounded-2xl sm:rounded-3xl border bg-gradient-to-br p-4 sm:p-5 shadow-lg ${colors[color] || colors.blue}`}
+    >
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-widest opacity-60">{label}</p>
-          <p className="text-2xl sm:text-3xl font-bold mt-1.5 tracking-tight">{value}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-55">{label}</p>
+          <p className="text-2xl sm:text-3xl font-bold mt-2 tracking-tight tabular-nums">{value}</p>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-white/40 flex items-center justify-center">
-          <Icon className="w-5 h-5 opacity-60" />
+        <div className="w-11 h-11 rounded-2xl bg-white/70 backdrop-blur-sm shadow-inner flex items-center justify-center ring-1 ring-white/80">
+          <Icon className="w-5 h-5 opacity-70" />
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -133,7 +141,7 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
   }
 
   return (
-    <div className="border border-surface-200 rounded-xl bg-white overflow-hidden">
+    <div className="app-panel border border-surface-200/90 rounded-2xl overflow-hidden bg-white/90">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -279,7 +287,7 @@ export default function Automacoes() {
     return { total, enviados, erros, pendentes }
   }, [leads])
 
-  const LEADS_POR_PAGINA = 10
+  const LEADS_POR_PAGINA = 5
 
   const filtered = useMemo(() => {
     let list = leads
@@ -366,28 +374,29 @@ export default function Automacoes() {
   }, [uniqueProducts])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
-      </div>
-    )
+    return <PageLoader />
   }
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl sm:text-2xl font-bold">Automações</h1>
+    <PageShell
+      className="!space-y-0 pb-12 sm:pb-14"
+      badge="Kiwify & WhatsApp"
+      title="Automações"
+      subtitle="Fluxos por evento, mensagens por produto e visão dos leads em tempo real."
+      right={
         <button onClick={reload} className="btn-secondary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation">
           <RefreshCw className="w-4 h-4" />
           Atualizar
         </button>
-      </div>
-
-      {/* Dashboard Stats */}
+      }
+    >
+      <div className="mt-8 sm:mt-10 flex flex-col gap-8 sm:gap-10">
       <section>
-        <h2 className="text-xs sm:text-sm font-semibold text-stone-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 shrink-0" /> Dashboard
+        <h2 className="text-xs sm:text-sm font-bold text-stone-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
+            <BarChart3 className="w-4 h-4 shrink-0" />
+          </span>
+          Dashboard
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <StatCard label="Total Leads" value={stats.total} icon={Users} color="blue" />
@@ -397,10 +406,12 @@ export default function Automacoes() {
         </div>
       </section>
 
-      {/* Produtos — cada produto tem suas próprias mensagens; o nome do produto é a referência */}
       <section>
-        <h2 className="text-xs sm:text-sm font-semibold text-stone-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Package className="w-4 h-4 shrink-0" /> Produtos
+        <h2 className="text-xs sm:text-sm font-bold text-stone-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+            <Package className="w-4 h-4 shrink-0" />
+          </span>
+          Produtos
         </h2>
         <div className="flex overflow-x-auto gap-2 sm:gap-3 p-1">
           {uniqueProducts.map((p) => (
@@ -410,8 +421,8 @@ export default function Automacoes() {
               onClick={() => setSelectedProduto(p)}
               className={`px-3.5 sm:px-4 py-2.5 min-h-[42px] rounded-xl border text-sm font-semibold transition-all duration-200 whitespace-nowrap touch-manipulation shrink-0 ${
                 selectedProduto === p
-                  ? 'border-primary-600 bg-white text-primary-700 shadow-soft ring-2 ring-primary-200'
-                  : 'border-transparent bg-transparent text-stone-700 hover:bg-white hover:border-surface-200'
+                  ? 'border-primary-500 bg-gradient-to-br from-white to-primary-50/80 text-primary-800 shadow-lg shadow-primary-500/15 ring-2 ring-primary-200/80'
+                  : 'border-transparent bg-white/60 text-stone-700 hover:bg-white hover:border-surface-200 hover:shadow-md'
               }`}
             >
               {p}
@@ -419,22 +430,24 @@ export default function Automacoes() {
           ))}
         </div>
         {selectedProduto && (
-          <p className="text-sm text-stone-600">
+          <p className="text-sm text-stone-600 mt-4 leading-relaxed">
             Configurando mensagens para: <strong className="text-primary-600">{selectedProduto}</strong>
           </p>
         )}
       </section>
 
-      {/* Mensagens automáticas do produto selecionado */}
       {selectedProduto && (
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
-          <h2 className="text-base sm:text-lg font-semibold text-stone-800 flex flex-wrap items-center gap-2">
-            <Zap className="w-5 h-5 text-primary-500 shrink-0" />
-            Mensagens automáticas — <strong className="text-red-500 break-all">{selectedProduto}</strong>
-          </h2>
-        </div>
-        <div className="p-3 sm:p-4 space-y-2">
+      <Panel
+        title={
+          <span className="flex flex-wrap items-center gap-2">
+            <Zap className="w-5 h-5 text-amber-500 shrink-0" />
+            Mensagens automáticas —{' '}
+            <strong className="text-primary-600 break-all">{selectedProduto}</strong>
+          </span>
+        }
+        noPadding
+      >
+        <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
           {KIWIFY_EVENTS.map((event) => (
             <EventCard
               key={event.id}
@@ -446,20 +459,11 @@ export default function Automacoes() {
             />
           ))}
         </div>
-      </section>
+      </Panel>
       )}
 
-      {/* Tabela de Leads */}
-      <section className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-surface-200 bg-surface-50/80">
-          <h2 className="text-base sm:text-lg font-semibold text-stone-800 flex items-center gap-2">
-            <Filter className="w-5 h-5 text-primary-500 shrink-0" />
-            Leads recebidos
-          </h2>
-        </div>
-
-        {/* Filtros */}
-        <div className="p-4 border-b border-surface-100 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
+      <Panel title="Leads recebidos" icon={Filter} noPadding>
+        <div className="p-4 border-b border-surface-100 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end bg-white/40">
           <div className="relative w-full sm:w-56 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
             <input
@@ -511,8 +515,7 @@ export default function Automacoes() {
           )}
         </div>
 
-        {/* Tabela */}
-        <div className="overflow-x-auto">
+        <div className="w-full overflow-x-auto">
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-stone-400 text-sm">
               {leads.length === 0
@@ -595,7 +598,8 @@ export default function Automacoes() {
             </div>
           )}
         </div>
-      </section>
-    </div>
+      </Panel>
+      </div>
+    </PageShell>
   )
 }

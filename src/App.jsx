@@ -9,13 +9,14 @@ import Remarketing from './pages/Remarketing'
 import RemarketingGrupos from './pages/RemarketingGrupos'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
+import PageLoader from './components/PageLoader'
 
 function ProtectedRoute({ children }) {
   const [user, loading] = useAuthState(auth)
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-50">
-        <div className="animate-pulse text-stone-500">Carregando...</div>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <PageLoader label="Carregando sua sessão…" />
       </div>
     )
   }

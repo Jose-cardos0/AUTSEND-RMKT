@@ -1,9 +1,20 @@
 import { useState, useRef } from 'react'
+import clsx from 'clsx'
 import { Bold, Italic, Smile, User } from 'lucide-react'
 
 const EMOJIS = ['😀', '😊', '👍', '❤️', '🔥', '✅', '📱', '💰', '🎉', '⭐', '📢', '👋']
 
-export default function MessageEditor({ value, onChange, placeholder = 'Digite sua mensagem...', showNomeButton = false }) {
+export default function MessageEditor({
+  value,
+  onChange,
+  placeholder = 'Digite sua mensagem...',
+  showNomeButton = false,
+  rows = 5,
+  textareaClassName = '',
+  className = '',
+  /** Quando true, o editor preenche altura do pai flex (use com className flex-1 min-h-0 no pai). */
+  fillHeight = false,
+}) {
   const ref = useRef(null)
   const [showEmojis, setShowEmojis] = useState(false)
 
@@ -34,8 +45,14 @@ export default function MessageEditor({ value, onChange, placeholder = 'Digite s
   }
 
   return (
-    <div className="border border-surface-200 rounded-xl overflow-hidden bg-white shadow-card">
-      <div className="flex items-center gap-0.5 px-1 sm:px-2 py-1.5 border-b border-surface-200 bg-surface-50/80 flex-wrap">
+    <div
+      className={clsx(
+        'border border-surface-200/90 rounded-2xl overflow-hidden bg-white/95 shadow-inner shadow-slate-200/40 ring-1 ring-white/80',
+        fillHeight && 'flex flex-col min-h-0',
+        className
+      )}
+    >
+      <div className="flex items-center gap-0.5 px-1 sm:px-2 py-1.5 border-b border-surface-200/80 bg-gradient-to-r from-surface-50/90 to-primary-50/30 flex-wrap">
         <button
           type="button"
           onClick={() => insertAtCursor('*', '*')}
@@ -93,8 +110,12 @@ export default function MessageEditor({ value, onChange, placeholder = 'Digite s
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        rows={5}
-        className="w-full p-4 resize-none focus:ring-0 focus:outline-none text-stone-800 placeholder:text-stone-400 text-sm leading-relaxed"
+        rows={rows}
+        className={clsx(
+          'w-full p-3 sm:p-4 resize-none focus:ring-0 focus:outline-none text-stone-800 placeholder:text-stone-400 text-sm leading-relaxed',
+          fillHeight ? 'min-h-0 flex-1' : 'min-h-[120px]',
+          textareaClassName
+        )}
       />
     </div>
   )

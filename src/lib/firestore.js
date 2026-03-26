@@ -99,11 +99,11 @@ export async function getEvolutionConfig(uid) {
   if (selectedId) {
     const instRef = doc(db, 'users', uid, 'instances', selectedId)
     const instSnap = await getDoc(instRef)
-    if (instSnap.exists()) return { id: instSnap.id, ...instSnap.data() }
+    if (instSnap.exists()) return { ...instSnap.data(), id: instSnap.id }
   }
 
   const instancesSnap = await getDocs(userInstancesRef(uid))
-  const instances = instancesSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const instances = instancesSnap.docs.map((d) => ({ ...d.data(), id: d.id }))
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
@@ -117,7 +117,7 @@ export async function getEvolutionConfig(uid) {
 
 export async function getInstances(uid) {
   let snap = await getDocs(userInstancesRef(uid))
-  let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  let list = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
   if (list.length === 0) {
     const configSnap = await getDoc(userEvolutionRef(uid))
     const config = configSnap.exists ? configSnap.data() : null
@@ -132,7 +132,7 @@ export async function getInstances(uid) {
       })
       await setDoc(userEvolutionRef(uid), { selectedInstanceId: newId }, { merge: true })
       snap = await getDocs(userInstancesRef(uid))
-      list = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      list = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
     }
   }
   return list.sort((a, b) => {
@@ -179,7 +179,7 @@ export async function createWebhook(uid, payload) {
 export async function getWebhooks(uid) {
   const snap = await getDocs(userWebhooksRef(uid))
   return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
+    .map((d) => ({ ...d.data(), id: d.id }))
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
@@ -200,7 +200,7 @@ export async function deleteWebhook(uid, webhookId) {
 export async function getAbandonedCarts(uid) {
   const snap = await getDocs(userAbandonedCartsRef(uid))
   return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
+    .map((d) => ({ ...d.data(), id: d.id }))
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
@@ -223,7 +223,7 @@ export async function addRemarketingLog(uid, payload) {
 export async function getRemarketingLog(uid) {
   const snap = await getDocs(userRemarketingLogRef(uid))
   return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
+    .map((d) => ({ ...d.data(), id: d.id }))
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
@@ -240,7 +240,7 @@ export function userLeadsRef(uid) {
 export async function getLeads(uid) {
   const snap = await getDocs(userLeadsRef(uid))
   return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
+    .map((d) => ({ ...d.data(), id: d.id }))
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
@@ -261,7 +261,7 @@ export function userProductsRef(uid) {
 
 export async function getProducts(uid) {
   const snap = await getDocs(userProductsRef(uid))
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }))
 }
 
 // ── AutoMessages (templates por evento) ──
@@ -272,7 +272,7 @@ export function userAutoMessagesRef(uid) {
 
 export async function getAutoMessages(uid) {
   const snap = await getDocs(userAutoMessagesRef(uid))
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }))
 }
 
 /** Gera id do doc: um por (evento, produto). Produto vazio = mensagem global para o evento. */
@@ -296,7 +296,7 @@ export function userMessageLogsRef(uid) {
 export async function getMessageLogs(uid) {
   const snap = await getDocs(userMessageLogsRef(uid))
   return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
+    .map((d) => ({ ...d.data(), id: d.id }))
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0

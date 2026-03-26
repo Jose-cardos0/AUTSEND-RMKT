@@ -1,5 +1,24 @@
 import { WEBHOOK_MSG_WHATSAPP } from './constants'
 
+/** Normaliza nome vindo de Excel/cópia (NBSP, zero-width, etc.). */
+export function normalizeNomeContato(str) {
+  return String(str ?? '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .trim()
+}
+
+/** Substitui {nome} / {{nome}} / { nome } / ｛nome｝ e remove caracteres invisíveis no template. */
+export function personalizarMensagemComNome(template, nome) {
+  const n = normalizeNomeContato(nome)
+  let t = String(template ?? '').replace(/[\u200B-\u200D\uFEFF]/g, '')
+  // Ordem: {{nome}} antes de {nome}, senão "{{nome}}" vira "{fulano}" errado
+  t = t.replace(/\{\{nome\}\}/gi, n)
+  t = t.replace(/｛\s*nome\s*｝/gi, n)
+  t = t.replace(/\{\s*nome\s*\}/gi, n)
+  return t
+}
+
 function buildEvolutionPayload(evolution) {
   return {
     nomeInstancia: evolution?.nomeInstancia ?? '',
@@ -11,13 +30,14 @@ function buildEvolutionPayload(evolution) {
 
 /** Envia um único lead para o n8n (com disparoId e nomeDisparo). */
 export async function enviarUmaMensagemLead(contato, mensagem, evolution, disparoId, nomeDisparo) {
+  const nome = normalizeNomeContato(contato.nome || contato.name || '')
   const payload = {
     tipoDisparo: 'leads',
     tipoAcao: 'enviar_mensagem',
     disparoId,
     nomeDisparo: nomeDisparo || '',
-    contatos: [{ telefone: String(contato.telefone || '').replace(/\D/g, '') || contato.telefone, nome: contato.nome || '' }],
-    mensagem: mensagem || '',
+    contatos: [{ telefone: String(contato.telefone || '').replace(/\D/g, '') || contato.telefone, nome }],
+    mensagem: personalizarMensagemComNome(mensagem, nome),
     ...buildEvolutionPayload(evolution),
   }
   const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
@@ -45,23 +65,29 @@ export async function enviarUmaMensagemLead(contato, mensagem, evolution, dispar
  */
 export async function enviarMensagemWhatsApp(contatos, mensagem, evolution, extra = {}) {
   const { disparoId = '', nomeDisparo = '', intervaloMinutos = 5 } = extra
+  const contatosPayload = contatos.map((c) => {
+    const nome = normalizeNomeContato(c.nome || c.name || '')
+    const telefone = String(c.telefone || '').replace(/\D/g, '') || c.telefone
+    return {
+      telefone,
+      nome,
+      mensagem: personalizarMensagemComNome(mensagem, nome),
+    }
+  })
+  // 1 contato: body.mensagem já personalizado (muitos fluxos n8n usam só esse campo).
+  // Vários: NÃO enviar template com {nome} no root — senão o WhatsApp recebe literal "{nome}".
+  // Use no n8n: contatos[].mensagem em loop OU o array mensagens (mesma ordem dos contatos).
+  const mensagemRoot = contatosPayload.length === 1 ? contatosPayload[0].mensagem : ''
   const payload = {
     tipoDisparo: 'leads',
     tipoAcao: 'enviar_mensagem',
     disparoId,
     nomeDisparo,
     intervaloMinutos,
-    contatos: contatos.map((c) => {
-      const nome = (c.nome || '').trim()
-      const telefone = String(c.telefone || '').replace(/\D/g, '') || c.telefone
-      return {
-        telefone,
-        nome,
-        // Já vai pronto para o n8n: um array com numero + nome + mensagem por contato
-        mensagem: (mensagem || '').replace(/\{nome\}/gi, nome),
-      }
-    }),
-    mensagem: mensagem || '',
+    contatos: contatosPayload,
+    mensagem: mensagemRoot,
+    mensagens: contatosPayload.map((c) => c.mensagem),
+    mensagemTemplate: mensagem || '',
     ...buildEvolutionPayload(evolution),
   }
   const res = await fetch(WEBHOOK_MSG_WHATSAPP, {

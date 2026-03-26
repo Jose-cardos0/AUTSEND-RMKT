@@ -28,6 +28,8 @@ import {
   Users,
   Filter,
 } from 'lucide-react'
+import PageShell from '../components/PageShell'
+import PageLoader from '../components/PageLoader'
 
 export default function Remarketing() {
   const [user] = useAuthState(auth)
@@ -233,74 +235,74 @@ export default function Remarketing() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
-      </div>
-    )
+    return <PageLoader className="flex-1 min-h-0 py-10" />
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold">Remarketing</h1>
-          <p className="text-sm text-stone-500 mt-1">Selecione contatos, personalize a mensagem e dispare com controle.</p>
+    <PageShell
+      fill
+      badge="Lista & envio"
+      title="Remarketing"
+      subtitle="Selecione contatos, use {nome} na mensagem e dispare com controle total."
+      right={
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
+          <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Total</p>
+            <p className="text-lg font-bold text-stone-800 tabular-nums">{resumo.total}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 text-center shadow-sm shadow-emerald-500/10">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Enviados</p>
+            <p className="text-lg font-bold text-emerald-700 tabular-nums">{resumo.enviados}</p>
+          </div>
+          <div className="rounded-2xl border border-primary-200/90 bg-gradient-to-br from-primary-50 to-white px-3 py-2.5 text-center shadow-sm shadow-primary-500/10">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-primary-600">Sel.</p>
+            <p className="text-lg font-bold text-primary-700 tabular-nums">{selectedCarts.length}</p>
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
-          <div className="rounded-xl border border-surface-200 bg-white px-3 py-2 text-center">
-            <p className="text-[11px] uppercase tracking-wide text-stone-500">Total</p>
-            <p className="text-sm font-semibold text-stone-800">{resumo.total}</p>
-          </div>
-          <div className="rounded-xl border border-green-200 bg-green-50/70 px-3 py-2 text-center">
-            <p className="text-[11px] uppercase tracking-wide text-green-600">Enviados</p>
-            <p className="text-sm font-semibold text-green-700">{resumo.enviados}</p>
-          </div>
-          <div className="rounded-xl border border-primary-200 bg-primary-50/70 px-3 py-2 text-center">
-            <p className="text-[11px] uppercase tracking-wide text-primary-600">Selecionados</p>
-            <p className="text-sm font-semibold text-primary-700">{selectedCarts.length}</p>
-          </div>
-        </div>
-      </div>
-
+      }
+    >
       {msg.text && (
         <div
           className={`
-            flex items-center gap-2 p-4 rounded-xl border
+            shrink-0 flex items-center gap-2 p-3 rounded-xl border text-sm
             ${msg.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : ''}
             ${msg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : ''}
           `}
         >
           <AlertCircle className="w-5 h-5 shrink-0" />
-          <span>{msg.text}</span>
+          <span className="line-clamp-2">{msg.text}</span>
         </div>
       )}
 
-      {/* Mensagem de remarketing — em cima */}
-      <div className="bg-white rounded-2xl border border-surface-200 shadow-card p-4 sm:p-6">
-        <h3 className="text-base sm:text-lg font-semibold text-stone-800 mb-3">Mensagem de remarketing</h3>
-        <MessageEditor
-          value={mensagem}
-          onChange={setMensagem}
-          placeholder="Olá {nome}, você deixou itens no carrinho. Posso te ajudar?"
-          showNomeButton
-        />
-        <p className="text-xs text-stone-500 mt-2">
-          Use *texto* para negrito e _texto_ para itálico no WhatsApp.
-        </p>
-        <button
-          onClick={handleEnviar}
-          disabled={enviando || selectedCarts.length === 0 || !mensagem.trim()}
-          className="btn-primary mt-4 w-full py-3 min-h-[48px] touch-manipulation"
-        >
-          {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          {enviando ? 'Enviando...' : `Enviar para ${selectedCarts.length} contato(s)`}
-        </button>
-      </div>
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
+        <aside className="flex flex-col shrink-0 lg:w-[min(380px,36vw)] lg:min-w-[260px] lg:max-w-md h-[min(42dvh,320px)] lg:h-auto lg:min-h-0 overflow-hidden">
+          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col h-full min-h-0 overflow-hidden">
+            <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2">Mensagem</h3>
+            <MessageEditor
+              fillHeight
+              className="flex-1 min-h-0"
+              value={mensagem}
+              onChange={setMensagem}
+              placeholder="Olá {nome}, você deixou itens no carrinho. Posso te ajudar?"
+              showNomeButton
+              rows={4}
+            />
+            <p className="text-[11px] text-stone-500 mt-2 shrink-0">
+              *negrito* · _itálico_ · {'{nome}'}
+            </p>
+            <button
+              onClick={handleEnviar}
+              disabled={enviando || selectedCarts.length === 0 || !mensagem.trim()}
+              className="btn-primary mt-3 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
+            >
+              {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {enviando ? 'Enviando...' : `Enviar (${selectedCarts.length})`}
+            </button>
+          </div>
+        </aside>
 
-      {/* Lista de contatos — abaixo da mensagem, 10 por página */}
-      <div className="bg-white rounded-2xl border border-surface-200 shadow-card overflow-hidden">
-        <div className="p-4 sm:p-5 border-b border-surface-200 space-y-3">
+        <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-h-0 min-w-0">
+        <div className="p-3 sm:p-4 border-b border-surface-200 space-y-2 shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-stone-700">
               <Users className="w-4 h-4" />
@@ -315,8 +317,8 @@ export default function Remarketing() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2 sm:gap-3 items-center">
-            <div className="relative md:col-span-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
+            <div className="relative sm:col-span-2 lg:col-span-4">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
               <input
                 type="text"
@@ -330,15 +332,15 @@ export default function Remarketing() {
               type="date"
               value={filtroDataInicio}
               onChange={(e) => setFiltroDataInicio(e.target.value)}
-              className="md:col-span-2 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+              className="lg:col-span-2 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm"
             />
             <input
               type="date"
               value={filtroDataFim}
               onChange={(e) => setFiltroDataFim(e.target.value)}
-              className="md:col-span-2 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+              className="lg:col-span-2 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm"
             />
-            <div className="flex items-center gap-1.5 md:col-span-2 min-w-0">
+            <div className="flex items-center gap-1.5 lg:col-span-2 min-w-0">
               <Tag className="w-4 h-4 text-stone-400 shrink-0" />
               <select
                 value={filtroTag}
@@ -351,7 +353,7 @@ export default function Remarketing() {
                 ))}
               </select>
             </div>
-            <label className="md:col-span-2 flex items-center gap-2 text-sm text-stone-600 cursor-pointer min-h-[44px] py-1">
+            <label className="sm:col-span-2 lg:col-span-2 flex items-center gap-2 text-xs sm:text-sm text-stone-600 cursor-pointer min-h-[40px] py-1">
               <input
                 type="checkbox"
                 checked={apenasNaoEnviados}
@@ -367,7 +369,7 @@ export default function Remarketing() {
             <span>{filtered.length} contato(s) após filtros</span>
           </div>
         </div>
-        <div className="min-h-[200px]">
+        <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft">
           {filtered.length === 0 ? (
             <div className="p-6 sm:p-8 text-center text-stone-500 text-sm">
               Nenhum lead encontrado ou os filtros não retornaram resultados.
@@ -391,8 +393,8 @@ export default function Remarketing() {
                     flex px-2 sm:px-4 py-3 sm:py-3.5 min-h-[56px] cursor-pointer touch-manipulation
                     transition-colors duration-150
                     ${isSelected
-                      ? 'bg-primary-50/95 ring-inset ring-1 ring-primary-200/80 border-l-[3px] border-primary-500'
-                      : 'border-l-[3px] border-transparent hover:bg-surface-50/90 active:bg-surface-100/90'
+                      ? 'bg-primary-50/95 ring-1 ring-inset ring-primary-300/70 shadow-sm'
+                      : 'hover:bg-surface-50/90 active:bg-surface-100/90'
                     }
                   `}
                   onClick={() => toggleSelect(cart.id)}
@@ -457,7 +459,7 @@ export default function Remarketing() {
           )}
         </div>
         {filtered.length > CONTATOS_POR_PAGINA && (
-          <div className="px-4 py-3 sm:py-4 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
+          <div className="shrink-0 px-3 py-2.5 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-2">
             <p className="text-xs sm:text-sm text-stone-600 order-2 sm:order-1 text-center sm:text-left">
               Página {paginaContatosAtual} de {totalPaginasContatos} · {filtered.length} contato(s)
             </p>
@@ -483,7 +485,8 @@ export default function Remarketing() {
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </PageShell>
   )
 }
