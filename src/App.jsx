@@ -10,14 +10,15 @@ import RemarketingGrupos from './pages/RemarketingGrupos'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
 import PageLoader from './components/PageLoader'
+import ParticlesBackground from './components/ParticlesBackground'
 
 function ProtectedRoute({ children }) {
   const [user, loading] = useAuthState(auth)
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
+      <ParticlesBackground className="flex px-4 sm:px-6 py-6 sm:py-8 bg-gradient-to-br from-surface-50 via-blue-50/50 to-violet-100/35">
         <PageLoader label="Carregando sua sessão…" />
-      </div>
+      </ParticlesBackground>
     )
   }
   if (!user) return <Navigate to="/login" replace />

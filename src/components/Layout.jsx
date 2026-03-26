@@ -6,6 +6,7 @@ import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
 import logo from '../assets/logo.png'
 import WhatsAppIcon from './WhatsAppIcon'
+import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
 
 const nav = [
@@ -54,7 +55,11 @@ export default function Layout() {
   const closeMenu = () => setMenuOpen(false)
 
   return (
-    <div className="app-viewport bg-surface-50">
+    <ParticlesBackground
+      variant="app"
+      className="bg-gradient-to-br from-surface-50 via-blue-50/50 to-violet-100/35"
+    >
+    <div className="app-viewport bg-transparent">
       <header className="shrink-0 z-40 border-b border-white/40 bg-white/75 backdrop-blur-xl shadow-[0_1px_0_rgba(255,255,255,0.8)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[3.75rem] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -131,5 +136,6 @@ export default function Layout() {
         <WhatsAppIcon className="w-6 h-6 sm:w-7 sm:h-7" white />
       </a>
     </div>
+    </ParticlesBackground>
   )
 }

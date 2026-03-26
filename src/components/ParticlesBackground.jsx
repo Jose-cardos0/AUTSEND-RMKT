@@ -9,7 +9,12 @@ const ORBS = [
 ]
 
 /** Grade de “partículas” + orbes em movimento (camadas atrás do conteúdo). */
-export default function ParticlesBackground({ children, className = '' }) {
+export default function ParticlesBackground({
+  children,
+  className = '',
+  /** centered: login / telas com conteúdo centralizado. app: layout com header + scroll em main. */
+  variant = 'centered',
+}) {
   return (
     <div
       className={clsx(
@@ -58,7 +63,13 @@ export default function ParticlesBackground({ children, className = '' }) {
         ))}
       </div>
 
-      <div className="relative z-10 flex min-h-dvh w-full flex-1 flex-col items-center justify-center">
+      <div
+        className={clsx(
+          'relative z-10 flex w-full flex-col',
+          variant === 'centered' && 'min-h-dvh flex-1 items-center justify-center',
+          variant === 'app' && 'min-h-dvh'
+        )}
+      >
         {children}
       </div>
     </div>
