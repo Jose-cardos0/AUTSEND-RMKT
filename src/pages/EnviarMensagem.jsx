@@ -295,13 +295,14 @@ export default function EnviarMensagem() {
 
   return (
     <PageShell
-      fill
       badge="WhatsApp"
       title="Disparos em massa"
       subtitle="Lista, Excel ou colagem — envio único ao n8n com intervalo entre mensagens."
     >
+      <div className="flex flex-col gap-6 sm:gap-8">
+      <div className="flex flex-col gap-2">
       {evolution?.nomeInstancia && (
-        <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 p-2.5 sm:p-3 rounded-xl bg-gradient-to-r from-primary-50 to-violet-50/60 border border-primary-200/80 text-primary-900 text-xs shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 px-3 py-2.5 sm:px-4 sm:py-3 rounded-xl bg-gradient-to-r from-primary-50 to-violet-50/60 border border-primary-200/80 text-primary-900 text-xs sm:text-sm shadow-sm">
           <WhatsAppIcon className="w-4 h-4 shrink-0" />
           <span><strong>Instância selecionada (Integrações):</strong> {evolution.nomeInstancia}</span>
           {evolution.numeroWhatsapp && <span className="text-primary-600"> — {evolution.numeroWhatsapp}</span>}
@@ -311,7 +312,7 @@ export default function EnviarMensagem() {
       {msg.text && (
         <div
           className={`
-            shrink-0 flex items-center gap-2 p-2.5 rounded-xl border text-sm
+            flex items-center gap-2 p-3 rounded-xl border text-sm
             ${msg.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' : ''}
             ${msg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : ''}
           `}
@@ -322,10 +323,11 @@ export default function EnviarMensagem() {
       )}
 
       {(!evolution?.nomeInstancia || !evolution?.hash) && (
-        <div className="shrink-0 p-2.5 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/90 text-amber-900 text-xs sm:text-sm shadow-sm">
+        <div className="p-3 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/90 text-amber-900 text-xs sm:text-sm shadow-sm">
           Conecte uma instância em <strong>Integrações</strong> para enviar.
         </div>
       )}
+      </div>
 
       {/* Popup: confirmar exclusão da linha do tempo */}
       {confirmExcluir && (
@@ -370,51 +372,46 @@ export default function EnviarMensagem() {
         </div>
       )}
 
-      <div
-        className={`flex flex-1 min-h-0 gap-2 overflow-hidden min-w-0 ${historico.length > 0 ? 'flex-col lg:flex-row' : 'flex-col'}`}
-      >
-        <div className="flex flex-col flex-1 min-h-0 gap-2 min-w-0 lg:min-w-[48%] overflow-hidden">
-          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-h-0 overflow-hidden">
-            <h3 className="text-sm font-semibold text-stone-800 shrink-0 mb-2">Mensagem</h3>
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch">
+          <div className="app-panel rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col flex-1 min-w-0 shadow-sm">
+            <h3 className="text-base font-semibold text-stone-800 mb-3">Mensagem</h3>
             <MessageEditor
-              fillHeight
-              className="flex-1 min-h-0"
               value={mensagem}
               onChange={setMensagem}
               placeholder="Use {nome} — lista: número,nome"
               showNomeButton
-              rows={3}
+              rows={5}
             />
             {totalContatos > 0 && (
-              <p className="mt-2 text-xs text-stone-600 shrink-0">
+              <p className="mt-3 text-sm text-stone-600">
                 ~<strong>{tempoEstimadoMin} min</strong> · {totalContatos} contato(s)
               </p>
             )}
             <button
               onClick={iniciarEnvio}
               disabled={!lista.trim() || !mensagem.trim() || !evolution?.nomeInstancia}
-              className="btn-primary mt-2 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
+              className="btn-primary mt-4 w-full py-3 min-h-[48px] touch-manipulation text-sm"
             >
               <Send className="w-4 h-4" />
               Enviar mensagem
             </button>
           </div>
 
-          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-h-0 overflow-hidden">
-            <h3 className="text-sm font-semibold text-stone-800 shrink-0 mb-1 flex items-center gap-2">
-              <UserPlus className="w-4 h-4 shrink-0" />
+          <div className="app-panel rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col flex-1 min-w-0 shadow-sm">
+            <h3 className="text-base font-semibold text-stone-800 mb-2 flex items-center gap-2">
+              <UserPlus className="w-5 h-5 shrink-0 text-primary-600" />
               Lista de contatos
             </h3>
-            <p className="text-[11px] text-stone-500 mb-2 shrink-0 line-clamp-3">
-              Uma linha por contato: <strong className="text-stone-600">número</strong> ou <strong className="text-stone-600">número,nome</strong>. Excel: col. A número, B nome. Vários contatos no n8n:{' '}
-              <code className="bg-surface-100 px-1 rounded">contatos[].mensagem</code> ou <code className="bg-surface-100 px-1 rounded">mensagens</code>.
+            <p className="text-xs sm:text-sm text-stone-500 mb-3 leading-relaxed">
+              Uma linha por contato: <strong className="text-stone-600">número</strong> ou <strong className="text-stone-600">número,nome</strong>. Excel: A número, B nome. No n8n:{' '}
+              <code className="bg-surface-100 px-1.5 py-0.5 rounded text-[11px]">contatos[].mensagem</code> ou <code className="bg-surface-100 px-1.5 py-0.5 rounded text-[11px]">mensagens</code>.
             </p>
-            <div className="flex flex-wrap gap-2 mb-2 shrink-0">
-              <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-xs py-2 min-h-[40px] px-3 touch-manipulation">
-                <Download className="w-3.5 h-3.5" /> Exemplo Excel
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 touch-manipulation">
+                <Download className="w-4 h-4" /> Exemplo Excel
               </button>
-              <label className="btn-secondary text-xs py-2 min-h-[40px] px-3 cursor-pointer touch-manipulation flex items-center justify-center gap-1">
-                <Upload className="w-3.5 h-3.5" /> Subir Excel
+              <label className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 cursor-pointer touch-manipulation flex items-center justify-center gap-2">
+                <Upload className="w-4 h-4" /> Subir Excel
                 <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
               </label>
             </div>
@@ -422,19 +419,19 @@ export default function EnviarMensagem() {
               value={lista}
               onChange={(e) => setLista(e.target.value)}
               placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
-              className="flex-1 min-h-0 w-full p-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none text-xs sm:text-sm font-mono overflow-y-auto scroll-y-soft min-h-[100px]"
+              rows={10}
+              className="w-full p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y text-sm font-mono min-h-[200px] sm:min-h-[240px]"
             />
           </div>
-        </div>
+      </div>
 
       {historico.length > 0 && (
-        <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden lg:max-w-[min(520px,50%)]">
-          <h3 className="text-sm font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
-            <History className="w-4 h-4 shrink-0" />
+        <div className="app-panel rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col w-full shadow-sm">
+          <h3 className="text-base font-semibold text-stone-800 mb-4 flex items-center gap-2">
+            <History className="w-5 h-5 shrink-0 text-primary-600" />
             Linha do tempo
           </h3>
-          <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft pr-0.5">
-          <ul className="space-y-2">
+          <ul className="space-y-4">
             {historicoPagina.map((item) => {
               const remaining = getRemainingMin(item.endTime)
               const isAtual = disparoAtual?.id === item.disparoId
@@ -444,9 +441,9 @@ export default function EnviarMensagem() {
               return (
                 <li
                   key={item.disparoId}
-                  className={`p-2.5 sm:p-3 rounded-xl border text-sm ${emEnvio ? 'bg-primary-50/50 border-primary-200' : item.status === 'cancelado' || item.status === 'erro' ? 'bg-red-50/50 border-red-200' : 'bg-surface-50 border-surface-200'} ${isAtual ? 'ring-2 ring-primary-300/60' : ''}`}
+                  className={`p-4 sm:p-4 rounded-xl border text-sm ${emEnvio ? 'bg-primary-50/50 border-primary-200' : item.status === 'cancelado' || item.status === 'erro' ? 'bg-red-50/50 border-red-200' : 'bg-surface-50 border-surface-200'} ${isAtual ? 'ring-2 ring-primary-300/60' : ''}`}
                 >
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-2 sm:gap-3">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3 sm:gap-4">
                     <div>
                       <span className="font-medium text-stone-800">{item.nomeDisparo}</span>
                       <span className="text-sm text-stone-500 ml-2">
@@ -511,9 +508,8 @@ export default function EnviarMensagem() {
               )
             })}
           </ul>
-          </div>
           {totalPaginasTimeline > 1 && (
-            <div className="shrink-0 mt-2 pt-2 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-2">
+            <div className="mt-6 pt-4 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
               <p className="text-xs sm:text-sm text-stone-600 order-2 sm:order-1 text-center sm:text-left">
                 Página {paginaAtual} de {totalPaginasTimeline} · {historico.length} envio(s)
               </p>

@@ -43,7 +43,7 @@ export default function Login() {
   }
 
   return (
-    <ParticlesBackground className="flex items-center justify-center px-4 sm:px-6 py-6 sm:py-8">
+    <ParticlesBackground className="flex px-4 sm:px-6 py-6 sm:py-8 bg-gradient-to-br from-surface-50 via-blue-50/50 to-violet-100/35">
       <a
         href={`https://wa.me/${SUPPORT_WHATSAPP}`}
         target="_blank"
@@ -66,14 +66,14 @@ export default function Login() {
             <motion.img
               src={logo}
               alt="CODE NXT"
-              className="h-10 sm:h-12 w-auto drop-shadow-sm"
+              className=" max-w-28 w-auto drop-shadow-sm"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
             />
           </div>
           <p className="text-[11px] sm:text-xs text-primary-600/90 text-center mb-6 sm:mb-8 uppercase tracking-[0.2em] font-bold">
-            {isSignUp ? 'Criar conta' : 'Remarketing'}
+            {isSignUp ? 'Criar conta' : 'CODENXT MARKETING'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
