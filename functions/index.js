@@ -1,4 +1,5 @@
-const functions = require('firebase-functions')
+const { onRequest } = require('firebase-functions/v2/https')
+const { onSchedule } = require('firebase-functions/v2/scheduler')
 const admin = require('firebase-admin')
 admin.initializeApp()
 
@@ -234,7 +235,9 @@ async function tryAutoSend(userId, leadRef, evento, customer, product) {
   }
 }
 
-exports.kiwifyAbandonedCheckout = functions.https.onRequest(async (req, res) => {
+exports.kiwifyAbandonedCheckout = onRequest(
+  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  async (req, res) => {
   const { webhookId, userId } = req.query
   if (!userId || !webhookId) {
     res.status(400).json({ error: 'userId e webhookId são obrigatórios na query' })
@@ -387,13 +390,19 @@ exports.kiwifyAbandonedCheckout = functions.https.onRequest(async (req, res) => 
   }
 
   res.status(200).json({ ok: true, evento, leadId: leadRef.id })
-})
+  },
+)
 
 /** A cada 1 minuto: processa recuperações atrasadas (PIX/Boleto). Só envia se NÃO existir order_approved do mesmo pedido. */
-exports.processarRecuperacaoAtrasada = functions.pubsub
-  .schedule('every 1 minutes')
-  .timeZone('America/Sao_Paulo')
-  .onRun(async () => {
+exports.processarRecuperacaoAtrasada = onSchedule(
+  {
+    schedule: 'every 1 minutes',
+    timeZone: 'America/Sao_Paulo',
+    region: 'us-central1',
+    timeoutSeconds: 300,
+    memory: '256MiB',
+  },
+  async () => {
     const now = admin.firestore.Timestamp.now()
     const snapshot = await db.collectionGroup('pendingRecovery')
       .where('sendAfter', '<=', now)
@@ -437,4 +446,5 @@ exports.processarRecuperacaoAtrasada = functions.pubsub
       await doc.ref.delete()
     }
     return null
-  })
+  },
+)
