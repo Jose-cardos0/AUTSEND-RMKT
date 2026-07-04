@@ -192,6 +192,55 @@ export async function updateWebhook(uid, webhookId, data) {
   await updateDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }))
 }
 
+// ── Webhooks custom (qualquer plataforma) + Tracker ──
+
+const CUSTOM_WEBHOOK_BASE_URL = 'https://us-central1-afiliadocdnx.cloudfunctions.net/customWebhook'
+
+export async function createCustomWebhook(uid, payload = {}) {
+  const ref = await addDoc(userWebhooksRef(uid), {
+    tipo: 'custom',
+    status: 'testing',
+    nome: payload.nome || 'Webhook custom',
+    plataforma: payload.plataforma || '',
+    fieldMap: {},
+    eventRules: [],
+    createdAt: serverTimestamp(),
+  })
+  const url = `${CUSTOM_WEBHOOK_BASE_URL}?webhookId=${ref.id}&userId=${uid}`
+  await setDoc(ref, { webhookUrl: url }, { merge: true })
+  return ref.id
+}
+
+/** Só os webhooks custom, mais recentes primeiro. */
+export async function getCustomWebhooks(uid) {
+  const snap = await getDocs(userWebhooksRef(uid))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .filter((w) => w.tipo === 'custom')
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+export function userWebhookSamplesRef(uid, webhookId) {
+  return collection(db, 'users', uid, 'webhooks', webhookId, 'samples')
+}
+
+/** Amostras de teste capturadas pela Cloud Function, mais recentes primeiro. */
+export async function getWebhookSamples(uid, webhookId) {
+  const q = query(userWebhookSamplesRef(uid, webhookId), orderBy('receivedAt', 'desc'))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }))
+}
+
+/** Salva mapeamento de campos e/ou regras de evento e/ou status do webhook. */
+export async function updateWebhookMapping(uid, webhookId, data) {
+  const ref = doc(db, 'users', uid, 'webhooks', webhookId)
+  await updateDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }))
+}
+
 export async function deleteWebhook(uid, webhookId) {
   const ref = doc(db, 'users', uid, 'webhooks', webhookId)
   await deleteDoc(ref)
@@ -251,6 +300,146 @@ export async function getLeads(uid) {
 export async function updateLeadStatus(uid, leadId, data) {
   const ref = doc(db, 'users', uid, 'leads', leadId)
   await updateDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }))
+}
+
+// ── Config de E-mail (Resend) ──
+
+export function userEmailConfigRef(uid) {
+  return doc(db, 'users', uid, 'config', 'email')
+}
+
+export async function getEmailConfig(uid) {
+  const snap = await getDoc(userEmailConfigRef(uid))
+  return snap.exists() ? snap.data() : null
+}
+
+export async function saveEmailConfig(uid, data) {
+  await setDoc(userEmailConfigRef(uid), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+}
+
+// ── Templates de E-mail (construtor GrapesJS) ──
+
+export function userEmailTemplatesRef(uid) {
+  return collection(db, 'users', uid, 'emailTemplates')
+}
+
+export async function getEmailTemplates(uid) {
+  const snap = await getDocs(userEmailTemplatesRef(uid))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+/** Cria (id vazio) ou atualiza um template. Retorna o id. */
+export async function saveEmailTemplate(uid, id, data) {
+  if (id) {
+    const ref = doc(db, 'users', uid, 'emailTemplates', id)
+    await setDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(userEmailTemplatesRef(uid), {
+    ...removeUndefined(data),
+    createdAt: serverTimestamp(),
+  })
+  return ref.id
+}
+
+export async function deleteEmailTemplate(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'emailTemplates', id))
+}
+
+// ── Automações de E-mail (evento → template) ──
+
+export function userEmailAutomationsRef(uid) {
+  return collection(db, 'users', uid, 'emailAutomations')
+}
+
+export async function getEmailAutomations(uid) {
+  const snap = await getDocs(userEmailAutomationsRef(uid))
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }))
+}
+
+/** docId = evento. Guarda templateId, ativo e assunto opcional por evento. */
+export async function saveEmailAutomation(uid, evento, data) {
+  const ref = doc(db, 'users', uid, 'emailAutomations', evento)
+  await setDoc(ref, removeUndefined({ evento, ...data, updatedAt: serverTimestamp() }), { merge: true })
+}
+
+// ── Disparos de E-mail (envio em massa) ──
+
+export async function getEmailDisparos(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'emailDisparos'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+export async function deleteEmailDisparo(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'emailDisparos', id))
+}
+
+// ── Eventos de E-mail (aberturas, cliques, entregas — vindos do Resend) ──
+
+export async function getEmailEvents(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'emailEvents'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+// ── Funis de E-mail (construtor visual) ──
+
+export async function getEmailFunnels(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'emailFunnels'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+export async function saveEmailFunnel(uid, id, data) {
+  if (id) {
+    const ref = doc(db, 'users', uid, 'emailFunnels', id)
+    await setDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(collection(db, 'users', uid, 'emailFunnels'), {
+    ...removeUndefined(data),
+    createdAt: serverTimestamp(),
+  })
+  return ref.id
+}
+
+export async function deleteEmailFunnel(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'emailFunnels', id))
+}
+
+// ── Logs de E-mail ──
+
+export async function getEmailLogs(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'emailLogs'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
 }
 
 // ── Products ──

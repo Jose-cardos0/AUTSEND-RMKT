@@ -9,16 +9,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@xyflow/react": "^12.11.1",
     "clsx": "^2.0.0",
     "date-fns": "^3.0.6",
     "firebase": "^10.7.1",
     "framer-motion": "^11.18.2",
+    "grapesjs": "^0.23.2",
+    "grapesjs-preset-newsletter": "^1.0.2",
+    "js-beautify": "^2.0.3",
     "lucide-react": "^0.303.0",
+    "prismjs": "^1.30.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-firebase-hooks": "^5.1.1",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^6.21.0",
+    "react-simple-code-editor": "^0.14.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

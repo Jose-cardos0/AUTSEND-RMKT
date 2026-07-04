@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthState } from 'react-firebase-hooks/auth'
@@ -9,7 +10,16 @@ import Remarketing from './pages/Remarketing'
 import RemarketingGrupos from './pages/RemarketingGrupos'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
+import EmailIntegracoes from './pages/email/EmailIntegracoes'
+import Tracker from './pages/email/Tracker'
+import EmailAutomacoes from './pages/email/EmailAutomacoes'
+import EmailDisparos from './pages/email/EmailDisparos'
+import EmailMetricas from './pages/email/EmailMetricas'
+import EmailEmBreve from './pages/email/EmailEmBreve'
 import PageLoader from './components/PageLoader'
+
+const EmailConstrutor = lazy(() => import('./pages/email/EmailConstrutor'))
+const EmailFunil = lazy(() => import('./pages/email/EmailFunil'))
 import ParticlesBackground from './components/ParticlesBackground'
 
 function ProtectedRoute({ children }) {
@@ -64,6 +74,27 @@ export default function App() {
           <Route path="remarketing" element={<Remarketing />} />
           <Route path="remarketing-grupos" element={<RemarketingGrupos />} />
           <Route path="enviar-mensagem" element={<EnviarMensagem />} />
+          <Route path="email/integracoes" element={<EmailIntegracoes />} />
+          <Route path="email/tracker" element={<Tracker />} />
+          <Route
+            path="email/construtor"
+            element={
+              <Suspense fallback={<PageLoader label="Carregando editor…" />}>
+                <EmailConstrutor />
+              </Suspense>
+            }
+          />
+          <Route path="email/automacoes" element={<EmailAutomacoes />} />
+          <Route path="email/disparos" element={<EmailDisparos />} />
+          <Route path="email/metricas" element={<EmailMetricas />} />
+          <Route
+            path="email/funil"
+            element={
+              <Suspense fallback={<PageLoader label="Carregando funil…" />}>
+                <EmailFunil />
+              </Suspense>
+            }
+          />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
