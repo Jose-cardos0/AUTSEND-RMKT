@@ -1,11 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "pendingRecovery",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [{ "fieldPath": "sendAfter", "order": "ASCENDING" }]
-    },
-    {
       "collectionGroup": "leads",
       "queryScope": "COLLECTION",
       "fields": [
