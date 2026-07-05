@@ -14,8 +14,24 @@ import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import {
   Radar, Webhook, Plus, Copy, Check, Trash2, Loader2, RefreshCw, Play,
-  Power, PowerOff, ChevronRight, Zap, MousePointerClick,
+  Power, PowerOff, ChevronRight, ChevronDown, Zap, MousePointerClick,
 } from 'lucide-react'
+
+/** Seção recolhível (accordion) — clique no título para abrir/fechar. */
+function Secao({ title, icon: Icon, open, onToggle, children }) {
+  return (
+    <div className="app-panel rounded-2xl overflow-hidden">
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3 hover:bg-surface-50 transition">
+        <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
+          {Icon && <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 shrink-0" />}
+          <span className="truncate">{title}</span>
+        </span>
+        <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-4 sm:px-5 pb-4 pt-1 space-y-3">{children}</div>}
+    </div>
+  )
+}
 
 /** Achata um objeto/array em caminhos folha tipo "customer.email". */
 function flattenPaths(obj, prefix = '', out = [], depth = 0) {
@@ -107,6 +123,8 @@ export default function Tracker() {
   const [criando, setCriando] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [copiado, setCopiado] = useState(false)
+  const [secoes, setSecoes] = useState({ url: false, amostras: false, mapear: false, regras: false })
+  const toggleSecao = (k) => setSecoes((s) => ({ ...s, [k]: !s[k] }))
   const pollRef = useRef(null)
   const autoFilledRef = useRef({})
 
@@ -312,7 +330,7 @@ export default function Tracker() {
           {selected && (
             <div className="flex-1 min-w-0 space-y-3">
               {/* URL + ações */}
-              <Panel title={selected.nome} icon={Webhook}>
+              <Secao title={selected.nome} icon={Webhook} open={secoes.url} onToggle={() => toggleSecao('url')}>
                 <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                   <code className="flex-1 min-w-0 text-xs text-stone-600 break-all bg-surface-50 border border-surface-200 rounded-lg px-3 py-2.5">
                     {selected.webhookUrl}
@@ -330,13 +348,10 @@ export default function Tracker() {
                 <p className="text-xs text-stone-500">
                   Cole essa URL na sua plataforma (Hotmart, Cartpanda, Braip, etc.) como webhook/postback e dispare um teste.
                 </p>
-              </Panel>
+              </Secao>
 
               {/* Amostras capturadas */}
-              <Panel
-                title={<span className="flex items-center gap-2"><Play className="w-4 h-4 text-primary-600" /> Amostras recebidas</span>}
-                headerClassName="flex items-center justify-between"
-              >
+              <Secao title="Amostras recebidas" icon={Play} open={secoes.amostras} onToggle={() => toggleSecao('amostras')}>
                 <div className="flex items-center justify-between gap-2 -mt-1">
                   <p className="text-xs text-stone-500">
                     {isActive
@@ -360,12 +375,10 @@ export default function Tracker() {
                     Nenhuma amostra ainda. Envie um teste pela sua plataforma — atualiza sozinho.
                   </div>
                 )}
-              </Panel>
+              </Secao>
 
               {/* Mapeamento de campos */}
-              <Panel
-                title={<span className="flex items-center gap-2"><MousePointerClick className="w-4 h-4 text-primary-600" /> Mapear campos</span>}
-              >
+              <Secao title="Mapear campos" icon={MousePointerClick} open={secoes.mapear} onToggle={() => toggleSecao('mapear')}>
                 <div className="flex items-center justify-between -mt-1">
                   <p className="text-xs text-stone-500">Diga qual campo do JSON é cada informação.</p>
                   <button onClick={handleAdivinhar} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
@@ -394,10 +407,10 @@ export default function Tracker() {
                 <datalist id={`paths-${selected.id}`}>
                   {paths.map((p) => <option key={p.path} value={p.path}>{preview(p.value)}</option>)}
                 </datalist>
-              </Panel>
+              </Secao>
 
               {/* Regras de gatilho */}
-              <Panel title={<span className="flex items-center gap-2"><Radar className="w-4 h-4 text-primary-600" /> Regras de gatilho</span>}>
+              <Secao title="Regras de gatilho" icon={Radar} open={secoes.regras} onToggle={() => toggleSecao('regras')}>
                 <p className="text-xs text-stone-500 -mt-1">
                   Quando o evento chegar e a condição bater, o app cria o lead com esse evento (e dispara a automação configurada).
                 </p>
@@ -448,7 +461,7 @@ export default function Tracker() {
                 <button onClick={addRule} className="btn-secondary text-sm min-h-[40px] mt-2">
                   <Plus className="w-4 h-4" /> Adicionar regra
                 </button>
-              </Panel>
+              </Secao>
 
               {/* Ações */}
               <div className="flex flex-col sm:flex-row gap-2 sm:justify-end pb-2">

@@ -133,6 +133,14 @@ function normalizeEventType(raw) {
   return s
 }
 
+/** Normaliza apelidos de evento para o id canônico (ex.: order_rejected = Compra Recusada). */
+function canonicalEvento(ev) {
+  if (!ev) return ev
+  const s = String(ev).toLowerCase()
+  if (s === 'order_rejected' || s.includes('reject')) return 'order_status.purchase_declined'
+  return ev
+}
+
 function replaceVariables(template, lead, product) {
   return template
     .replace(/\{nome_cliente\}/gi, lead.nome || '')
@@ -153,6 +161,7 @@ async function sendEmailViaResend({ apiKey, from, to, subject, html, replyTo, he
       to: Array.isArray(to) ? to : [to],
       subject,
       html,
+      text: htmlToText(html),
       reply_to: replyTo || undefined,
       headers: headers || undefined,
       tags: tags || undefined,
@@ -175,6 +184,35 @@ async function getEmailConfigForUser(userId) {
 function montarRemetente(cfg) {
   if (!cfg?.fromEmail) return null
   return cfg.fromName ? `${cfg.fromName} <${cfg.fromEmail}>` : cfg.fromEmail
+}
+
+/** Versão texto simples do HTML — melhora a entregabilidade (reduz spam). */
+function htmlToText(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|h[1-6]|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 4000)
+}
+
+/** Guarda email_id → contexto (disparo/lead/funil) para correlacionar eventos do Resend
+ *  (o Resend nem sempre reenvia as tags no webhook). */
+async function registrarEmailSend(userId, emailId, ctx) {
+  if (!emailId || !ctx) return
+  const clean = {}
+  for (const [k, v] of Object.entries(ctx)) if (v !== undefined && v !== null) clean[k] = v
+  if (Object.keys(clean).length === 0) return
+  try {
+    await db.collection('users').doc(userId).collection('emailSends').doc(emailId).set(
+      { ...clean, createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }
+    )
+  } catch (_) {}
 }
 
 /** Envia um e-mail de teste usando a config do usuário autenticado. */
@@ -208,7 +246,100 @@ exports.sendTestEmail = onCall({ region: 'us-central1' }, async (request) => {
   }
 })
 
-/** Disparo em massa: envia um template para uma lista, em lotes de 100 (batch do Resend). */
+/** Envio manual: manda um template para um contato/lead específico (com variáveis já substituídas). */
+exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const { templateId, to, nome, produto, leadId } = request.data || {}
+  if (!templateId) throw new HttpsError('invalid-argument', 'Escolha um template.')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || '').trim())) throw new HttpsError('invalid-argument', 'E-mail inválido.')
+
+  const cfg = await getEmailConfigForUser(uid)
+  const from = montarRemetente(cfg)
+  if (!cfg?.apiKey || !from) throw new HttpsError('failed-precondition', 'Configure o Resend nas Integrações de E-mail.')
+
+  const tplSnap = await db.doc(`users/${uid}/emailTemplates/${templateId}`).get()
+  if (!tplSnap.exists) throw new HttpsError('not-found', 'Template não encontrado.')
+  const tpl = tplSnap.data()
+  const lead = { nome: nome || '', email: String(to).trim(), telefone: '' }
+  const product = { nome: produto || '' }
+  const unsub = cfg.fromEmail
+  const footer = '<div style="font-family:Arial,sans-serif;font-size:11px;color:#999;text-align:center;padding:16px">' +
+    `You received this email because you interacted with our store. <a href="mailto:${unsub}?subject=Unsubscribe" style="color:#999">Unsubscribe</a></div>`
+  const html = replaceVariables(tpl.inlined || tpl.html || '', lead, product) + footer
+  const subject = replaceVariables(tpl.subject || 'Novidade', lead, product)
+
+  try {
+    const r = await sendEmailViaResend({
+      apiKey: cfg.apiKey, from, to: lead.email, subject, html,
+      headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` },
+      tags: leadId ? [{ name: 'leadId', value: leadId }] : undefined,
+    })
+    if (r?.id && leadId) await registrarEmailSend(uid, r.id, { leadId })
+    if (leadId) {
+      await db.doc(`users/${uid}/leads/${leadId}`).set(
+        { status: 'enviado', canal: 'email', enviadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }
+      )
+    }
+    return { ok: true, id: r?.id || null }
+  } catch (err) {
+    throw new HttpsError('internal', err.message || 'Falha ao enviar.')
+  }
+})
+
+/** Rodapé de descadastro (anti-spam). */
+function unsubFooter(unsub) {
+  return '<div style="font-family:Arial,sans-serif;font-size:11px;color:#999;text-align:center;padding:16px">' +
+    `You received this email because you interacted with our store. <a href="mailto:${unsub}?subject=Unsubscribe" style="color:#999">Unsubscribe</a></div>`
+}
+
+/** Envia um lote de e-mails (batch do Resend) com variáveis substituídas e tags de disparo. */
+async function enviarLoteEmail(uid, ctx, recipients) {
+  const valido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
+  const items = (recipients || []).filter((r) => r && valido(r.email)).map((r) => {
+    const lead = { nome: r.nome || '', email: String(r.email).trim(), telefone: '' }
+    const product = { nome: r.produto || '' }
+    const htmlBase = replaceVariables(ctx.tplHtml, lead, product)
+    return {
+      from: ctx.from,
+      to: [lead.email],
+      subject: replaceVariables(ctx.subjectBase, lead, product),
+      html: htmlBase + ctx.footer,
+      text: htmlToText(htmlBase),
+      headers: { 'List-Unsubscribe': `<mailto:${ctx.unsub}?subject=Unsubscribe>` },
+      tags: [{ name: 'disparoId', value: ctx.disparoId }, { name: 'tipo', value: 'disparo' }],
+    }
+  })
+  let enviados = 0
+  let erros = 0
+  for (let i = 0; i < items.length; i += 100) {
+    const chunk = items.slice(i, i + 100)
+    try {
+      const res = await fetch('https://api.resend.com/emails/batch', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ctx.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(chunk),
+      })
+      if (res.ok) {
+        enviados += chunk.length
+        try {
+          const respBody = await res.json()
+          const ids = (respBody?.data || []).map((x) => x && x.id).filter(Boolean)
+          await Promise.all(ids.map((id) => registrarEmailSend(uid, id, { disparoId: ctx.disparoId })))
+        } catch (_) {}
+      } else {
+        erros += chunk.length
+        console.error('Lote batch erro', res.status, await res.text())
+      }
+    } catch (err) {
+      erros += chunk.length
+      console.error('Lote fetch erro', err)
+    }
+  }
+  return { enviados, erros }
+}
+
+/** Disparo em massa: 1º lote na hora, o resto enfileirado em lotes com intervalo (throttle anti-ban). */
 exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
@@ -226,74 +357,117 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
   const tplSnap = await db.doc(`users/${uid}/emailTemplates/${templateId}`).get()
   if (!tplSnap.exists) throw new HttpsError('not-found', 'Template não encontrado.')
   const tpl = tplSnap.data()
-  const baseHtml = tpl.inlined || tpl.html || ''
   const baseSubject = (data.subject || tpl.subject || 'Novidade').toString()
   const unsub = cfg.fromEmail
-  const footer =
-    '<div style="font-family:Arial,sans-serif;font-size:11px;color:#999;text-align:center;padding:16px">' +
-    `You received this email because you interacted with our store. <a href="mailto:${unsub}?subject=Unsubscribe" style="color:#999">Unsubscribe</a>` +
-    '</div>'
+  const footer = unsubFooter(unsub)
+  const loteSize = Math.max(1, Math.min(500, Number(data.loteSize) || 30))
+  const intervaloMin = Math.max(0, Math.min(240, Number(data.intervaloMin) || 5))
 
   const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
-  const items = recipients
+  const validos = recipients
     .filter((r) => r && emailValido(r.email))
-    .slice(0, 5000)
-    .map((r) => {
-      const lead = { nome: r.nome || '', email: String(r.email).trim(), telefone: '' }
-      const product = { nome: r.produto || '' }
-      return {
-        from,
-        to: [lead.email],
-        subject: replaceVariables(baseSubject, lead, product),
-        html: replaceVariables(baseHtml, lead, product) + footer,
-        headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` },
-      }
-    })
+    .slice(0, 20000)
+    .map((r) => ({ email: String(r.email).trim(), nome: r.nome || '', produto: r.produto || '' }))
+  if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum e-mail válido na lista.')
 
-  if (items.length === 0) throw new HttpsError('invalid-argument', 'Nenhum e-mail válido na lista.')
+  const lotes = []
+  for (let i = 0; i < validos.length; i += loteSize) lotes.push(validos.slice(i, i + loteSize))
 
-  // Cria o disparo antes para carimbar (tag) cada e-mail e correlacionar aberturas/cliques
   const dispRef = await db.collection('users').doc(uid).collection('emailDisparos').add({
     nomeDisparo: (data.nomeDisparo || 'Disparo').toString(),
     templateId,
     templateNome: tpl.nome || '',
     subject: baseSubject,
-    total: items.length,
+    total: validos.length,
     enviados: 0,
     erros: 0,
     aberturas: 0,
     cliques: 0,
+    loteSize,
+    intervaloMin,
+    totalLotes: lotes.length,
     status: 'enviando',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
-  items.forEach((it) => { it.tags = [{ name: 'disparoId', value: dispRef.id }, { name: 'tipo', value: 'disparo' }] })
 
-  let enviados = 0
-  let erros = 0
-  for (let i = 0; i < items.length; i += 100) {
-    const chunk = items.slice(i, i + 100)
-    try {
-      const res = await fetch('https://api.resend.com/emails/batch', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk),
-      })
-      if (res.ok) enviados += chunk.length
-      else { erros += chunk.length; console.error('Batch erro', res.status, await res.text()) }
-    } catch (err) {
-      erros += chunk.length
-      console.error('Batch fetch erro', err)
-    }
+  const ctx = { apiKey: cfg.apiKey, from, tplHtml: tpl.inlined || tpl.html || '', subjectBase: baseSubject, footer, unsub, disparoId: dispRef.id }
+
+  // 1º lote na hora
+  const r0 = await enviarLoteEmail(uid, ctx, lotes[0] || [])
+
+  // Demais lotes enfileirados com intervalo
+  const intervaloMs = intervaloMin * 60000
+  for (let i = 1; i < lotes.length; i++) {
+    await dispRef.collection('emailLotes').add({
+      disparoId: dispRef.id,
+      recipients: lotes[i],
+      sendAfter: admin.firestore.Timestamp.fromMillis(Date.now() + i * intervaloMs),
+      status: 'pendente',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
   }
 
+  const soUmLote = lotes.length <= 1
   await dispRef.update({
-    enviados,
-    erros,
-    status: erros === 0 ? 'enviado' : (enviados === 0 ? 'erro' : 'parcial'),
+    enviados: r0.enviados,
+    erros: r0.erros,
+    status: soUmLote ? (r0.erros === 0 ? 'enviado' : (r0.enviados === 0 ? 'erro' : 'parcial')) : 'enviando',
   })
 
-  return { ok: true, enviados, erros, total: items.length, disparoId: dispRef.id }
+  return { ok: true, total: validos.length, disparoId: dispRef.id, lotes: lotes.length, enviados: r0.enviados }
 })
+
+/** A cada 1 min: envia os lotes de disparo que já venceram (throttle por intervalo). */
+exports.processarLotesEmail = onSchedule(
+  { schedule: 'every 1 minutes', timeZone: 'America/Sao_Paulo', region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' },
+  async () => {
+    const now = admin.firestore.Timestamp.now()
+    const snap = await db.collectionGroup('emailLotes').where('status', '==', 'pendente').where('sendAfter', '<=', now).limit(30).get()
+    if (snap.empty) return null
+    const cache = {}
+    for (const loteDoc of snap.docs) {
+      const lote = loteDoc.data()
+      const parts = loteDoc.ref.path.split('/') // users/{uid}/emailDisparos/{dispId}/emailLotes/{loteId}
+      const uid = parts[1]
+      const dispId = parts[3]
+      const key = `${uid}/${dispId}`
+      try {
+        if (!(key in cache)) {
+          const dSnap = await db.doc(`users/${uid}/emailDisparos/${dispId}`).get()
+          const cfg = await getEmailConfigForUser(uid)
+          let tpl = null
+          if (dSnap.exists) {
+            const dd = dSnap.data()
+            const tSnap = await db.doc(`users/${uid}/emailTemplates/${dd.templateId}`).get()
+            tpl = tSnap.exists ? tSnap.data() : null
+            cache[key] = { disp: dd, cfg, tpl }
+          } else cache[key] = null
+        }
+        const c = cache[key]
+        if (!c || !c.cfg?.apiKey || !c.tpl) { await loteDoc.ref.update({ status: 'erro' }); continue }
+        const from = montarRemetente(c.cfg)
+        const unsub = c.cfg.fromEmail
+        const ctx = { apiKey: c.cfg.apiKey, from, tplHtml: c.tpl.inlined || c.tpl.html || '', subjectBase: c.disp.subject || c.tpl.subject || 'Novidade', footer: unsubFooter(unsub), unsub, disparoId: dispId }
+        const r = await enviarLoteEmail(uid, ctx, lote.recipients || [])
+        await loteDoc.ref.update({ status: r.erros === 0 ? 'enviado' : 'erro' })
+        await db.doc(`users/${uid}/emailDisparos/${dispId}`).set({
+          enviados: admin.firestore.FieldValue.increment(r.enviados),
+          erros: admin.firestore.FieldValue.increment(r.erros),
+        }, { merge: true })
+        const restantes = await db.collection(`users/${uid}/emailDisparos/${dispId}/emailLotes`).where('status', '==', 'pendente').limit(1).get()
+        if (restantes.empty) {
+          const dSnap = await db.doc(`users/${uid}/emailDisparos/${dispId}`).get()
+          const dd = dSnap.exists ? dSnap.data() : {}
+          const status = (dd.erros || 0) === 0 ? 'enviado' : ((dd.enviados || 0) === 0 ? 'erro' : 'parcial')
+          await db.doc(`users/${uid}/emailDisparos/${dispId}`).set({ status }, { merge: true })
+        }
+      } catch (err) {
+        console.error('processarLotesEmail', err)
+      }
+    }
+    return null
+  },
+)
 
 /**
  * Recebe eventos do Resend (aberturas, cliques, entregas, bounces).
@@ -312,22 +486,35 @@ exports.resendWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
   tags.forEach((t) => { if (t && t.name) tagMap[t.name] = t.value })
   const link = d.click?.link || d.link || null
   const evento = type.replace('email.', '')
+  const emailId = d.email_id || d.id || null
 
   try {
+    // O Resend nem sempre reenvia as tags no webhook — recuperamos o contexto pelo email_id
+    let disparoId = tagMap.disparoId || null
+    let leadId = tagMap.leadId || null
+    let funnelId = tagMap.funnelId || null
+    if (!disparoId && !leadId && !funnelId && emailId) {
+      try {
+        const m = await db.doc(`users/${userId}/emailSends/${emailId}`).get()
+        if (m.exists) { const c = m.data(); disparoId = c.disparoId || null; leadId = c.leadId || null; funnelId = c.funnelId || null }
+      } catch (_) {}
+    }
+
     await db.collection('users').doc(userId).collection('emailEvents').add({
       tipo: evento,
       email: emailTo,
       link: link || null,
-      disparoId: tagMap.disparoId || null,
-      leadId: tagMap.leadId || null,
-      emailId: d.email_id || null,
+      disparoId,
+      leadId,
+      funnelId,
+      emailId,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
     // Agrega no disparo (contagem de eventos)
-    if (tagMap.disparoId && (type === 'email.opened' || type === 'email.clicked')) {
+    if (disparoId && (type === 'email.opened' || type === 'email.clicked')) {
       const campo = type === 'email.opened' ? 'aberturas' : 'cliques'
-      await db.collection('users').doc(userId).collection('emailDisparos').doc(tagMap.disparoId).set(
+      await db.collection('users').doc(userId).collection('emailDisparos').doc(disparoId).set(
         { [campo]: admin.firestore.FieldValue.increment(1) }, { merge: true }
       )
     }
@@ -478,7 +665,15 @@ async function tryAutoSend(userId, leadRef, evento, customer, product) {
 async function tryAutoSendEmail(userId, leadRef, evento, customer, product) {
   try {
     if (!customer.email) return
-    const autoSnap = await db.doc(`users/${userId}/emailAutomations/${evento}`).get()
+    // Resolve o grupo de produto do lead (automações de e-mail são por grupo de produto)
+    const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
+    const pNome = (product.nome || '').trim()
+    const pId = (product.id || '').trim()
+    const grupo = gruposSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
+    if (!grupo) return
+    const autoSnap = await db.doc(`users/${userId}/emailAutomations/${grupo.id}__${evento}`).get()
     const auto = autoSnap.exists ? autoSnap.data() : null
     if (!auto || auto.ativo !== true || !auto.templateId) return
 
@@ -520,6 +715,8 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product) {
       ok = false
       erroMsg = err.message || 'Falha no envio do e-mail'
     }
+
+    if (ok && emailId) await registrarEmailSend(userId, emailId, { leadId: leadRef.id })
 
     await leadRef.update({
       status: ok ? 'enviado' : 'erro',
@@ -577,7 +774,9 @@ async function enviarTemplateFunil(userId, templateId, contato, tags) {
       `You received this email because you interacted with our store. <a href="mailto:${unsub}?subject=Unsubscribe" style="color:#999">Unsubscribe</a></div>`
     const html = replaceVariables(tpl.inlined || tpl.html || '', lead, product) + footer
     const subject = replaceVariables(tpl.subject || 'Novidade', lead, product)
-    await sendEmailViaResend({ apiKey: cfg.apiKey, from, to: contato.email, subject, html, headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` }, tags })
+    const r = await sendEmailViaResend({ apiKey: cfg.apiKey, from, to: contato.email, subject, html, headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` }, tags })
+    const funnelId = (tags || []).find((t) => t && t.name === 'funnelId')?.value
+    await registrarEmailSend(userId, r?.id, { funnelId })
     return true
   } catch (err) { console.error('enviarTemplateFunil', err); return false }
 }
@@ -632,7 +831,7 @@ exports.kiwifyAbandonedCheckout = onRequest(
       }
     }
   }
-  const evento = extractEvent(body)
+  const evento = canonicalEvento(extractEvent(body))
   const customer = extractCustomer(body)
   const product = extractProduct(body)
   const orderId = extractOrderId(body)
@@ -868,7 +1067,18 @@ exports.customWebhook = onRequest(
     const orderId = fieldMap.orderId ? String(getByPath(body, fieldMap.orderId) ?? '').trim() : ''
     const valor = fieldMap.valor ? String(getByPath(body, fieldMap.valor) ?? '').trim() : ''
     const moeda = String(body.currency || body.moeda || body.currency_code || '').trim()
-    const evento = resolveEventoCustom(webhook.eventRules, body)
+    const evento = canonicalEvento(resolveEventoCustom(webhook.eventRules, body))
+
+    // Cataloga o produto SEMPRE (mesmo sem regra que case), para aparecer em Produtos
+    if (product.nome || product.id) {
+      const prodDocId = product.id || product.nome.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50)
+      if (prodDocId) {
+        await db.collection('users').doc(userId).collection('products').doc(prodDocId).set(
+          { nome: product.nome, kiwifyId: product.id, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+          { merge: true }
+        )
+      }
+    }
 
     if (!evento) {
       res.status(200).json({ ok: true, skip: 'nenhuma_regra_casou' })
@@ -902,26 +1112,24 @@ exports.customWebhook = onRequest(
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
-    if (product.nome || product.id) {
-      const prodDocId = product.id || product.nome.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50)
-      if (prodDocId) {
-        await db.collection('users').doc(userId).collection('products').doc(prodDocId).set(
-          { nome: product.nome, kiwifyId: product.id, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-          { merge: true }
-        )
-      }
-    }
-
     await dispararAcoes(userId, leadRef, evento, customer, product)
 
-    // Inscreve o contato em funis cujo gatilho é este evento
+    // Inscreve o contato em funis cujo gatilho é este evento (respeitando o grupo de produto)
     if (customer.email) {
       try {
+        const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
+        const pNome = (product.nome || '').trim()
+        const pId = (product.id || '').trim()
+        const grupoLead = gruposSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
         const funisSnap = await db.collection('users').doc(userId).collection('emailFunnels')
           .where('gatilhoEvento', '==', evento).limit(20).get()
         for (const fdoc of funisSnap.docs) {
           const funnel = fdoc.data()
           if (funnel.ativo !== true) continue
+          // Funil de um produto específico só inscreve quem for daquele grupo
+          if (funnel.gatilhoGrupoId && (!grupoLead || grupoLead.id !== funnel.gatilhoGrupoId)) continue
           await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, nome: customer.nome, produto: product.nome })
         }
       } catch (err) { console.error('Erro ao inscrever em funil:', err) }

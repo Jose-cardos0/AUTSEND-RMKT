@@ -13,6 +13,7 @@ import Automacoes from './pages/Automacoes'
 import EmailIntegracoes from './pages/email/EmailIntegracoes'
 import Tracker from './pages/email/Tracker'
 import EmailAutomacoes from './pages/email/EmailAutomacoes'
+import EmailProdutos from './pages/email/EmailProdutos'
 import EmailDisparos from './pages/email/EmailDisparos'
 import EmailMetricas from './pages/email/EmailMetricas'
 import EmailEmBreve from './pages/email/EmailEmBreve'
@@ -84,6 +85,7 @@ export default function App() {
               </Suspense>
             }
           />
+          <Route path="email/produtos" element={<EmailProdutos />} />
           <Route path="email/automacoes" element={<EmailAutomacoes />} />
           <Route path="email/disparos" element={<EmailDisparos />} />
           <Route path="email/metricas" element={<EmailMetricas />} />

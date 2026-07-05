@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Link2, MessageCircle, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
@@ -30,6 +30,7 @@ const navGroups = [
     items: [
       { to: '/email/integracoes', label: 'Integrações', icon: Link2 },
       { to: '/email/tracker', label: 'Tracker', icon: Radar },
+      { to: '/email/produtos', label: 'Produtos', icon: Package },
       { to: '/email/construtor', label: 'Construtor', icon: LayoutTemplate },
       { to: '/email/automacoes', label: 'Automações', icon: Zap },
       { to: '/email/disparos', label: 'Disparos', icon: Send },

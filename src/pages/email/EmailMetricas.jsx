@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { auth } from '../../lib/firebase'
-import { getEmailDisparos, getEmailEvents, getEmailLogs, getLeads } from '../../lib/firestore'
+import { getEmailDisparos, getEmailEvents, getEmailLogs, getLeads, getProductGroups } from '../../lib/firestore'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, DollarSign } from 'lucide-react'
+import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, DollarSign, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 
 /** Interpreta o valor da compra: inteiro puro = centavos; senão tenta ler o número formatado. */
 function parseValorNum(valor) {
@@ -75,33 +75,63 @@ export default function EmailMetricas() {
   const [events, setEvents] = useState([])
   const [logs, setLogs] = useState([])
   const [leads, setLeads] = useState([])
+  const [grupos, setGrupos] = useState([])
+  const [grupoFiltro, setGrupoFiltro] = useState('')
 
   const carregar = async () => {
     if (!user?.uid) return
     setLoading(true)
-    const [d, e, l, ld] = await Promise.all([
+    const [d, e, l, ld, gs] = await Promise.all([
       getEmailDisparos(user.uid),
       getEmailEvents(user.uid),
       getEmailLogs(user.uid),
       getLeads(user.uid),
+      getProductGroups(user.uid),
     ])
     setDisparos(d)
     setEvents(e)
     setLogs(l)
     setLeads(ld)
+    setGrupos(gs)
     setLoading(false)
   }
 
   useEffect(() => { carregar() }, [user?.uid])
 
+  const [fTexto, setFTexto] = useState('')
+  const [fAcao, setFAcao] = useState('')
+  const [sortKey, setSortKey] = useState('quando')
+  const [sortDir, setSortDir] = useState('desc')
+  const [pagina, setPagina] = useState(1)
+  const [pDisp, setPDisp] = useState(1)
+
+  // ── Filtro por grupo de produto ──
+  const grupoSel = useMemo(() => grupos.find((g) => g.id === grupoFiltro) || null, [grupos, grupoFiltro])
+  const produtosGrupo = useMemo(() => new Set(grupoSel?.produtos || []), [grupoSel])
+  const emailsGrupo = useMemo(() => {
+    if (!grupoSel) return null
+    const s = new Set()
+    leads.forEach((l) => { if (l.produto && produtosGrupo.has(l.produto) && l.email) s.add(l.email.toLowerCase()) })
+    return s
+  }, [leads, grupoSel, produtosGrupo])
+  const eventosF = useMemo(
+    () => (emailsGrupo ? events.filter((e) => emailsGrupo.has((e.email || '').toLowerCase())) : events),
+    [events, emailsGrupo]
+  )
+
   const stats = useMemo(() => {
+    const opened = new Set(eventosF.filter((e) => e.tipo === 'opened' && e.email).map((e) => (e.email || '').toLowerCase())).size
+    const clicked = new Set(eventosF.filter((e) => e.tipo === 'clicked' && e.email).map((e) => (e.email || '').toLowerCase())).size
+    if (grupoSel) {
+      const enviados = new Set(
+        leads.filter((l) => l.produto && produtosGrupo.has(l.produto) && l.status === 'enviado' && l.email).map((l) => l.email.toLowerCase())
+      ).size
+      return { enviados, opened, clicked }
+    }
     const enviadosDisparo = disparos.reduce((s, d) => s + (d.enviados || 0), 0)
     const enviadosAuto = logs.filter((l) => l.status === 'enviado').length
-    const enviados = enviadosDisparo + enviadosAuto
-    const opened = new Set(events.filter((e) => e.tipo === 'opened' && e.email).map((e) => e.email))
-    const clicked = new Set(events.filter((e) => e.tipo === 'clicked' && e.email).map((e) => e.email))
-    return { enviados, opened: opened.size, clicked: clicked.size }
-  }, [disparos, events, logs])
+    return { enviados: enviadosDisparo + enviadosAuto, opened, clicked }
+  }, [eventosF, grupoSel, leads, produtosGrupo, disparos, logs])
 
   // e-mail (minúsculo) → compra { valor, moeda } — leads já vêm ordenados do mais recente
   const purchaseMap = useMemo(() => {
@@ -115,17 +145,27 @@ export default function EmailMetricas() {
   }, [leads])
 
   const atrib = useMemo(() => {
-    const emailedSet = new Set(events.map((e) => (e.email || '').toLowerCase()).filter(Boolean))
     let receita = 0
     let compras = 0
     let moeda = 'BRL'
+    if (grupoSel) {
+      const seen = new Set()
+      for (const l of leads) {
+        const email = (l.email || '').toLowerCase()
+        if (!l.produto || !produtosGrupo.has(l.produto) || !l.valor || seen.has(email)) continue
+        const n = parseValorNum(l.valor)
+        if (n != null) { seen.add(email); receita += n; compras++; if (l.moeda) moeda = l.moeda }
+      }
+      return { receita, compras, moeda }
+    }
+    const emailedSet = new Set(events.map((e) => (e.email || '').toLowerCase()).filter(Boolean))
     purchaseMap.forEach((info, email) => {
       if (!emailedSet.has(email)) return
       const n = parseValorNum(info.valor)
       if (n != null) { receita += n; compras++; if (info.moeda) moeda = info.moeda }
     })
     return { receita, compras, moeda }
-  }, [purchaseMap, events])
+  }, [grupoSel, leads, produtosGrupo, purchaseMap, events])
 
   const disparosComMetrica = useMemo(() => {
     return disparos.map((d) => {
@@ -138,15 +178,55 @@ export default function EmailMetricas() {
 
   const topLinks = useMemo(() => {
     const m = {}
-    events.filter((e) => e.tipo === 'clicked' && e.link).forEach((e) => { m[e.link] = (m[e.link] || 0) + 1 })
+    eventosF.filter((e) => e.tipo === 'clicked' && e.link).forEach((e) => { m[e.link] = (m[e.link] || 0) + 1 })
     return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6)
-  }, [events])
+  }, [eventosF])
 
-  const recentes = useMemo(() => events.filter((e) => e.tipo === 'opened' || e.tipo === 'clicked').slice(0, 30), [events])
+  const atividadeBase = useMemo(() => eventosF.filter((e) => e.tipo === 'opened' || e.tipo === 'clicked'), [eventosF])
+
+  const atividadeFiltrada = useMemo(() => {
+    let list = atividadeBase
+    if (fAcao) list = list.filter((e) => e.tipo === fAcao)
+    if (fTexto.trim()) {
+      const q = fTexto.toLowerCase()
+      list = list.filter((e) => (e.email || '').toLowerCase().includes(q) || (e.link || '').toLowerCase().includes(q))
+    }
+    const val = (e) => {
+      switch (sortKey) {
+        case 'contato': return (e.email || '').toLowerCase()
+        case 'acao': return e.tipo || ''
+        case 'link': return (e.link || '').toLowerCase()
+        case 'valor': { const info = purchaseMap.get((e.email || '').toLowerCase()); return info ? (parseValorNum(info.valor) || 0) : -1 }
+        default: { const c = e.createdAt; return c?.toMillis ? c.toMillis() : (c?.seconds ? c.seconds * 1000 : 0) }
+      }
+    }
+    return [...list].sort((a, b) => {
+      const va = val(a), vb = val(b)
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [atividadeBase, fAcao, fTexto, sortKey, sortDir, purchaseMap])
+
+  useEffect(() => { setPagina(1) }, [fAcao, fTexto, sortKey, sortDir, grupoFiltro])
+
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir('asc') }
+  }
 
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
   const semDados = events.length === 0 && disparos.length === 0
+  const POR_PAGINA = 10
+  const totalPaginas = Math.max(1, Math.ceil(atividadeFiltrada.length / POR_PAGINA))
+  const paginaAtual = Math.min(pagina, totalPaginas)
+  const atividadePagina = atividadeFiltrada.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
+  const COLS = [['contato', 'Contato'], ['acao', 'Ação'], ['link', 'Link'], ['valor', 'Valor'], ['quando', 'Quando']]
+  const DISP_POR_PAGINA = 10
+  const totalPagDisp = Math.max(1, Math.ceil(disparosComMetrica.length / DISP_POR_PAGINA))
+  const pagDispAtual = Math.min(pDisp, totalPagDisp)
+  const disparosPagina = disparosComMetrica.slice((pagDispAtual - 1) * DISP_POR_PAGINA, pagDispAtual * DISP_POR_PAGINA)
 
   return (
     <PageShell
@@ -154,9 +234,17 @@ export default function EmailMetricas() {
       title="Dashboard de E-mail"
       subtitle="Aberturas, cliques e desempenho dos seus envios (dados do rastreamento do Resend)."
       right={
-        <button onClick={carregar} className="btn-secondary text-sm min-h-[44px]">
-          <RefreshCw className="w-4 h-4" /> Atualizar
-        </button>
+        <div className="flex flex-wrap gap-2 items-center">
+          {grupos.length > 0 && (
+            <select value={grupoFiltro} onChange={(e) => setGrupoFiltro(e.target.value)} className="px-3 py-2 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white font-semibold">
+              <option value="">Todos os produtos</option>
+              {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+            </select>
+          )}
+          <button onClick={carregar} className="btn-secondary text-sm min-h-[44px]">
+            <RefreshCw className="w-4 h-4" /> Atualizar
+          </button>
+        </div>
       }
     >
       <div className="space-y-4 sm:space-y-5">
@@ -192,7 +280,7 @@ export default function EmailMetricas() {
                   </tr>
                 </thead>
                 <tbody>
-                  {disparosComMetrica.map((d) => (
+                  {disparosPagina.map((d) => (
                     <tr key={d.id} className="border-b border-surface-50 hover:bg-surface-50/70">
                       <td className="px-4 py-2.5">
                         <div className="font-medium text-stone-800 truncate max-w-[160px]">{d.nomeDisparo}</div>
@@ -207,6 +295,15 @@ export default function EmailMetricas() {
               </table>
             )}
           </div>
+          {disparosComMetrica.length > DISP_POR_PAGINA && (
+            <div className="px-4 py-3 border-t border-surface-100 flex items-center justify-between gap-3">
+              <p className="text-xs text-stone-600">Página {pagDispAtual} de {totalPagDisp}</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPDisp((p) => Math.max(1, p - 1))} disabled={pagDispAtual <= 1} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
+                <button onClick={() => setPDisp((p) => Math.min(totalPagDisp, p + 1))} disabled={pagDispAtual >= totalPagDisp} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            </div>
+          )}
         </Panel>
 
         {/* Top links */}
@@ -228,31 +325,50 @@ export default function EmailMetricas() {
 
       {/* Eventos recentes */}
       <Panel title="Atividade recente" icon={Mail} noPadding>
+        <div className="p-3 sm:p-4 border-b border-surface-100 flex flex-col sm:flex-row gap-2 sm:items-center bg-white/40">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+            <input
+              value={fTexto}
+              onChange={(e) => setFTexto(e.target.value)}
+              placeholder="Filtrar por contato ou link"
+              className="w-full pl-9 pr-3 py-2.5 min-h-[42px] rounded-xl border border-surface-200 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+          </div>
+          <select value={fAcao} onChange={(e) => setFAcao(e.target.value)} className="min-h-[42px] px-3 rounded-xl border border-surface-200 text-sm bg-white">
+            <option value="">Todas as ações</option>
+            <option value="opened">Abriu</option>
+            <option value="clicked">Clicou</option>
+          </select>
+        </div>
         <div className="overflow-x-auto">
-          {recentes.length === 0 ? (
-            <p className="p-6 text-sm text-stone-400 text-center">Nenhuma abertura ou clique ainda.</p>
+          {atividadeFiltrada.length === 0 ? (
+            <p className="p-6 text-sm text-stone-400 text-center">Nenhuma atividade encontrada.</p>
           ) : (
             <table className="w-full text-sm min-w-[680px]">
               <thead>
                 <tr className="border-b border-surface-100 text-left text-stone-500">
-                  <th className="px-4 py-2.5 font-medium text-xs">Contato</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Ação</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Link</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Valor</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Quando</th>
+                  {COLS.map(([key, label]) => (
+                    <th
+                      key={key}
+                      onClick={() => toggleSort(key)}
+                      className="px-4 py-2.5 font-medium text-xs cursor-pointer select-none hover:text-stone-700 whitespace-nowrap"
+                    >
+                      {label}{sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {recentes.map((e) => {
+                {atividadePagina.map((e) => {
                   const t = TIPO_LABEL[e.tipo] || { label: e.tipo, cls: 'bg-stone-100 text-stone-600' }
+                  const info = purchaseMap.get((e.email || '').toLowerCase())
                   return (
                     <tr key={e.id} className="border-b border-surface-50 hover:bg-surface-50/70">
                       <td className="px-4 py-2.5 text-stone-700 truncate max-w-[180px]">{e.email || '-'}</td>
                       <td className="px-4 py-2.5"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${t.cls}`}>{t.label}</span></td>
                       <td className="px-4 py-2.5 text-xs text-stone-500 truncate max-w-[200px]" title={e.link || ''}>{e.link || '—'}</td>
-                      <td className="px-4 py-2.5 text-sm font-semibold text-emerald-700 whitespace-nowrap">
-                        {(() => { const info = purchaseMap.get((e.email || '').toLowerCase()); return info ? (formatValor(info.valor, info.moeda) || '—') : '—' })()}
-                      </td>
+                      <td className="px-4 py-2.5 text-sm font-semibold text-emerald-700 whitespace-nowrap">{info ? (formatValor(info.valor, info.moeda) || '—') : '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-stone-500 whitespace-nowrap">{formatDate(e.createdAt)}</td>
                     </tr>
                   )
@@ -261,6 +377,15 @@ export default function EmailMetricas() {
             </table>
           )}
         </div>
+        {atividadeFiltrada.length > POR_PAGINA && (
+          <div className="px-4 py-3 border-t border-surface-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-xs text-stone-600">Página {paginaAtual} de {totalPaginas} · {atividadeFiltrada.length} registro(s)</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={paginaAtual <= 1} className="flex items-center gap-1 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 bg-white text-sm hover:bg-surface-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /> Anterior</button>
+              <button onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} disabled={paginaAtual >= totalPaginas} className="flex items-center gap-1 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 bg-white text-sm hover:bg-surface-50 disabled:opacity-50">Próxima <ChevronRight className="w-4 h-4" /></button>
+            </div>
+          </div>
+        )}
       </Panel>
       </div>
     </PageShell>

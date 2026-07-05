@@ -17,6 +17,14 @@ export const KIWIFY_EVENTS = [
   { id: 'subscription_renewed', label: 'Assinatura Renovada', color: 'emerald' },
 ]
 
+/** Normaliza apelidos de evento para o id canônico (ex.: order_rejected = Compra Recusada). */
+export function canonicalEvento(ev) {
+  if (!ev) return ev
+  const s = String(ev).toLowerCase()
+  if (s === 'order_rejected' || s.includes('reject')) return 'order_status.purchase_declined'
+  return ev
+}
+
 export const TEMPLATE_VARIABLES = [
   { key: '{nome_cliente}', label: 'Nome do cliente' },
   { key: '{numero_cliente}', label: 'Número do cliente' },

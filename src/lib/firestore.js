@@ -363,10 +363,37 @@ export async function getEmailAutomations(uid) {
   return snap.docs.map((d) => ({ ...d.data(), id: d.id }))
 }
 
-/** docId = evento. Guarda templateId, ativo e assunto opcional por evento. */
-export async function saveEmailAutomation(uid, evento, data) {
-  const ref = doc(db, 'users', uid, 'emailAutomations', evento)
-  await setDoc(ref, removeUndefined({ evento, ...data, updatedAt: serverTimestamp() }), { merge: true })
+/** docId = `${grupoId}__${evento}`. Automação por (grupo de produto, evento). */
+export async function saveEmailAutomation(uid, grupoId, evento, data) {
+  const ref = doc(db, 'users', uid, 'emailAutomations', `${grupoId}__${evento}`)
+  await setDoc(ref, removeUndefined({ grupoId, evento, ...data, updatedAt: serverTimestamp() }), { merge: true })
+}
+
+// ── Grupos de produtos ──
+
+export function userProductGroupsRef(uid) {
+  return collection(db, 'users', uid, 'productGroups')
+}
+
+export async function getProductGroups(uid) {
+  const snap = await getDocs(userProductGroupsRef(uid))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+}
+
+export async function saveProductGroup(uid, id, data) {
+  if (id) {
+    const ref = doc(db, 'users', uid, 'productGroups', id)
+    await setDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(userProductGroupsRef(uid), { ...removeUndefined(data), createdAt: serverTimestamp() })
+  return ref.id
+}
+
+export async function deleteProductGroup(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'productGroups', id))
 }
 
 // ── Disparos de E-mail (envio em massa) ──

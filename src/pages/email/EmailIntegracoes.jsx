@@ -6,7 +6,23 @@ import { auth, functions } from '../../lib/firebase'
 import { getEmailConfig, saveEmailConfig } from '../../lib/firestore'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Mail, Globe, KeyRound, Eye, EyeOff, Save, Send, Loader2, Check, ExternalLink, Webhook, Copy, BarChart3 } from 'lucide-react'
+import { Mail, Globe, KeyRound, Eye, EyeOff, Save, Send, Loader2, Check, ExternalLink, Webhook, Copy, BarChart3, ChevronDown } from 'lucide-react'
+
+/** Seção recolhível (accordion). */
+function Secao({ title, icon: Icon, open, onToggle, children }) {
+  return (
+    <div className="app-panel rounded-2xl overflow-hidden">
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3 hover:bg-surface-50 transition">
+        <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
+          {Icon && <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 shrink-0" />}
+          <span className="truncate">{title}</span>
+        </span>
+        <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-4 sm:px-5 pb-4 pt-1 space-y-3">{children}</div>}
+    </div>
+  )
+}
 
 export default function EmailIntegracoes() {
   const [user] = useAuthState(auth)
@@ -21,6 +37,8 @@ export default function EmailIntegracoes() {
   const [conectado, setConectado] = useState(false)
 
   const [copiedHook, setCopiedHook] = useState(false)
+  const [secoes, setSecoes] = useState({ provedor: false, testar: false, rastreamento: false })
+  const toggleSecao = (k) => setSecoes((s) => ({ ...s, [k]: !s[k] }))
 
   const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e || '').trim())
 
@@ -109,8 +127,8 @@ export default function EmailIntegracoes() {
         )
       }
     >
-      <div className="flex flex-col lg:flex-row gap-3">
-        <Panel title="Provedor de envio (Resend)" icon={Mail} className="flex-1">
+      <div className="space-y-3">
+        <Secao title="Provedor de envio (Resend)" icon={Mail} open={secoes.provedor} onToggle={() => toggleSecao('provedor')}>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">
@@ -166,9 +184,9 @@ export default function EmailIntegracoes() {
               Salvar configuração
             </button>
           </div>
-        </Panel>
+        </Secao>
 
-        <Panel title="Testar envio" icon={Send} className="flex-1">
+        <Secao title="Testar envio" icon={Send} open={secoes.testar} onToggle={() => toggleSecao('testar')}>
           <div className="space-y-4">
             <p className="text-sm text-stone-500 leading-relaxed">
               Envie um e-mail de teste para confirmar que a chave e o remetente estão funcionando.
@@ -209,10 +227,9 @@ export default function EmailIntegracoes() {
               </a>
             </div>
           </div>
-        </Panel>
-      </div>
+        </Secao>
 
-      <Panel title="Rastreamento — aberturas & cliques" icon={Webhook} className="mt-3">
+        <Secao title="Rastreamento — aberturas & cliques" icon={Webhook} open={secoes.rastreamento} onToggle={() => toggleSecao('rastreamento')}>
         <p className="text-sm text-stone-500 leading-relaxed">
           Para saber quem <strong>abriu</strong> e <strong>clicou</strong> nos links, ligue o rastreamento no Resend e cadastre a URL abaixo.
         </p>
@@ -230,7 +247,8 @@ export default function EmailIntegracoes() {
         <p className="text-xs text-stone-400 flex items-center gap-1.5">
           <BarChart3 className="w-3.5 h-3.5" /> Depois disso, as aberturas e cliques aparecem no histórico em <strong>Disparos</strong>.
         </p>
-      </Panel>
+        </Secao>
+      </div>
     </PageShell>
   )
 }

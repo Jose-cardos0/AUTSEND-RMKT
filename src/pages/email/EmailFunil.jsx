@@ -7,7 +7,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { auth, functions } from '../../lib/firebase'
-import { getEmailFunnels, saveEmailFunnel, deleteEmailFunnel, getEmailTemplates } from '../../lib/firestore'
+import { getEmailFunnels, saveEmailFunnel, deleteEmailFunnel, getEmailTemplates, getProductGroups } from '../../lib/firestore'
 import { KIWIFY_EVENTS } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
@@ -21,6 +21,7 @@ function InicioNode({ selected, data }) {
     <div className={`rounded-xl border-2 px-4 py-3 bg-green-50 shadow-sm ${selected ? 'border-primary-500' : 'border-green-300'}`}>
       <div className="flex items-center gap-2 text-green-700 font-semibold text-sm"><Play className="w-4 h-4" /> Início</div>
       <p className="text-[11px] text-green-600/80 mt-0.5">{data?.evento ? `Evento: ${eventoLabel(data.evento) || data.evento}` : 'Manual / evento'}</p>
+      {data?.grupoNome && <p className="text-[10px] text-green-600/70">Produto: {data.grupoNome}</p>}
       <Handle type="source" position={Position.Bottom} />
     </div>
   )
@@ -76,16 +77,18 @@ export default function EmailFunil() {
   const [showEnroll, setShowEnroll] = useState(false)
   const [enrollList, setEnrollList] = useState('')
   const [inscrevendo, setInscrevendo] = useState(false)
+  const [grupos, setGrupos] = useState([])
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
   useEffect(() => {
     if (!user?.uid) return
-    Promise.all([getEmailFunnels(user.uid), getEmailTemplates(user.uid)])
-      .then(([fs, tpls]) => {
+    Promise.all([getEmailFunnels(user.uid), getEmailTemplates(user.uid), getProductGroups(user.uid)])
+      .then(([fs, tpls, gs]) => {
         setFunis(fs)
         setTemplates(tpls)
+        setGrupos(gs)
         if (fs.length > 0) carregarFunil(fs[0])
       })
       .finally(() => setLoading(false))
@@ -137,7 +140,8 @@ export default function EmailFunil() {
       const cleanEdges = edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle || null, targetHandle: e.targetHandle || null }))
       const inicio = nodes.find((n) => n.type === 'inicio')
       const gatilhoEvento = inicio?.data?.evento || null
-      const id = await saveEmailFunnel(user.uid, selectedId, { nome: nome.trim(), ativo, gatilhoEvento, nodes: cleanNodes, edges: cleanEdges })
+      const gatilhoGrupoId = inicio?.data?.grupoId || null
+      const id = await saveEmailFunnel(user.uid, selectedId, { nome: nome.trim(), ativo, gatilhoEvento, gatilhoGrupoId, nodes: cleanNodes, edges: cleanEdges })
       setFunis(await getEmailFunnels(user.uid))
       setSelectedId(id)
       toast.success('Funil salvo.')
@@ -259,6 +263,17 @@ export default function EmailFunil() {
                   {KIWIFY_EVENTS.map((ev) => <option key={ev.id} value={ev.id}>{ev.label}</option>)}
                 </select>
                 <p className="text-[11px] text-stone-400 mt-1">Com um evento, quem disparar esse evento no Tracker entra sozinho. Você também pode inscrever uma lista manualmente.</p>
+
+                <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Produto (grupo)</label>
+                <select
+                  value={selectedNode.data?.grupoId || ''}
+                  onChange={(e) => { const g = grupos.find((x) => x.id === e.target.value); updateNodeData(selectedNode.id, { grupoId: e.target.value, grupoNome: g?.nome || '' }) }}
+                  className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white"
+                >
+                  <option value="">Todos os produtos</option>
+                  {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+                </select>
+                <p className="text-[11px] text-stone-400 mt-1">Se escolher um produto, só quem for desse grupo entra no funil pelo evento.</p>
               </div>
             )}
 
