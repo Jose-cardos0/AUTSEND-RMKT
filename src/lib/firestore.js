@@ -456,6 +456,18 @@ export async function deleteEmailFunnel(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'emailFunnels', id))
 }
 
+/** Registros de envio do funil (um por e-mail enviado por um nó "Enviar"). */
+export async function getFunnelSends(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'funnelSends'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
 // ── Logs de E-mail ──
 
 export async function getEmailLogs(uid) {

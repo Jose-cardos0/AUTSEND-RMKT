@@ -152,6 +152,11 @@ function replaceVariables(template, lead, product) {
 // ───────────────────────── E-mail (Resend) ─────────────────────────
 
 /** Envia um e-mail via API do Resend. Lança erro com a mensagem do Resend se falhar. */
+// Resend recusa quebras de linha/tabs no assunto — limpa e limita o tamanho.
+function limparAssunto(s) {
+  return String(s || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, 200) || 'Novidade'
+}
+
 async function sendEmailViaResend({ apiKey, from, to, subject, html, replyTo, headers, tags }) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -159,7 +164,7 @@ async function sendEmailViaResend({ apiKey, from, to, subject, html, replyTo, he
     body: JSON.stringify({
       from,
       to: Array.isArray(to) ? to : [to],
-      subject,
+      subject: limparAssunto(subject),
       html,
       text: htmlToText(html),
       reply_to: replyTo || undefined,
@@ -303,7 +308,7 @@ async function enviarLoteEmail(uid, ctx, recipients) {
     return {
       from: ctx.from,
       to: [lead.email],
-      subject: replaceVariables(ctx.subjectBase, lead, product),
+      subject: limparAssunto(replaceVariables(ctx.subjectBase, lead, product)),
       html: htmlBase + ctx.footer,
       text: htmlToText(htmlBase),
       headers: { 'List-Unsubscribe': `<mailto:${ctx.unsub}?subject=Unsubscribe>` },
@@ -1200,9 +1205,21 @@ async function processarFunnelRun(userId, runRef, run, cache) {
 
     if (node.type === 'enviar') {
       if (node.data?.templateId) {
-        await enviarTemplateFunil(userId, node.data.templateId, run.contato, [
+        const ok = await enviarTemplateFunil(userId, node.data.templateId, run.contato, [
           { name: 'funnelId', value: run.funnelId }, { name: 'tipo', value: 'funil' },
         ])
+        try {
+          await db.collection('users').doc(userId).collection('funnelSends').add({
+            funnelId: run.funnelId,
+            funnelNome: funnel.nome || '',
+            nodeId: node.id,
+            templateId: node.data.templateId,
+            templateNome: node.data.templateNome || '',
+            contato: run.contato || {},
+            status: ok ? 'enviado' : 'erro',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          })
+        } catch (_) {}
       }
       nodeId = proximoNode(funnel, nodeId)
       continue

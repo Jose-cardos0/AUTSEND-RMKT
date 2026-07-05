@@ -7,13 +7,18 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { auth, functions } from '../../lib/firebase'
-import { getEmailFunnels, saveEmailFunnel, deleteEmailFunnel, getEmailTemplates, getProductGroups } from '../../lib/firestore'
+import { getEmailFunnels, saveEmailFunnel, deleteEmailFunnel, getEmailTemplates, getProductGroups, getFunnelSends } from '../../lib/firestore'
 import { KIWIFY_EVENTS } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Play, Mail, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus } from 'lucide-react'
+import { Play, Mail, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
+const formatDate = (ts) => {
+  if (!ts) return '-'
+  const d = ts.toDate ? ts.toDate() : ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
 
 // ───────── Nós customizados ─────────
 function InicioNode({ selected, data }) {
@@ -28,10 +33,13 @@ function InicioNode({ selected, data }) {
 }
 function EnviarNode({ data, selected }) {
   return (
-    <div className={`rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[170px] ${selected ? 'border-primary-500' : 'border-primary-200'}`}>
+    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[170px] ${selected ? 'border-primary-500' : 'border-primary-200'}`}>
       <Handle type="target" position={Position.Top} />
       <div className="flex items-center gap-2 text-primary-700 font-semibold text-sm"><Mail className="w-4 h-4" /> Enviar e-mail</div>
       <p className="text-[11px] text-stone-500 mt-0.5 truncate max-w-[150px]">{data?.templateNome || 'Escolha um template'}</p>
+      {data?._enviados > 0 && (
+        <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center shadow" title={`${data._enviados} envio(s)`}>{data._enviados}</span>
+      )}
       <Handle type="source" position={Position.Bottom} />
     </div>
   )
@@ -78,21 +86,34 @@ export default function EmailFunil() {
   const [enrollList, setEnrollList] = useState('')
   const [inscrevendo, setInscrevendo] = useState(false)
   const [grupos, setGrupos] = useState([])
+  const [funnelSends, setFunnelSends] = useState([])
+  const [reenviandoId, setReenviandoId] = useState(null)
+  const [pSends, setPSends] = useState(1)
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
   useEffect(() => {
     if (!user?.uid) return
-    Promise.all([getEmailFunnels(user.uid), getEmailTemplates(user.uid), getProductGroups(user.uid)])
-      .then(([fs, tpls, gs]) => {
+    Promise.all([getEmailFunnels(user.uid), getEmailTemplates(user.uid), getProductGroups(user.uid), getFunnelSends(user.uid)])
+      .then(([fs, tpls, gs, sends]) => {
         setFunis(fs)
         setTemplates(tpls)
         setGrupos(gs)
+        setFunnelSends(sends)
         if (fs.length > 0) carregarFunil(fs[0])
       })
       .finally(() => setLoading(false))
   }, [user?.uid])
+
+  // Injeta a contagem de envios em cada nó "Enviar" (bolinha vermelha)
+  useEffect(() => {
+    if (!selectedId) return
+    const counts = {}
+    funnelSends.filter((s) => s.funnelId === selectedId && s.status === 'enviado').forEach((s) => { counts[s.nodeId] = (counts[s.nodeId] || 0) + 1 })
+    setNodes((nds) => nds.map((n) => (n.type === 'enviar' ? { ...n, data: { ...n.data, _enviados: counts[n.id] || 0 } } : n)))
+    setPSends(1)
+  }, [funnelSends, selectedId, setNodes])
 
   const carregarFunil = (f) => {
     setSelectedId(f.id)
@@ -136,7 +157,11 @@ export default function EmailFunil() {
     if (!nome.trim()) { toast.error('Dê um nome ao funil.'); return }
     setSalvando(true)
     try {
-      const cleanNodes = nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data || {} }))
+      const cleanNodes = nodes.map((n) => {
+        const data = {}
+        for (const [k, v] of Object.entries(n.data || {})) if (!k.startsWith('_')) data[k] = v
+        return { id: n.id, type: n.type, position: n.position, data }
+      })
       const cleanEdges = edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle || null, targetHandle: e.targetHandle || null }))
       const inicio = nodes.find((n) => n.type === 'inicio')
       const gatilhoEvento = inicio?.data?.evento || null
@@ -175,6 +200,26 @@ export default function EmailFunil() {
     }
   }
 
+  const carregarSends = async () => {
+    if (!user?.uid) return
+    try { setFunnelSends(await getFunnelSends(user.uid)) } catch (_) {}
+  }
+
+  const reenviarSend = async (s) => {
+    if (!s.contato?.email || !s.templateId) { toast.error('Sem e-mail ou template para reenviar.'); return }
+    setReenviandoId(s.id)
+    try {
+      const fn = httpsCallable(functions, 'sendTemplateManual')
+      await fn({ templateId: s.templateId, to: s.contato.email, nome: s.contato.nome, produto: s.contato.produto })
+      toast.success(`Reenviado para ${s.contato.email}.`)
+      await carregarSends()
+    } catch (err) {
+      toast.error(err.message || 'Falha ao reenviar.')
+    } finally {
+      setReenviandoId(null)
+    }
+  }
+
   const handleExcluir = async () => {
     if (!selectedId) return
     if (!window.confirm(`Excluir o funil "${nome}"?`)) return
@@ -191,9 +236,14 @@ export default function EmailFunil() {
 
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
+  const sendsDoFunil = funnelSends.filter((s) => s.funnelId === selectedId)
+  const SENDS_POR_PAGINA = 10
+  const totalPagSends = Math.max(1, Math.ceil(sendsDoFunil.length / SENDS_POR_PAGINA))
+  const pSendsAtual = Math.min(pSends, totalPagSends)
+  const sendsPagina = sendsDoFunil.slice((pSendsAtual - 1) * SENDS_POR_PAGINA, pSendsAtual * SENDS_POR_PAGINA)
+
   return (
     <PageShell
-      fill
       badge="E-mail · Funil"
       title="Funil de e-mail"
       subtitle="Arraste os nós e ligue com setas: envie, espere e ramifique conforme abriu / clicou."
@@ -209,6 +259,7 @@ export default function EmailFunil() {
         </div>
       }
     >
+      <div className="space-y-3">
       {/* Barra: nome + ativo + adicionar nós */}
       <div className="shrink-0 app-panel rounded-2xl p-3 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
         <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do funil" className="w-full sm:w-56 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
@@ -228,7 +279,7 @@ export default function EmailFunil() {
       </div>
 
       {/* Canvas */}
-      <div className="relative flex-1 min-h-0 app-panel rounded-2xl overflow-hidden">
+      <div className="relative app-panel rounded-2xl overflow-hidden h-[60vh]">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -321,6 +372,69 @@ export default function EmailFunil() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Relatório de envios do funil */}
+      <div className="app-panel rounded-2xl overflow-hidden">
+        <div className="px-4 sm:px-5 py-3 border-b border-surface-100 flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 text-sm font-semibold text-stone-800"><Send className="w-4 h-4 text-primary-600" /> Relatório de envios{selectedId ? '' : ' — salve/escolha um funil'}</span>
+          <button onClick={carregarSends} className="text-xs text-primary-600 hover:underline flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Atualizar</button>
+        </div>
+        <div className="overflow-x-auto">
+          {sendsDoFunil.length === 0 ? (
+            <p className="p-6 text-sm text-stone-400 text-center">Nenhum envio deste funil ainda. Quando um contato entrar e um nó "Enviar" disparar, aparece aqui (e a bolinha vermelha no nó sobe).</p>
+          ) : (
+            <table className="w-full text-sm min-w-[720px]">
+              <thead>
+                <tr className="border-b border-surface-100 text-left text-stone-500">
+                  <th className="px-4 py-2.5 font-medium text-xs">Contato</th>
+                  <th className="px-4 py-2.5 font-medium text-xs">Produto</th>
+                  <th className="px-4 py-2.5 font-medium text-xs">E-mail enviado</th>
+                  <th className="px-4 py-2.5 font-medium text-xs">Enviado?</th>
+                  <th className="px-4 py-2.5 font-medium text-xs">Quando</th>
+                  <th className="px-4 py-2.5 font-medium text-xs"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sendsPagina.map((s) => (
+                  <tr key={s.id} className="border-b border-surface-50 hover:bg-surface-50/70">
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium text-stone-800 truncate max-w-[180px]">{s.contato?.nome || '—'}</div>
+                      <div className="text-xs text-stone-400 truncate max-w-[180px]">{s.contato?.email || ''}</div>
+                    </td>
+                    <td className="px-4 py-2.5 text-stone-600 truncate max-w-[120px]">{s.contato?.produto || '—'}</td>
+                    <td className="px-4 py-2.5 text-stone-600 truncate max-w-[160px]">{s.templateNome || '—'}</td>
+                    <td className="px-4 py-2.5">
+                      {s.status === 'enviado' ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700"><CheckCircle2 className="w-3.5 h-3.5" /> Enviado</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600"><XCircle className="w-3.5 h-3.5" /> Falhou</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-stone-500 whitespace-nowrap">{formatDate(s.createdAt)}</td>
+                    <td className="px-4 py-2.5">
+                      {s.status !== 'enviado' && (
+                        <button onClick={() => reenviarSend(s)} disabled={reenviandoId === s.id} className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:bg-primary-50 rounded-lg px-2 py-1.5 disabled:opacity-40">
+                          {reenviandoId === s.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Reenviar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {sendsDoFunil.length > SENDS_POR_PAGINA && (
+          <div className="px-4 py-3 border-t border-surface-100 flex items-center justify-between gap-3">
+            <p className="text-xs text-stone-600">Página {pSendsAtual} de {totalPagSends} · {sendsDoFunil.length} envio(s)</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPSends((p) => Math.max(1, p - 1))} disabled={pSendsAtual <= 1} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
+              <button onClick={() => setPSends((p) => Math.min(totalPagSends, p + 1))} disabled={pSendsAtual >= totalPagSends} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          </div>
+        )}
+      </div>
       </div>
 
       {showEnroll && (

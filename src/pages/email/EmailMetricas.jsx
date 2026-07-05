@@ -5,7 +5,7 @@ import { auth } from '../../lib/firebase'
 import { getEmailDisparos, getEmailEvents, getEmailLogs, getLeads, getProductGroups } from '../../lib/firestore'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, DollarSign, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 
 /** Interpreta o valor da compra: inteiro puro = centavos; senão tenta ler o número formatado. */
 function parseValorNum(valor) {
@@ -44,9 +44,11 @@ function StatCard({ label, value, sub, icon: Icon, color }) {
           <p className="text-2xl sm:text-3xl font-bold mt-1.5 tabular-nums">{value}</p>
           {sub && <p className="text-[11px] opacity-70 mt-0.5">{sub}</p>}
         </div>
-        <div className="w-10 h-10 rounded-xl bg-white/70 flex items-center justify-center ring-1 ring-white/80 shrink-0">
-          <Icon className="w-5 h-5 opacity-70" />
-        </div>
+        {Icon && (
+          <div className="w-10 h-10 rounded-xl bg-white/70 flex items-center justify-center ring-1 ring-white/80 shrink-0">
+            <Icon className="w-5 h-5 opacity-70" />
+          </div>
+        )}
       </div>
     </motion.div>
   )
@@ -144,6 +146,17 @@ export default function EmailMetricas() {
     return m
   }, [leads])
 
+  // e-mail (minúsculo) → produto (lead mais recente com produto vence)
+  const produtoMap = useMemo(() => {
+    const m = new Map()
+    for (const l of leads) {
+      const email = (l.email || '').toLowerCase().trim()
+      if (!email || !l.produto || m.has(email)) continue
+      m.set(email, l.produto)
+    }
+    return m
+  }, [leads])
+
   const atrib = useMemo(() => {
     let receita = 0
     let compras = 0
@@ -196,6 +209,7 @@ export default function EmailMetricas() {
         case 'contato': return (e.email || '').toLowerCase()
         case 'acao': return e.tipo || ''
         case 'link': return (e.link || '').toLowerCase()
+        case 'produto': return (produtoMap.get((e.email || '').toLowerCase()) || '').toLowerCase()
         case 'valor': { const info = purchaseMap.get((e.email || '').toLowerCase()); return info ? (parseValorNum(info.valor) || 0) : -1 }
         default: { const c = e.createdAt; return c?.toMillis ? c.toMillis() : (c?.seconds ? c.seconds * 1000 : 0) }
       }
@@ -206,7 +220,7 @@ export default function EmailMetricas() {
       if (va > vb) return sortDir === 'asc' ? 1 : -1
       return 0
     })
-  }, [atividadeBase, fAcao, fTexto, sortKey, sortDir, purchaseMap])
+  }, [atividadeBase, fAcao, fTexto, sortKey, sortDir, purchaseMap, produtoMap])
 
   useEffect(() => { setPagina(1) }, [fAcao, fTexto, sortKey, sortDir, grupoFiltro])
 
@@ -222,7 +236,7 @@ export default function EmailMetricas() {
   const totalPaginas = Math.max(1, Math.ceil(atividadeFiltrada.length / POR_PAGINA))
   const paginaAtual = Math.min(pagina, totalPaginas)
   const atividadePagina = atividadeFiltrada.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
-  const COLS = [['contato', 'Contato'], ['acao', 'Ação'], ['link', 'Link'], ['valor', 'Valor'], ['quando', 'Quando']]
+  const COLS = [['contato', 'Contato'], ['acao', 'Ação'], ['link', 'Link'], ['produto', 'Produto'], ['valor', 'Valor'], ['quando', 'Quando']]
   const DISP_POR_PAGINA = 10
   const totalPagDisp = Math.max(1, Math.ceil(disparosComMetrica.length / DISP_POR_PAGINA))
   const pagDispAtual = Math.min(pDisp, totalPagDisp)
@@ -260,7 +274,7 @@ export default function EmailMetricas() {
         <StatCard label="Aberturas únicas" value={stats.opened} sub={`Taxa: ${pct(stats.opened, stats.enviados)}`} icon={Eye} color="blue" />
         <StatCard label="Cliques únicos" value={stats.clicked} sub={`Taxa: ${pct(stats.clicked, stats.enviados)}`} icon={MousePointerClick} color="violet" />
         <StatCard label="CTR (clique/abertura)" value={pct(stats.clicked, stats.opened)} icon={Percent} color="amber" />
-        <StatCard label="Receita atribuída" value={formatMoeda(atrib.receita, atrib.moeda)} sub={`${atrib.compras} compra(s)`} icon={DollarSign} color="green" />
+        <StatCard label="Receita atribuída" value={formatMoeda(atrib.receita, atrib.moeda)} sub={`${atrib.compras} compra(s)`} color="green" />
       </div>
 
       <div className="flex flex-col lg:flex-row gap-3">
@@ -345,7 +359,7 @@ export default function EmailMetricas() {
           {atividadeFiltrada.length === 0 ? (
             <p className="p-6 text-sm text-stone-400 text-center">Nenhuma atividade encontrada.</p>
           ) : (
-            <table className="w-full text-sm min-w-[680px]">
+            <table className="w-full text-sm min-w-[780px]">
               <thead>
                 <tr className="border-b border-surface-100 text-left text-stone-500">
                   {COLS.map(([key, label]) => (
@@ -363,11 +377,13 @@ export default function EmailMetricas() {
                 {atividadePagina.map((e) => {
                   const t = TIPO_LABEL[e.tipo] || { label: e.tipo, cls: 'bg-stone-100 text-stone-600' }
                   const info = purchaseMap.get((e.email || '').toLowerCase())
+                  const prod = produtoMap.get((e.email || '').toLowerCase())
                   return (
                     <tr key={e.id} className="border-b border-surface-50 hover:bg-surface-50/70">
                       <td className="px-4 py-2.5 text-stone-700 truncate max-w-[180px]">{e.email || '-'}</td>
                       <td className="px-4 py-2.5"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${t.cls}`}>{t.label}</span></td>
                       <td className="px-4 py-2.5 text-xs text-stone-500 truncate max-w-[200px]" title={e.link || ''}>{e.link || '—'}</td>
+                      <td className="px-4 py-2.5 text-xs text-stone-600 truncate max-w-[140px]" title={prod || ''}>{prod || '—'}</td>
                       <td className="px-4 py-2.5 text-sm font-semibold text-emerald-700 whitespace-nowrap">{info ? (formatValor(info.valor, info.moeda) || '—') : '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-stone-500 whitespace-nowrap">{formatDate(e.createdAt)}</td>
                     </tr>
