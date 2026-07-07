@@ -3,9 +3,14 @@ import { motion } from 'framer-motion'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { auth } from '../../lib/firebase'
 import { getEmailDisparos, getEmailEvents, getEmailLogs, getLeads, getProductGroups } from '../../lib/firestore'
+import { canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, Search, ChevronLeft, ChevronRight, TrendingDown } from 'lucide-react'
+
+// Eventos que representam devolução de dinheiro (descontam da receita).
+const ESTORNO_EVENTS = new Set(['order_status.chargeback', 'order_status.refund'])
+const isEstorno = (ev) => ESTORNO_EVENTS.has(canonicalEvento(ev))
 
 /** Interpreta o valor da compra: inteiro puro = centavos; senão tenta ler o número formatado. */
 function parseValorNum(valor) {
@@ -31,6 +36,7 @@ function StatCard({ label, value, sub, icon: Icon, color }) {
     green: 'from-emerald-50 to-green-50/80 text-emerald-700 border-emerald-100/90',
     violet: 'from-violet-50 to-purple-50/80 text-violet-700 border-violet-100/90',
     amber: 'from-amber-50 to-orange-50/70 text-amber-800 border-amber-100/90',
+    red: 'from-rose-50 to-red-50/80 text-red-700 border-red-100/90',
   }
   return (
     <motion.div
@@ -68,6 +74,8 @@ const TIPO_LABEL = {
   delivered: { label: 'Entregue', cls: 'bg-green-100 text-green-700' },
   bounced: { label: 'Bounce', cls: 'bg-red-100 text-red-700' },
   complained: { label: 'Spam', cls: 'bg-red-100 text-red-700' },
+  chargeback: { label: 'Chargeback', cls: 'bg-red-100 text-red-700' },
+  refund: { label: 'Reembolso', cls: 'bg-orange-100 text-orange-700' },
 }
 
 export default function EmailMetricas() {
@@ -140,8 +148,24 @@ export default function EmailMetricas() {
     const m = new Map()
     for (const l of leads) {
       const email = (l.email || '').toLowerCase().trim()
-      if (!email || !l.valor) continue
+      if (!email || !l.valor || isEstorno(l.evento)) continue
       if (!m.has(email)) m.set(email, { valor: l.valor, moeda: l.moeda, evento: l.evento })
+    }
+    return m
+  }, [leads])
+
+  // e-mail (minúsculo) → estornos { valor (soma), moeda } (chargeback + reembolso)
+  const estornoMap = useMemo(() => {
+    const m = new Map()
+    for (const l of leads) {
+      if (!isEstorno(l.evento)) continue
+      const email = (l.email || '').toLowerCase().trim()
+      const n = parseValorNum(l.valor)
+      if (!email || n == null) continue
+      const cur = m.get(email) || { valor: 0, moeda: l.moeda || 'BRL' }
+      cur.valor += n
+      if (l.moeda) cur.moeda = l.moeda
+      m.set(email, cur)
     }
     return m
   }, [leads])
@@ -158,27 +182,37 @@ export default function EmailMetricas() {
   }, [leads])
 
   const atrib = useMemo(() => {
-    let receita = 0
+    let bruto = 0
     let compras = 0
+    let estorno = 0
+    let estornoQtd = 0
     let moeda = 'BRL'
     if (grupoSel) {
       const seen = new Set()
       for (const l of leads) {
         const email = (l.email || '').toLowerCase()
-        if (!l.produto || !produtosGrupo.has(l.produto) || !l.valor || seen.has(email)) continue
+        if (!l.produto || !produtosGrupo.has(l.produto) || !l.valor) continue
         const n = parseValorNum(l.valor)
-        if (n != null) { seen.add(email); receita += n; compras++; if (l.moeda) moeda = l.moeda }
+        if (n == null) continue
+        if (l.moeda) moeda = l.moeda
+        if (isEstorno(l.evento)) { estorno += n; estornoQtd++; continue }
+        if (seen.has(email)) continue
+        seen.add(email); bruto += n; compras++
       }
-      return { receita, compras, moeda }
+      return { receita: bruto - estorno, bruto, estorno, estornoQtd, compras, moeda }
     }
     const emailedSet = new Set(events.map((e) => (e.email || '').toLowerCase()).filter(Boolean))
     purchaseMap.forEach((info, email) => {
       if (!emailedSet.has(email)) return
       const n = parseValorNum(info.valor)
-      if (n != null) { receita += n; compras++; if (info.moeda) moeda = info.moeda }
+      if (n != null) { bruto += n; compras++; if (info.moeda) moeda = info.moeda }
     })
-    return { receita, compras, moeda }
-  }, [grupoSel, leads, produtosGrupo, purchaseMap, events])
+    estornoMap.forEach((info, email) => {
+      if (!emailedSet.has(email)) return
+      estorno += info.valor; estornoQtd++; if (info.moeda) moeda = info.moeda
+    })
+    return { receita: bruto - estorno, bruto, estorno, estornoQtd, compras, moeda }
+  }, [grupoSel, leads, produtosGrupo, purchaseMap, estornoMap, events])
 
   const disparosComMetrica = useMemo(() => {
     return disparos.map((d) => {
@@ -195,7 +229,27 @@ export default function EmailMetricas() {
     return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6)
   }, [eventosF])
 
-  const atividadeBase = useMemo(() => eventosF.filter((e) => e.tipo === 'opened' || e.tipo === 'clicked'), [eventosF])
+  // Estornos (chargeback/reembolso) viram linhas de atividade, vindas dos leads
+  const estornoAtividade = useMemo(() => {
+    return leads
+      .filter((l) => isEstorno(l.evento) && l.email)
+      .filter((l) => !grupoSel || (l.produto && produtosGrupo.has(l.produto)))
+      .map((l) => ({
+        id: `estorno_${l.id}`,
+        email: l.email,
+        tipo: canonicalEvento(l.evento) === 'order_status.chargeback' ? 'chargeback' : 'refund',
+        link: '',
+        createdAt: l.createdAt,
+        valorEstorno: parseValorNum(l.valor),
+        moeda: l.moeda,
+        produtoEstorno: l.produto,
+      }))
+  }, [leads, grupoSel, produtosGrupo])
+
+  const atividadeBase = useMemo(
+    () => [...eventosF.filter((e) => e.tipo === 'opened' || e.tipo === 'clicked'), ...estornoAtividade],
+    [eventosF, estornoAtividade]
+  )
 
   const atividadeFiltrada = useMemo(() => {
     let list = atividadeBase
@@ -209,8 +263,11 @@ export default function EmailMetricas() {
         case 'contato': return (e.email || '').toLowerCase()
         case 'acao': return e.tipo || ''
         case 'link': return (e.link || '').toLowerCase()
-        case 'produto': return (produtoMap.get((e.email || '').toLowerCase()) || '').toLowerCase()
-        case 'valor': { const info = purchaseMap.get((e.email || '').toLowerCase()); return info ? (parseValorNum(info.valor) || 0) : -1 }
+        case 'produto': return (e.produtoEstorno || produtoMap.get((e.email || '').toLowerCase()) || '').toLowerCase()
+        case 'valor': {
+          if (e.tipo === 'chargeback' || e.tipo === 'refund') return -(e.valorEstorno || 0)
+          const info = purchaseMap.get((e.email || '').toLowerCase()); return info ? (parseValorNum(info.valor) || 0) : -1
+        }
         default: { const c = e.createdAt; return c?.toMillis ? c.toMillis() : (c?.seconds ? c.seconds * 1000 : 0) }
       }
     }
@@ -237,7 +294,7 @@ export default function EmailMetricas() {
   const paginaAtual = Math.min(pagina, totalPaginas)
   const atividadePagina = atividadeFiltrada.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
   const COLS = [['contato', 'Contato'], ['acao', 'Ação'], ['link', 'Link'], ['produto', 'Produto'], ['valor', 'Valor'], ['quando', 'Quando']]
-  const DISP_POR_PAGINA = 10
+  const DISP_POR_PAGINA = 5
   const totalPagDisp = Math.max(1, Math.ceil(disparosComMetrica.length / DISP_POR_PAGINA))
   const pagDispAtual = Math.min(pDisp, totalPagDisp)
   const disparosPagina = disparosComMetrica.slice((pagDispAtual - 1) * DISP_POR_PAGINA, pagDispAtual * DISP_POR_PAGINA)
@@ -269,12 +326,24 @@ export default function EmailMetricas() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatCard label="Enviados" value={stats.enviados} icon={Send} color="blue" />
         <StatCard label="Aberturas únicas" value={stats.opened} sub={`Taxa: ${pct(stats.opened, stats.enviados)}`} icon={Eye} color="blue" />
         <StatCard label="Cliques únicos" value={stats.clicked} sub={`Taxa: ${pct(stats.clicked, stats.enviados)}`} icon={MousePointerClick} color="violet" />
         <StatCard label="CTR (clique/abertura)" value={pct(stats.clicked, stats.opened)} icon={Percent} color="amber" />
-        <StatCard label="Receita atribuída" value={formatMoeda(atrib.receita, atrib.moeda)} sub={`${atrib.compras} compra(s)`} color="green" />
+        <StatCard
+          label="Receita atribuída (líquida)"
+          value={formatMoeda(atrib.receita, atrib.moeda)}
+          sub={atrib.estorno > 0 ? `${atrib.compras} compra(s) · bruto ${formatMoeda(atrib.bruto, atrib.moeda)}` : `${atrib.compras} compra(s)`}
+          color="green"
+        />
+        <StatCard
+          label="Estornos (chargeback + reemb.)"
+          value={atrib.estorno > 0 ? `- ${formatMoeda(atrib.estorno, atrib.moeda)}` : formatMoeda(0, atrib.moeda)}
+          sub={`${atrib.estornoQtd} estorno(s)`}
+          icon={TrendingDown}
+          color="red"
+        />
       </div>
 
       <div className="flex flex-col lg:flex-row gap-3">
@@ -353,6 +422,8 @@ export default function EmailMetricas() {
             <option value="">Todas as ações</option>
             <option value="opened">Abriu</option>
             <option value="clicked">Clicou</option>
+            <option value="chargeback">Chargeback</option>
+            <option value="refund">Reembolso</option>
           </select>
         </div>
         <div className="overflow-x-auto">
@@ -376,15 +447,20 @@ export default function EmailMetricas() {
               <tbody>
                 {atividadePagina.map((e) => {
                   const t = TIPO_LABEL[e.tipo] || { label: e.tipo, cls: 'bg-stone-100 text-stone-600' }
+                  const isEst = e.tipo === 'chargeback' || e.tipo === 'refund'
                   const info = purchaseMap.get((e.email || '').toLowerCase())
-                  const prod = produtoMap.get((e.email || '').toLowerCase())
+                  const prod = e.produtoEstorno || produtoMap.get((e.email || '').toLowerCase())
                   return (
                     <tr key={e.id} className="border-b border-surface-50 hover:bg-surface-50/70">
                       <td className="px-4 py-2.5 text-stone-700 truncate max-w-[180px]">{e.email || '-'}</td>
                       <td className="px-4 py-2.5"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${t.cls}`}>{t.label}</span></td>
                       <td className="px-4 py-2.5 text-xs text-stone-500 truncate max-w-[200px]" title={e.link || ''}>{e.link || '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-stone-600 truncate max-w-[140px]" title={prod || ''}>{prod || '—'}</td>
-                      <td className="px-4 py-2.5 text-sm font-semibold text-emerald-700 whitespace-nowrap">{info ? (formatValor(info.valor, info.moeda) || '—') : '—'}</td>
+                      {isEst ? (
+                        <td className="px-4 py-2.5 text-sm font-semibold text-red-600 whitespace-nowrap">{e.valorEstorno != null ? `- ${formatMoeda(e.valorEstorno, e.moeda)}` : '—'}</td>
+                      ) : (
+                        <td className="px-4 py-2.5 text-sm font-semibold text-emerald-700 whitespace-nowrap">{info ? (formatValor(info.valor, info.moeda) || '—') : '—'}</td>
+                      )}
                       <td className="px-4 py-2.5 text-xs text-stone-500 whitespace-nowrap">{formatDate(e.createdAt)}</td>
                     </tr>
                   )
