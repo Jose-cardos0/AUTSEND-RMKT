@@ -7,7 +7,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { auth, functions } from '../../lib/firebase'
-import { getEmailFunnels, saveEmailFunnel, deleteEmailFunnel, getEmailTemplates, getProductGroups, getFunnelSends } from '../../lib/firestore'
+import { getEmailFunnels, saveEmailFunnel, deleteEmailFunnel, getEmailTemplates, getProductGroups, getFunnelSends, getEmailProviders } from '../../lib/firestore'
+import RemetentePicker from '../../components/RemetentePicker'
 import { KIWIFY_EVENTS } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
@@ -89,18 +90,20 @@ export default function EmailFunil() {
   const [funnelSends, setFunnelSends] = useState([])
   const [reenviandoId, setReenviandoId] = useState(null)
   const [pSends, setPSends] = useState(1)
+  const [providers, setProviders] = useState([])
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
   useEffect(() => {
     if (!user?.uid) return
-    Promise.all([getEmailFunnels(user.uid), getEmailTemplates(user.uid), getProductGroups(user.uid), getFunnelSends(user.uid)])
-      .then(([fs, tpls, gs, sends]) => {
+    Promise.all([getEmailFunnels(user.uid), getEmailTemplates(user.uid), getProductGroups(user.uid), getFunnelSends(user.uid), getEmailProviders(user.uid)])
+      .then(([fs, tpls, gs, sends, provs]) => {
         setFunis(fs)
         setTemplates(tpls)
         setGrupos(gs)
         setFunnelSends(sends)
+        setProviders(provs)
         if (fs.length > 0) carregarFunil(fs[0])
       })
       .finally(() => setLoading(false))
@@ -342,6 +345,9 @@ export default function EmailFunil() {
                   <option value="">{templates.length === 0 ? 'SEM TEMPLATE' : '— escolha —'}</option>
                   {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
                 </select>
+
+                <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Remetente</label>
+                <RemetentePicker providers={providers} value={selectedNode.data?.remetenteId || null} onChange={(id) => updateNodeData(selectedNode.id, { remetenteId: id })} />
               </div>
             )}
 

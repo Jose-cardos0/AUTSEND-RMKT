@@ -191,6 +191,42 @@ function montarRemetente(cfg) {
   return cfg.fromName ? `${cfg.fromName} <${cfg.fromEmail}>` : cfg.fromEmail
 }
 
+async function getEmailProvidersForUser(userId) {
+  const snap = await db.collection('users').doc(userId).collection('emailProviders').get()
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
+/** Resolve a config de envio (apiKey + from) a partir de um remetenteId, ou usa o padrão.
+ *  Retorna um objeto no mesmo formato do cfg antigo (apiKey/fromEmail) + campo `from` pronto.
+ *  Compatível: sem provedores cadastrados, cai na config antiga (config/email). */
+async function resolverRemetente(userId, remetenteId) {
+  const vazio = { apiKey: null, fromEmail: null, fromName: null, from: null, providerId: null, remetenteId: null }
+  const montar = (p, r) => ({
+    apiKey: p.apiKey || null,
+    fromEmail: r.email,
+    fromName: r.nome || '',
+    from: r.nome ? `${r.nome} <${r.email}>` : r.email,
+    providerId: p.id,
+    remetenteId: r.id,
+  })
+  const providers = await getEmailProvidersForUser(userId)
+  if (providers.length) {
+    if (remetenteId) {
+      for (const p of providers) {
+        const r = (p.remetentes || []).find((x) => x && x.id === remetenteId && x.email)
+        if (r) return montar(p, r)
+      }
+    }
+    for (const p of providers) {
+      const r = (p.remetentes || []).find((x) => x && x.email)
+      if (r) return montar(p, r)
+    }
+  }
+  const cfg = await getEmailConfigForUser(userId)
+  if (cfg?.fromEmail) return { apiKey: cfg.apiKey || null, fromEmail: cfg.fromEmail, fromName: cfg.fromName || '', from: montarRemetente(cfg), providerId: null, remetenteId: null }
+  return vazio
+}
+
 /** Versão texto simples do HTML — melhora a entregabilidade (reduz spam). */
 function htmlToText(html) {
   return String(html || '')
@@ -227,8 +263,8 @@ exports.sendTestEmail = onCall({ region: 'us-central1' }, async (request) => {
   const to = (request.data?.to || '').toString().trim()
   if (!to) throw new HttpsError('invalid-argument', 'Informe um e-mail de destino.')
 
-  const cfg = await getEmailConfigForUser(uid)
-  const from = montarRemetente(cfg)
+  const cfg = await resolverRemetente(uid, request.data?.remetenteId || null)
+  const from = cfg.from
   if (!cfg?.apiKey || !from) {
     throw new HttpsError('failed-precondition', 'Configure a API key do Resend e o remetente antes de testar.')
   }
@@ -255,12 +291,12 @@ exports.sendTestEmail = onCall({ region: 'us-central1' }, async (request) => {
 exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
-  const { templateId, to, nome, produto, leadId } = request.data || {}
+  const { templateId, to, nome, produto, leadId, remetenteId } = request.data || {}
   if (!templateId) throw new HttpsError('invalid-argument', 'Escolha um template.')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || '').trim())) throw new HttpsError('invalid-argument', 'E-mail inválido.')
 
-  const cfg = await getEmailConfigForUser(uid)
-  const from = montarRemetente(cfg)
+  const cfg = await resolverRemetente(uid, remetenteId || null)
+  const from = cfg.from
   if (!cfg?.apiKey || !from) throw new HttpsError('failed-precondition', 'Configure o Resend nas Integrações de E-mail.')
 
   const tplSnap = await db.doc(`users/${uid}/emailTemplates/${templateId}`).get()
@@ -355,8 +391,8 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
   if (!templateId) throw new HttpsError('invalid-argument', 'Escolha um template.')
   if (recipients.length === 0) throw new HttpsError('invalid-argument', 'Nenhum destinatário na lista.')
 
-  const cfg = await getEmailConfigForUser(uid)
-  const from = montarRemetente(cfg)
+  const cfg = await resolverRemetente(uid, data.remetenteId || null)
+  const from = cfg.from
   if (!cfg?.apiKey || !from) throw new HttpsError('failed-precondition', 'Configure o Resend nas Integrações de E-mail.')
 
   const tplSnap = await db.doc(`users/${uid}/emailTemplates/${templateId}`).get()
@@ -382,6 +418,7 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
     nomeDisparo: (data.nomeDisparo || 'Disparo').toString(),
     templateId,
     templateNome: tpl.nome || '',
+    remetenteId: data.remetenteId || null,
     subject: baseSubject,
     total: validos.length,
     enviados: 0,
@@ -439,10 +476,10 @@ exports.processarLotesEmail = onSchedule(
       try {
         if (!(key in cache)) {
           const dSnap = await db.doc(`users/${uid}/emailDisparos/${dispId}`).get()
-          const cfg = await getEmailConfigForUser(uid)
           let tpl = null
           if (dSnap.exists) {
             const dd = dSnap.data()
+            const cfg = await resolverRemetente(uid, dd.remetenteId || null)
             const tSnap = await db.doc(`users/${uid}/emailTemplates/${dd.templateId}`).get()
             tpl = tSnap.exists ? tSnap.data() : null
             cache[key] = { disp: dd, cfg, tpl }
@@ -450,7 +487,7 @@ exports.processarLotesEmail = onSchedule(
         }
         const c = cache[key]
         if (!c || !c.cfg?.apiKey || !c.tpl) { await loteDoc.ref.update({ status: 'erro' }); continue }
-        const from = montarRemetente(c.cfg)
+        const from = c.cfg.from
         const unsub = c.cfg.fromEmail
         const ctx = { apiKey: c.cfg.apiKey, from, tplHtml: c.tpl.inlined || c.tpl.html || '', subjectBase: c.disp.subject || c.tpl.subject || 'Novidade', footer: unsubFooter(unsub), unsub, disparoId: dispId }
         const r = await enviarLoteEmail(uid, ctx, lote.recipients || [])
@@ -686,8 +723,8 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product) {
     if (!tplSnap.exists) return
     const tpl = tplSnap.data()
 
-    const cfg = await getEmailConfigForUser(userId)
-    const from = montarRemetente(cfg)
+    const cfg = await resolverRemetente(userId, auto.remetenteId || null)
+    const from = cfg.from
     if (!cfg?.apiKey || !from) return
 
     const htmlBase = tpl.inlined || tpl.html || ''
@@ -763,11 +800,11 @@ function proximoNode(funnel, nodeId, handle) {
 }
 
 /** Envia um template de funil para um contato (com tags de funil para o rastreamento). */
-async function enviarTemplateFunil(userId, templateId, contato, tags) {
+async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteId) {
   try {
     if (!contato?.email || !templateId) return false
-    const cfg = await getEmailConfigForUser(userId)
-    const from = montarRemetente(cfg)
+    const cfg = await resolverRemetente(userId, remetenteId || null)
+    const from = cfg.from
     if (!cfg?.apiKey || !from) return false
     const tplSnap = await db.doc(`users/${userId}/emailTemplates/${templateId}`).get()
     if (!tplSnap.exists) return false
@@ -1207,7 +1244,7 @@ async function processarFunnelRun(userId, runRef, run, cache) {
       if (node.data?.templateId) {
         const ok = await enviarTemplateFunil(userId, node.data.templateId, run.contato, [
           { name: 'funnelId', value: run.funnelId }, { name: 'tipo', value: 'funil' },
-        ])
+        ], node.data?.remetenteId || null)
         try {
           await db.collection('users').doc(userId).collection('funnelSends').add({
             funnelId: run.funnelId,

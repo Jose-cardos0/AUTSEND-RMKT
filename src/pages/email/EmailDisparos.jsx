@@ -5,9 +5,10 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth, functions } from '../../lib/firebase'
-import { getEmailTemplates, getEmailConfig, getEmailDisparos, deleteEmailDisparo, getEmailEvents } from '../../lib/firestore'
+import { getEmailTemplates, getEmailConfig, getEmailDisparos, deleteEmailDisparo, getEmailEvents, getEmailProviders } from '../../lib/firestore'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
+import RemetentePicker from '../../components/RemetentePicker'
 import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, Mail, ChevronLeft, ChevronRight, ChevronDown, Eye, MousePointerClick } from 'lucide-react'
 
 const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
@@ -38,6 +39,8 @@ export default function EmailDisparos() {
   const [loading, setLoading] = useState(true)
   const [templates, setTemplates] = useState([])
   const [config, setConfig] = useState(null)
+  const [providers, setProviders] = useState([])
+  const [remetenteId, setRemetenteId] = useState(null)
   const [historico, setHistorico] = useState([])
 
   const [templateId, setTemplateId] = useState('')
@@ -53,12 +56,13 @@ export default function EmailDisparos() {
 
   useEffect(() => {
     if (!user?.uid) return
-    Promise.all([getEmailTemplates(user.uid), getEmailConfig(user.uid), getEmailDisparos(user.uid), getEmailEvents(user.uid)])
-      .then(([tpls, cfg, disp, evs]) => {
+    Promise.all([getEmailTemplates(user.uid), getEmailConfig(user.uid), getEmailDisparos(user.uid), getEmailEvents(user.uid), getEmailProviders(user.uid)])
+      .then(([tpls, cfg, disp, evs, provs]) => {
         setTemplates(tpls)
         setConfig(cfg)
         setHistorico(disp)
         setEvents(evs)
+        setProviders(provs)
         if (tpls.length > 0) { setTemplateId(tpls[0].id); setSubject(tpls[0].subject || '') }
       })
       .finally(() => setLoading(false))
@@ -71,7 +75,7 @@ export default function EmailDisparos() {
   }
 
   const contatos = useMemo(() => parseLista(lista), [lista])
-  const configOk = !!(config?.apiKey && config?.fromEmail)
+  const configOk = !!(config?.apiKey && config?.fromEmail) || providers.some((p) => p.apiKey && (p.remetentes || []).some((r) => r.email))
 
   const handleUploadExcel = (e) => {
     const file = e.target?.files?.[0]
@@ -118,6 +122,7 @@ export default function EmailDisparos() {
         recipients: contatos,
         loteSize,
         intervaloMin,
+        remetenteId,
       })
       const { enviados, total, lotes } = res.data || {}
       if (lotes > 1) {
@@ -210,6 +215,10 @@ export default function EmailDisparos() {
                 placeholder="Ex: Campanha Black Friday"
                 className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
               />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-stone-600 mb-1">Remetente</label>
+              <RemetentePicker providers={providers} value={remetenteId} onChange={setRemetenteId} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>

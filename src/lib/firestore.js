@@ -317,6 +317,27 @@ export async function saveEmailConfig(uid, data) {
   await setDoc(userEmailConfigRef(uid), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
 }
 
+// ── Provedores de e-mail (Resend) — múltiplos, cada um com vários remetentes ──
+export async function getEmailProviders(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'emailProviders'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
+}
+
+export async function saveEmailProvider(uid, id, data) {
+  if (id) {
+    await setDoc(doc(db, 'users', uid, 'emailProviders', id), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(collection(db, 'users', uid, 'emailProviders'), removeUndefined({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+  return ref.id
+}
+
+export async function deleteEmailProvider(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'emailProviders', id))
+}
+
 // ── Templates de E-mail (construtor GrapesJS) ──
 
 export function userEmailTemplatesRef(uid) {

@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { httpsCallable } from 'firebase/functions'
 import { auth, functions } from '../../lib/firebase'
-import { getEmailTemplates, getEmailAutomations, saveEmailAutomation, getLeads, getProductGroups } from '../../lib/firestore'
+import { getEmailTemplates, getEmailAutomations, saveEmailAutomation, getLeads, getProductGroups, getEmailProviders } from '../../lib/firestore'
+import RemetentePicker from '../../components/RemetentePicker'
 import { KIWIFY_EVENTS, canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
@@ -42,15 +43,17 @@ export default function EmailAutomacoes() {
   const [fEvento, setFEvento] = useState('')
   const [fProduto, setFProduto] = useState('')
   const [fStatus, setFStatus] = useState('')
+  const [providers, setProviders] = useState([])
 
   useEffect(() => {
     if (!user?.uid) return
-    Promise.all([getEmailTemplates(user.uid), getEmailAutomations(user.uid), getLeads(user.uid), getProductGroups(user.uid)])
-      .then(([tpls, autos, lds, gs]) => {
+    Promise.all([getEmailTemplates(user.uid), getEmailAutomations(user.uid), getLeads(user.uid), getProductGroups(user.uid), getEmailProviders(user.uid)])
+      .then(([tpls, autos, lds, gs, provs]) => {
         setTemplates(tpls)
         setAutosAll(autos)
         setLeads(lds)
         setGrupos(gs)
+        setProviders(provs)
         setGrupoId((cur) => cur || (gs[0]?.id || ''))
       })
       .finally(() => setLoading(false))
@@ -101,7 +104,7 @@ export default function EmailAutomacoes() {
 
   const setAuto = async (evento, patch) => {
     if (!grupoId) { toast.error('Selecione um grupo de produto.'); return }
-    const atual = automations[evento] || { evento, grupoId, ativo: false, templateId: '' }
+    const atual = automations[evento] || { evento, grupoId, ativo: false, templateId: '', remetenteId: null }
     const novo = { ...atual, ...patch }
     setAutosAll((prev) => {
       const idx = prev.findIndex((a) => a.grupoId === grupoId && a.evento === evento)
@@ -110,7 +113,7 @@ export default function EmailAutomacoes() {
       return [...prev, updated]
     })
     try {
-      await saveEmailAutomation(user.uid, grupoId, evento, { templateId: novo.templateId || '', ativo: !!novo.ativo })
+      await saveEmailAutomation(user.uid, grupoId, evento, { templateId: novo.templateId || '', ativo: !!novo.ativo, remetenteId: novo.remetenteId ?? null })
     } catch (err) {
       toast.error(err.message || 'Erro ao salvar automação')
     }
@@ -186,27 +189,34 @@ export default function EmailAutomacoes() {
                   <span className="font-medium text-stone-800 text-sm">{ev.label}</span>
                 </div>
 
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <ArrowRight className="w-4 h-4 text-stone-300 shrink-0 hidden sm:block" />
-                  <select
-                    value={auto.templateId || ''}
-                    onChange={(e) => setAuto(ev.id, { templateId: e.target.value })}
-                    className="flex-1 min-w-0 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white"
-                    disabled={templates.length === 0}
-                  >
-                    <option value="">{templates.length === 0 ? 'SEM TEMPLATE' : ''}</option>
-                    {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                  </select>
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <ArrowRight className="w-4 h-4 text-stone-300 shrink-0 hidden sm:block" />
+                    <select
+                      value={auto.templateId || ''}
+                      onChange={(e) => setAuto(ev.id, { templateId: e.target.value })}
+                      className="flex-1 min-w-0 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white"
+                      disabled={templates.length === 0}
+                    >
+                      <option value="">{templates.length === 0 ? 'SEM TEMPLATE' : ''}</option>
+                      {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                    </select>
 
-                  <button
-                    type="button"
-                    onClick={() => setAuto(ev.id, { ativo: !ativo })}
-                    disabled={!auto.templateId}
-                    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-40 ${ativo ? 'bg-primary-500' : 'bg-stone-300'}`}
-                    title={!auto.templateId ? 'Escolha um template primeiro' : ativo ? 'Desativar' : 'Ativar'}
-                  >
-                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ativo ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuto(ev.id, { ativo: !ativo })}
+                      disabled={!auto.templateId}
+                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-40 ${ativo ? 'bg-primary-500' : 'bg-stone-300'}`}
+                      title={!auto.templateId ? 'Escolha um template primeiro' : ativo ? 'Desativar' : 'Ativar'}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ativo ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                  {auto.templateId && (
+                    <div className="sm:pl-6">
+                      <RemetentePicker providers={providers} value={auto.remetenteId || null} onChange={(id) => setAuto(ev.id, { remetenteId: id })} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:w-40 shrink-0 text-xs">
