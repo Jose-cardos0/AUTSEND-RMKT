@@ -606,15 +606,38 @@ function parseRequestBody(req) {
   return {}
 }
 
-async function tryAutoSend(userId, leadRef, evento, customer, product) {
+/** Extrai TODOS os produtos do checkout (principal + order bumps), a partir do path do fieldMap.produto. */
+function extractAllProdutos(body, fieldMap) {
+  const nomes = new Set()
+  const ids = new Set()
+  const pn = String(getByPath(body, fieldMap?.produto) ?? '').trim()
+  const pi = String(getByPath(body, fieldMap?.produtoId) ?? '').trim()
+  if (pn) nomes.add(pn)
+  if (pi) ids.add(pi)
+  const varrer = (path, alvo) => {
+    const m = String(path || '').match(/^(.*?)\.\d+\.(.*)$/)
+    if (!m) return
+    const arr = getByPath(body, m[1])
+    if (Array.isArray(arr)) for (const item of arr) { const v = String(getByPath(item, m[2]) ?? '').trim(); if (v) alvo.add(v) }
+  }
+  varrer(fieldMap?.produto, nomes)
+  varrer(fieldMap?.produtoId, ids)
+  return { nomes: [...nomes], ids: [...ids] }
+}
+
+/** Acha o grupo cujo produtos[] contém QUALQUER produto do checkout (não só o principal). */
+function acharGrupo(grupos, produtos, product) {
+  const nomes = (produtos?.nomes?.length ? produtos.nomes : [product?.nome]).filter(Boolean)
+  const ids = (produtos?.ids?.length ? produtos.ids : [product?.id]).filter(Boolean)
+  return (grupos || []).find((g) => Array.isArray(g.produtos) && g.produtos.some((p) => nomes.includes(p) || ids.includes(p)))
+}
+
+async function tryAutoSend(userId, leadRef, evento, customer, product, produtos) {
   try {
-    // Automações de WhatsApp por GRUPO de produto (mesmo modelo do e-mail).
+    // Automações de WhatsApp por GRUPO de produto — dispara se QUALQUER produto do checkout estiver no grupo.
     const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
-    const pNome = (product.nome || '').trim()
-    const pId = (product.id || '').trim()
-    const grupo = gruposSnap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
+    const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const grupo = acharGrupo(grupos, produtos, product)
 
     let autoMsg = null
     if (grupo) {
@@ -696,16 +719,13 @@ async function tryAutoSend(userId, leadRef, evento, customer, product) {
  * Envia o e-mail automático configurado para o evento (Automações de E-mail).
  * Só dispara se houver automação ativa com template para aquele evento e o lead tiver e-mail.
  */
-async function tryAutoSendEmail(userId, leadRef, evento, customer, product) {
+async function tryAutoSendEmail(userId, leadRef, evento, customer, product, produtos) {
   try {
     if (!customer.email) return
-    // Resolve o grupo de produto do lead (automações de e-mail são por grupo de produto)
+    // Automações de e-mail por GRUPO — dispara se QUALQUER produto do checkout estiver no grupo.
     const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
-    const pNome = (product.nome || '').trim()
-    const pId = (product.id || '').trim()
-    const grupo = gruposSnap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
-      .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
+    const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const grupo = acharGrupo(grupos, produtos, product)
     if (!grupo) return
     const autoSnap = await db.doc(`users/${userId}/emailAutomations/${grupo.id}__${evento}`).get()
     const auto = autoSnap.exists ? autoSnap.data() : null
@@ -778,9 +798,9 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product) {
 }
 
 /** Dispara as ações automáticas do evento: WhatsApp e/ou E-mail (cada uma só se configurada e ativa). */
-async function dispararAcoes(userId, leadRef, evento, customer, product) {
-  await tryAutoSend(userId, leadRef, evento, customer, product)
-  await tryAutoSendEmail(userId, leadRef, evento, customer, product)
+async function dispararAcoes(userId, leadRef, evento, customer, product, produtos) {
+  await tryAutoSend(userId, leadRef, evento, customer, product, produtos)
+  await tryAutoSendEmail(userId, leadRef, evento, customer, product, produtos)
 }
 
 // ───────────────────────── Funil de e-mail: helpers ─────────────────────────
@@ -1196,17 +1216,21 @@ exports.customWebhook = onRequest(
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
-    await dispararAcoes(userId, leadRef, evento, customer, product)
+    const produtos = extractAllProdutos(body, fieldMap)
+    await dispararAcoes(userId, leadRef, evento, customer, product, produtos)
 
-    // Inscreve o contato em funis (e-mail e WhatsApp) cujo gatilho é este evento
+    // Inscreve o contato em funis (e-mail e WhatsApp) cujo gatilho é este evento.
+    // Dispara se QUALQUER produto do checkout (principal ou order bump) estiver no grupo do funil.
     try {
       const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
-      const pNome = (product.nome || '').trim()
-      const pId = (product.id || '').trim()
-      const grupoLead = gruposSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
-      const grupoOk = (funnel) => !funnel.gatilhoGrupoId || (grupoLead && grupoLead.id === funnel.gatilhoGrupoId)
+      const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      const nomesCk = (produtos.nomes.length ? produtos.nomes : [product.nome]).filter(Boolean)
+      const idsCk = (produtos.ids.length ? produtos.ids : [product.id]).filter(Boolean)
+      const grupoOk = (funnel) => {
+        if (!funnel.gatilhoGrupoId) return true
+        const g = grupos.find((x) => x.id === funnel.gatilhoGrupoId)
+        return g && Array.isArray(g.produtos) && g.produtos.some((p) => nomesCk.includes(p) || idsCk.includes(p))
+      }
       if (customer.email) {
         const funisSnap = await db.collection('users').doc(userId).collection('emailFunnels')
           .where('gatilhoEvento', '==', evento).limit(20).get()
@@ -1371,3 +1395,90 @@ async function processarFunnelRun(userId, runRef, run, cache) {
   }
   await runRef.update({ currentNodeId: nodeId || null, status: nodeId ? 'ativo' : 'concluido', nextRunAt: admin.firestore.Timestamp.now() })
 }
+
+// ───────────────────────── IA (Grok / xAI) ─────────────────────────
+const GROK_API_KEY = process.env.GROK_API || ''
+const GROK_MODEL = process.env.GROK_MODEL || 'grok-2-latest'
+
+async function callGrok(messages, { json = false } = {}) {
+  if (!GROK_API_KEY) throw new HttpsError('failed-precondition', 'Chave do Grok não configurada (functions/.env → GROK_API).')
+  const body = { model: GROK_MODEL, messages, temperature: 0.5 }
+  if (json) body.response_format = { type: 'json_object' }
+  const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${GROK_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    console.error('Grok erro', res.status, text)
+    let detalhe = text
+    try { const j = JSON.parse(text); detalhe = j?.error?.message || j?.error || j?.msg || text } catch (_) {}
+    throw new HttpsError('internal', `IA ${res.status}: ${String(detalhe).slice(0, 220)}`)
+  }
+  let data = {}
+  try { data = JSON.parse(text) } catch { throw new HttpsError('internal', 'Resposta da IA inválida.') }
+  return data?.choices?.[0]?.message?.content || ''
+}
+
+/** IA: analisa uma amostra de webhook e sugere fieldMap + eventRules. */
+exports.aiMapFields = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const { sample, eventos } = request.data || {}
+  if (!sample || typeof sample !== 'object') throw new HttpsError('invalid-argument', 'Sem amostra para analisar.')
+  const listaEventos = Array.isArray(eventos) ? eventos : []
+  const eventosTxt = listaEventos.map((e) => `- ${e.id} (${e.label})`).join('\n')
+  const sampleTxt = JSON.stringify(sample).slice(0, 8000)
+  const content = await callGrok([
+    { role: 'system', content: 'Você mapeia webhooks de checkout de vendas. Responda SOMENTE com JSON válido, sem texto extra.' },
+    { role: 'user', content:
+`Analise este JSON de webhook de um checkout e responda com os caminhos (dot notation, arrays com índice, ex: offers.0.name) de cada campo, e as regras que identificam cada evento de negócio.
+
+JSON:
+${sampleTxt}
+
+Eventos válidos (use exatamente esses ids no campo "evento"):
+${eventosTxt || '- order_status.purchase_approved (Compra Aprovada)'}
+
+Responda no formato EXATO:
+{
+  "fieldMap": { "nome": "", "email": "", "telefone": "", "produto": "", "produtoId": "", "orderId": "", "valor": "" },
+  "eventRules": [ { "path": "", "op": "equals", "value": "", "evento": "" } ]
+}
+
+Regras:
+- fieldMap: caminho do campo no JSON (string vazia se não existir). "produto" = nome do produto (ex: offers.0.product.name ou offers.0.name), "valor" = valor total da compra (ex: amount).
+- eventRules: para cada evento identificável, qual campo (path, ex: status ou event_type) + valor (value) o identifica. op pode ser "equals" ou "contains". Só inclua eventos que dá pra identificar pelo JSON.` },
+  ], { json: true })
+  let parsed = {}
+  try { parsed = JSON.parse(content) } catch { throw new HttpsError('internal', 'Não consegui interpretar a resposta da IA.') }
+  return { fieldMap: parsed.fieldMap || {}, eventRules: Array.isArray(parsed.eventRules) ? parsed.eventRules : [] }
+})
+
+/** IA: gera uma mensagem de WhatsApp para um evento/produto. */
+exports.aiGenerateMessage = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const { evento, produto, tom, idioma, checkouts } = request.data || {}
+  const lang = idioma || 'Português do Brasil'
+  const lista = Array.isArray(checkouts) ? checkouts.filter((c) => c && c.link) : []
+  const checkoutsTxt = lista.length
+    ? `\n\nLinks de checkout que DEVEM aparecer na mensagem (produto → link), com uma chamada pra ação clara:\n${lista.map((c) => `- ${c.nome || 'Produto'}: ${c.link}`).join('\n')}`
+    : ''
+  const content = await callGrok([
+    { role: 'system', content: `Você é uma vendedora experiente e persuasiva de resposta direta. Usa gatilhos mentais (escassez, urgência, prova social, benefício claro, quebra de objeção) e copywriting que converte, sem parecer spam. Escreva SEMPRE no idioma: ${lang}.` },
+    { role: 'user', content:
+`Escreva UMA mensagem de WhatsApp de vendas para o evento "${evento || 'remarketing'}"${produto ? ` do produto "${produto}"` : ''}.
+Idioma da mensagem: ${lang}.
+Regras:
+- Escreva TODA a mensagem em ${lang}.
+- Use as variáveis {nome_cliente} e {nome_produto} exatamente assim (não traduza essas chaves).
+- Tom ${tom || 'vendedora experiente, calorosa e persuasiva'}. Curta (3 a 6 linhas), com pelo menos 1 gatilho de venda.
+- No máximo 2 emojis.
+- Use *negrito* do WhatsApp (asteriscos) em 1-2 pontos-chave.${checkoutsTxt}
+${lista.length ? '- Termine com uma CTA forte convidando a clicar no link.' : ''}
+- Responda SOMENTE com a mensagem, sem aspas nem explicação.` },
+  ])
+  return { mensagem: (content || '').trim() }
+})

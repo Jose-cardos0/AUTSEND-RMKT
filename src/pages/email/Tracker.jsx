@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
-import { auth } from '../../lib/firebase'
+import { httpsCallable } from 'firebase/functions'
+import { auth, functions } from '../../lib/firebase'
 import {
   createCustomWebhook,
   getCustomWebhooks,
@@ -14,7 +15,7 @@ import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import {
   Radar, Webhook, Plus, Copy, Check, Trash2, Loader2, RefreshCw, Play,
-  Power, PowerOff, ChevronRight, ChevronDown, Zap, MousePointerClick,
+  Power, PowerOff, ChevronRight, ChevronDown, Zap, MousePointerClick, Sparkles,
 } from 'lucide-react'
 
 /** Seção recolhível (accordion) — clique no título para abrir/fechar. */
@@ -215,6 +216,40 @@ export default function Tracker() {
     toast.success('Campos sugeridos. Confira e ajuste se precisar.')
   }
 
+  const [iaLoading, setIaLoading] = useState(false)
+  const handleIA = async () => {
+    const sample = samples[0]?.rawPayload
+    if (!sample) { toast.error('Envie um teste primeiro (nenhuma amostra capturada).'); return }
+    setIaLoading(true)
+    try {
+      // primeiro o Adivinhar (grátis), depois a IA completa o que faltou
+      const base = autoGuess(paths)
+      const fn = httpsCallable(functions, 'aiMapFields')
+      const res = await fn({ sample, eventos: KIWIFY_EVENTS })
+      const aiMap = res.data?.fieldMap || {}
+      const aiRules = res.data?.eventRules || []
+      setFieldMap((prev) => {
+        const merged = { ...base, ...Object.fromEntries(Object.entries(prev).filter(([, v]) => v)) }
+        for (const k of Object.keys(aiMap)) if (aiMap[k] && !merged[k]) merged[k] = aiMap[k]
+        return merged
+      })
+      if (aiRules.length) {
+        setEventRules((prev) => {
+          const existentes = new Set(prev.map((r) => r.evento))
+          const novas = aiRules
+            .filter((r) => r && r.path && KIWIFY_EVENTS.some((e) => e.id === r.evento) && !existentes.has(r.evento))
+            .map((r) => ({ path: r.path, op: r.op === 'contains' ? 'contains' : 'equals', value: r.value ?? '', evento: r.evento, ativo: true }))
+          return [...prev, ...novas]
+        })
+      }
+      toast.success('IA preencheu os campos e as regras. Confira e salve. ✨')
+    } catch (err) {
+      toast.error(err.message || 'Falha ao usar a IA.')
+    } finally {
+      setIaLoading(false)
+    }
+  }
+
   const setRole = (key, value) => setFieldMap((prev) => ({ ...prev, [key]: value }))
 
   const addRule = () =>
@@ -380,9 +415,14 @@ export default function Tracker() {
               <Secao title="Mapear campos" icon={MousePointerClick} open={secoes.mapear} onToggle={() => toggleSecao('mapear')}>
                 <div className="flex items-center justify-between -mt-1">
                   <p className="text-xs text-stone-500">Diga qual campo do JSON é cada informação.</p>
-                  <button onClick={handleAdivinhar} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
-                    <Zap className="w-3.5 h-3.5" /> Adivinhar
-                  </button>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button onClick={handleAdivinhar} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5" /> Adivinhar
+                    </button>
+                    <button onClick={handleIA} disabled={iaLoading} className="text-xs font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 disabled:opacity-50">
+                      {iaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Preencher com IA
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
                   {ROLES.map((role) => (

@@ -3,6 +3,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../../lib/firebase'
 import { getProductGroups, saveProductGroup, deleteProductGroup, getProducts, getLeads } from '../../lib/firestore'
+import { LOJAS, lojaByKey } from '../../lib/lojas'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import { Package, Plus, Trash2, Loader2, Check, ChevronDown, Pencil, X } from 'lucide-react'
@@ -11,6 +12,9 @@ export default function EmailProdutos() {
   const [user] = useAuthState(auth)
   const [loading, setLoading] = useState(true)
   const [grupos, setGrupos] = useState([])
+  const [lojaPopup, setLojaPopup] = useState(null)
+  const [lojaSelTemp, setLojaSelTemp] = useState(new Set())
+  const [logoAtivo, setLogoAtivo] = useState(null)
   const [nomesDisponiveis, setNomesDisponiveis] = useState([])
   const [novoNome, setNovoNome] = useState('')
   const [criando, setCriando] = useState(false)
@@ -82,6 +86,22 @@ export default function EmailProdutos() {
     try { await saveProductGroup(user.uid, grupo.id, { nome: valor }) } catch (err) { toast.error(err.message) }
   }
 
+  const openLojaPopup = (grupo) => { setLogoAtivo(null); setLojaSelTemp(new Set(grupo.lojas || [])); setLojaPopup(grupo) }
+  const toggleLojaTemp = (key) => setLojaSelTemp((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
+  const salvarLojas = async () => {
+    if (!lojaPopup) return
+    const gid = lojaPopup.id
+    const lojas = [...lojaSelTemp]
+    setGrupos((prev) => prev.map((g) => (g.id === gid ? { ...g, lojas } : g)))
+    setLojaPopup(null)
+    try { await saveProductGroup(user.uid, gid, { lojas }) } catch (err) { toast.error(err.message) }
+  }
+  const removerLoja = async (grupo, key) => {
+    const lojas = (grupo.lojas || []).filter((k) => k !== key)
+    setGrupos((prev) => prev.map((g) => (g.id === grupo.id ? { ...g, lojas } : g)))
+    try { await saveProductGroup(user.uid, grupo.id, { lojas }) } catch (err) { toast.error(err.message) }
+  }
+
   const confirmarExcluir = async () => {
     const grupo = confirmExcluir
     setConfirmExcluir(null)
@@ -121,7 +141,7 @@ export default function EmailProdutos() {
                   onChange={(e) => setNovoNome(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') criarGrupo() }}
                   placeholder="Ex.: Gekko Pan"
-                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm"
+                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white/30 text-sm"
                 />
                 <button onClick={criarGrupo} disabled={criando} className="btn-primary min-h-[44px] w-full justify-center">
                   {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar grupo
@@ -145,14 +165,37 @@ export default function EmailProdutos() {
           grupos.map((grupo) => {
             const aberto = !!abertos[grupo.id]
             return (
-              <div key={grupo.id} className="app-panel rounded-2xl overflow-hidden">
+              <div key={grupo.id} className={`app-panel rounded-2xl relative ${logoAtivo?.g === grupo.id ? 'z-30' : ''}`}>
                 <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3">
                   <button onClick={() => toggleAberto(grupo.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
                     <Package className="w-4 h-4 text-primary-600 shrink-0" />
                     <span className="font-semibold text-stone-800 truncate">Grupo - {grupo.nome || 'Sem nome'}</span>
                     <span className="text-xs text-stone-400 shrink-0">({(grupo.produtos || []).length})</span>
                   </button>
+                  {(grupo.lojas || []).length > 0 && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      {(grupo.lojas || []).map((key) => {
+                        const loja = lojaByKey(key)
+                        if (!loja) return null
+                        const ativo = logoAtivo?.g === grupo.id && logoAtivo?.k === key
+                        return (
+                          <div key={key} className="relative">
+                            <button type="button" onClick={() => setLogoAtivo(ativo ? null : { g: grupo.id, k: key })} className="block" title={loja.nome}>
+                              <img src={loja.logo} alt={loja.nome} className="h-6 w-auto max-w-[64px] object-contain" />
+                            </button>
+                            {ativo && (
+                              <div className="absolute top-full right-0 mt-1 z-40 flex items-center gap-1 bg-white rounded-lg shadow-xl border border-surface-200 p-1">
+                                <button onClick={() => { removerLoja(grupo, key); setLogoAtivo(null) }} className="p-1.5 rounded-md text-stone-400 hover:bg-red-50 hover:text-red-600" title="Remover"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => openLojaPopup(grupo)} className="p-1.5 rounded-md text-stone-400 hover:bg-primary-50 hover:text-primary-600" title="Editar lojas"><Pencil className="w-3.5 h-3.5" /></button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                   <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => openLojaPopup(grupo)} className="p-2 rounded-lg text-stone-400 hover:bg-primary-50 hover:text-primary-600" title="Definir lojas"><Plus className="w-4 h-4" /></button>
                     <button onClick={() => setConfirmExcluir(grupo)} className="p-2 rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir grupo"><Trash2 className="w-4 h-4" /></button>
                     <button onClick={() => toggleAberto(grupo.id)} className="p-1.5 text-stone-400"><ChevronDown className={`w-4 h-4 transition-transform ${aberto ? 'rotate-180' : ''}`} /></button>
                   </div>
@@ -237,6 +280,38 @@ export default function EmailProdutos() {
         )}
         </div>
       </div>
+
+      {lojaPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setLojaPopup(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Package className="w-5 h-5" /></span>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-stone-800 truncate">Lojas do grupo</h3>
+                <p className="text-xs text-stone-500 truncate">Grupo - {lojaPopup.nome || 'Sem nome'}</p>
+              </div>
+              <button onClick={() => setLojaPopup(null)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-xs text-stone-500">Selecione uma ou mais lojas onde esse grupo é vendido:</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {LOJAS.map((l) => {
+                const sel = lojaSelTemp.has(l.key)
+                return (
+                  <button key={l.key} type="button" onClick={() => toggleLojaTemp(l.key)} className={`relative flex flex-col items-center gap-2 rounded-xl border-2 px-3 py-4 transition ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 hover:border-primary-200'}`}>
+                    {sel && <Check className="w-4 h-4 text-primary-600 absolute top-1.5 right-1.5" />}
+                    <img src={l.logo} alt={l.nome} className="h-9 max-w-[100px] object-contain" />
+                    <span className="text-xs font-medium text-stone-700">{l.nome}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setLojaPopup(null)} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={salvarLojas} className="btn-primary min-h-[44px]"><Check className="w-4 h-4" /> Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmExcluir && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setConfirmExcluir(null)}>

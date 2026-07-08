@@ -4,6 +4,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
+import GerarMensagemIA from '../components/GerarMensagemIA'
 import {
   getLeads,
   getProducts,
@@ -34,6 +35,7 @@ import {
   BarChart3,
   Filter,
   Send,
+  Sparkles,
 } from 'lucide-react'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
@@ -213,14 +215,22 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
             <p className="text-xs text-stone-400 mt-1">Use *texto* para negrito e _texto_ para itálico no WhatsApp.</p>
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={salvando}
-            className="btn-primary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation"
-          >
-            {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {salvando ? 'Salvando...' : 'Salvar automação'}
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={handleSave}
+              disabled={salvando}
+              className="btn-primary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation"
+            >
+              {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {salvando ? 'Salvando...' : 'Salvar automação'}
+            </button>
+            <GerarMensagemIA
+              evento={event.label}
+              produto={productName}
+              onResult={setMensagem}
+              className="text-sm w-full sm:w-auto min-h-[44px] px-4 rounded-xl border-2 border-violet-200 text-violet-700 font-medium hover:bg-violet-50 disabled:opacity-50 flex items-center justify-center gap-2 touch-manipulation"
+            />
+          </div>
         </div>
       )}
     </div>
@@ -235,10 +245,13 @@ export default function Automacoes() {
   const [evolution, setEvolution] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const [filtroEvento, setFiltroEvento] = useState('')
-  const [filtroProduto, setFiltroProduto] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroNome, setFiltroNome] = useState('')
+  const [sortKey, setSortKey] = useState('')
+  const [sortDir, setSortDir] = useState('desc')
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir('asc') }
+  }
 
   const [reenviandoId, setReenviandoId] = useState(null)
   const [paginaLeads, setPaginaLeads] = useState(1)
@@ -248,7 +261,7 @@ export default function Automacoes() {
 
   useEffect(() => {
     setPaginaLeads(1)
-  }, [filtroEvento, filtroProduto, filtroStatus, filtroNome])
+  }, [filtroNome, sortKey, sortDir])
 
   useEffect(() => {
     if (!user?.uid) return
@@ -312,9 +325,6 @@ export default function Automacoes() {
 
   const filtered = useMemo(() => {
     let list = leads
-    if (filtroEvento) list = list.filter((l) => l.evento === filtroEvento)
-    if (filtroProduto) list = list.filter((l) => l.produto === filtroProduto)
-    if (filtroStatus) list = list.filter((l) => (l.status || 'pendente') === filtroStatus)
     if (filtroNome.trim()) {
       const q = filtroNome.toLowerCase()
       list = list.filter(
@@ -324,8 +334,27 @@ export default function Automacoes() {
           (l.telefone || '').includes(filtroNome)
       )
     }
+    if (sortKey) {
+      const val = (l) => {
+        switch (sortKey) {
+          case 'nome': return (l.nome || '').toLowerCase()
+          case 'telefone': return l.telefone || ''
+          case 'produto': return (l.produto || '').toLowerCase()
+          case 'evento': return (l.evento || '').toLowerCase()
+          case 'status': return l.status || 'pendente'
+          case 'data': return l.createdAt?.toMillis ? l.createdAt.toMillis() : (l.createdAt?.seconds ? l.createdAt.seconds * 1000 : 0)
+          default: return 0
+        }
+      }
+      list = [...list].sort((a, b) => {
+        const va = val(a), vb = val(b)
+        if (va < vb) return sortDir === 'asc' ? -1 : 1
+        if (va > vb) return sortDir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
     return list
-  }, [leads, filtroEvento, filtroProduto, filtroStatus, filtroNome])
+  }, [leads, filtroNome, sortKey, sortDir])
 
   const totalPaginasLeads = Math.max(1, Math.ceil(filtered.length / LEADS_POR_PAGINA))
   const paginaLeadsAtual = Math.min(paginaLeads, totalPaginasLeads)
@@ -513,45 +542,7 @@ export default function Automacoes() {
               className="w-full pl-9 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
             />
           </div>
-          <select
-            value={filtroEvento}
-            onChange={(e) => setFiltroEvento(e.target.value)}
-            className="w-full sm:w-auto min-h-[44px] px-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-          >
-            <option value="">Todos os eventos</option>
-            {KIWIFY_EVENTS.map((e) => (
-              <option key={e.id} value={e.id}>{e.label}</option>
-            ))}
-          </select>
-          <select
-            value={filtroProduto}
-            onChange={(e) => setFiltroProduto(e.target.value)}
-            className="w-full sm:w-auto min-h-[44px] px-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-          >
-            <option value="">Todos os produtos</option>
-            {uniqueProducts.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-          <select
-            value={filtroStatus}
-            onChange={(e) => setFiltroStatus(e.target.value)}
-            className="w-full sm:w-auto min-h-[44px] px-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-          >
-            <option value="">Todos os status</option>
-            <option value="enviado">Enviado</option>
-            <option value="erro">Erro</option>
-            <option value="pendente">Pendente</option>
-            <option value="cancelado_recovery">Cancelado (compra aprovada)</option>
-          </select>
-          {(filtroEvento || filtroProduto || filtroStatus || filtroNome) && (
-            <button
-              onClick={() => { setFiltroEvento(''); setFiltroProduto(''); setFiltroStatus(''); setFiltroNome('') }}
-              className="text-xs text-primary-600 hover:underline py-2 touch-manipulation"
-            >
-              Limpar filtros
-            </button>
-          )}
+          <p className="text-xs text-stone-400 self-center hidden sm:block">Clique nas colunas da tabela para ordenar ↑↓</p>
         </div>
 
         <div className="w-full overflow-x-auto">
@@ -565,12 +556,15 @@ export default function Automacoes() {
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="border-b border-surface-100 text-left text-stone-500">
-                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Nome</th>
-                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Telefone</th>
-                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Produto</th>
-                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Evento</th>
-                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Status</th>
-                  <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm">Data</th>
+                  {[['nome', 'Nome'], ['telefone', 'Telefone'], ['produto', 'Produto'], ['evento', 'Evento'], ['status', 'Status'], ['data', 'Data']].map(([key, label]) => (
+                    <th
+                      key={key}
+                      onClick={() => toggleSort(key)}
+                      className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium text-xs sm:text-sm cursor-pointer select-none hover:text-stone-700 whitespace-nowrap"
+                    >
+                      {label}{sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </th>
+                  ))}
                   <th className="px-3 sm:px-4 py-2.5 sm:py-3 font-medium w-14 sm:w-20"></th>
                 </tr>
               </thead>

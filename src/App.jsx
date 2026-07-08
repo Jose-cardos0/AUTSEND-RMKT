@@ -10,6 +10,7 @@ import Remarketing from './pages/Remarketing'
 import RemarketingGrupos from './pages/RemarketingGrupos'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
+import Checkouts from './pages/Checkouts'
 import EmailIntegracoes from './pages/email/EmailIntegracoes'
 import Tracker from './pages/email/Tracker'
 import EmailAutomacoes from './pages/email/EmailAutomacoes'
@@ -86,6 +87,7 @@ export default function App() {
           />
           <Route path="tracker" element={<Tracker />} />
           <Route path="produtos" element={<EmailProdutos />} />
+          <Route path="checkouts" element={<Checkouts />} />
           <Route path="email/integracoes" element={<EmailIntegracoes />} />
           <Route path="email/tracker" element={<Tracker />} />
           <Route

@@ -359,6 +359,27 @@ export async function setLeadReenvios(uid, leadId, reenvios) {
   await setDoc(doc(db, 'users', uid, 'leads', leadId), { reenvios }, { merge: true })
 }
 
+// ── Checkouts: lojas + links de checkout dos produtos ──
+export async function getCheckoutStores(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'checkoutStores'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
+}
+
+export async function saveCheckoutStore(uid, id, data) {
+  if (id) {
+    await setDoc(doc(db, 'users', uid, 'checkoutStores', id), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(collection(db, 'users', uid, 'checkoutStores'), removeUndefined({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+  return ref.id
+}
+
+export async function deleteCheckoutStore(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'checkoutStores', id))
+}
+
 // ── Templates de E-mail (construtor GrapesJS) ──
 
 export function userEmailTemplatesRef(uid) {
@@ -619,6 +640,7 @@ export async function reenviarLead(uid, lead, mensagemTemplate, evolution) {
     .replace(/\{email_cliente\}/gi, lead.email || '')
     .replace(/\{nome_produto\}/gi, lead.produto || '')
 
+  const numeroWhatsApp = (evolution?.numeroWhatsapp || evolution?.numeroWhatsApp || '').toString().replace(/\D/g, '')
   const payload = {
     tipoAcao: 'enviar_remarketing',
     contatos: [{ nome: lead.nome, telefone: lead.telefone, email: lead.email }],
@@ -626,6 +648,7 @@ export async function reenviarLead(uid, lead, mensagemTemplate, evolution) {
     nomeInstancia: evolution?.nomeInstancia || '',
     hash: evolution?.hash || '',
     instanciaId: evolution?.instanceId || evolution?.hash || '',
+    numeroWhatsApp: numeroWhatsApp || undefined,
     evento: lead.evento,
     produto: lead.produto,
   }
@@ -636,10 +659,19 @@ export async function reenviarLead(uid, lead, mensagemTemplate, evolution) {
     body: JSON.stringify(payload),
   })
 
-  const ok = res.ok
+  // Respeita a resposta real do n8n: se ele disser que falhou, é erro (mesmo com HTTP 200)
+  let body = {}
+  try { const t = await res.text(); if (t && t.trim()) body = JSON.parse(t) } catch (_) {}
+  let ok = res.ok
+  if (res.ok && body && typeof body === 'object') {
+    if (body.success === false || body.enviado === false || body.sent === false) ok = false
+    else if (body.success === true || body.enviado === true || body.sent === true || body.ok === true) ok = true
+  }
+  const erroMsg = ok ? null : (body.erro || body.error || body.message || `n8n respondeu ${res.status}`)
+
   await updateLeadStatus(uid, lead.id, {
     status: ok ? 'enviado' : 'erro',
-    erroMsg: ok ? null : `n8n respondeu ${res.status}`,
+    erroMsg,
     mensagemEnviada: mensagem,
     enviadoEm: serverTimestamp(),
   })
@@ -651,7 +683,7 @@ export async function reenviarLead(uid, lead, mensagemTemplate, evolution) {
     telefone: lead.telefone,
     nome: lead.nome,
     status: ok ? 'enviado' : 'erro',
-    erroMsg: ok ? null : `n8n respondeu ${res.status}`,
+    erroMsg,
     mensagem,
   })
 

@@ -438,7 +438,8 @@ export default function EnviarMensagem() {
               onChange={setMensagem}
               placeholder="Use {nome} — lista: número,nome"
               showNomeButton
-              rows={5}
+              fillHeight
+              className="flex-1 min-h-[200px]"
             />
             {totalContatos > 0 && (
               <p className="mt-3 text-sm text-stone-600">
@@ -463,8 +464,7 @@ export default function EnviarMensagem() {
             </div>
             <div className="p-5 sm:p-6 flex flex-col flex-1 min-w-0">
             <p className="text-xs sm:text-sm text-stone-500 mb-3 leading-relaxed">
-              Uma linha por contato: <strong className="text-stone-600">número</strong> ou <strong className="text-stone-600">número,nome</strong>. Excel: A número, B nome. No n8n:{' '}
-              <code className="bg-surface-100 px-1.5 py-0.5 rounded text-[11px]">contatos[].mensagem</code> ou <code className="bg-surface-100 px-1.5 py-0.5 rounded text-[11px]">mensagens</code>.
+              Uma linha por contato: <strong className="text-stone-600">número</strong> ou <strong className="text-stone-600">número,nome</strong>. Excel: A número, B nome.
             </p>
             <div className="flex flex-wrap gap-2 mb-3">
               <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 touch-manipulation">
@@ -479,8 +479,7 @@ export default function EnviarMensagem() {
               value={lista}
               onChange={(e) => setLista(e.target.value)}
               placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
-              rows={10}
-              className="w-full p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y text-sm font-mono min-h-[200px] sm:min-h-[240px]"
+              className="w-full flex-1 p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y text-sm font-mono min-h-[200px]"
             />
             </div>
           </div>

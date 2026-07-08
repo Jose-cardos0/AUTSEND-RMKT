@@ -12,6 +12,7 @@ import { KIWIFY_EVENTS } from '../lib/constants'
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import WhatsAppIcon from '../components/WhatsAppIcon'
+import GerarMensagemIA from '../components/GerarMensagemIA'
 import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
@@ -326,6 +327,12 @@ export default function WhatsappFunil() {
                   className="w-full p-2.5 rounded-xl border border-surface-200 text-sm resize-y"
                 />
                 <p className="text-[11px] text-stone-400 mt-1">Use *texto* p/ negrito e _texto_ p/ itálico no WhatsApp. Envia pela instância selecionada nas Integrações.</p>
+                <GerarMensagemIA
+                  evento={eventoLabel(nodes.find((n) => n.type === 'inicio')?.data?.evento) || 'remarketing'}
+                  produto={nodes.find((n) => n.type === 'inicio')?.data?.grupoNome || ''}
+                  onResult={(msg) => updateNodeData(selectedNode.id, { mensagem: msg })}
+                  className="mt-2 text-sm w-full min-h-[40px] px-4 rounded-xl border-2 border-violet-200 text-violet-700 font-medium hover:bg-violet-50 disabled:opacity-50 flex items-center justify-center gap-2"
+                />
               </div>
             )}
 

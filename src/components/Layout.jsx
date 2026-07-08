@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Link2, MessageCircle, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
@@ -18,6 +18,7 @@ const navGroups = [
     items: [
       { to: '/tracker', label: 'Tracker', icon: Radar },
       { to: '/produtos', label: 'Produtos', icon: Package },
+      { to: '/checkouts', label: 'Checkouts', icon: ShoppingBag },
     ],
   },
   {
