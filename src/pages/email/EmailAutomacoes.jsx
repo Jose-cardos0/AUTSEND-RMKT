@@ -145,7 +145,6 @@ export default function EmailAutomacoes() {
     <PageShell
       badge="E-mail · Automações"
       title="Automações de E-mail"
-      subtitle="Escolha qual template de e-mail é enviado em cada evento. Vários eventos podem usar o mesmo template."
       right={
         <button onClick={reload} className="btn-secondary text-sm min-h-[44px]"><RefreshCw className="w-4 h-4" /> Atualizar</button>
       }
@@ -164,7 +163,7 @@ export default function EmailAutomacoes() {
       {grupos.length === 0 ? (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           As automações de e-mail são <strong>por produto</strong>. Crie um{' '}
-          <Link to="/email/produtos" className="font-semibold underline">grupo de produto</Link> primeiro (ex.: Gekko Pan, MemoMax).
+          <Link to="/produtos" className="font-semibold underline">grupo de produto</Link> primeiro (ex.: Gekko Pan, MemoMax).
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-white/70 border border-surface-200">
@@ -189,34 +188,31 @@ export default function EmailAutomacoes() {
                   <span className="font-medium text-stone-800 text-sm">{ev.label}</span>
                 </div>
 
-                <div className="flex-1 min-w-0 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <ArrowRight className="w-4 h-4 text-stone-300 shrink-0 hidden sm:block" />
+                <div className="flex-1 min-w-0 flex items-start gap-2">
+                  <ArrowRight className="w-4 h-4 text-stone-300 shrink-0 hidden sm:block mt-3.5" />
+                  <div className="flex-1 min-w-0 space-y-2">
                     <select
                       value={auto.templateId || ''}
                       onChange={(e) => setAuto(ev.id, { templateId: e.target.value })}
-                      className="flex-1 min-w-0 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white"
+                      className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white"
                       disabled={templates.length === 0}
                     >
                       <option value="">{templates.length === 0 ? 'SEM TEMPLATE' : ''}</option>
                       {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
                     </select>
-
-                    <button
-                      type="button"
-                      onClick={() => setAuto(ev.id, { ativo: !ativo })}
-                      disabled={!auto.templateId}
-                      className={`relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-40 ${ativo ? 'bg-primary-500' : 'bg-stone-300'}`}
-                      title={!auto.templateId ? 'Escolha um template primeiro' : ativo ? 'Desativar' : 'Ativar'}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ativo ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
-                  </div>
-                  {auto.templateId && (
-                    <div className="sm:pl-6">
+                    {auto.templateId && (
                       <RemetentePicker providers={providers} value={auto.remetenteId || null} onChange={(id) => setAuto(ev.id, { remetenteId: id })} />
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAuto(ev.id, { ativo: !ativo })}
+                    disabled={!auto.templateId}
+                    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 mt-2.5 disabled:opacity-40 ${ativo ? 'bg-primary-500' : 'bg-stone-300'}`}
+                    title={!auto.templateId ? 'Escolha um template primeiro' : ativo ? 'Desativar' : 'Ativar'}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ativo ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
                 </div>
 
                 <div className="sm:w-40 shrink-0 text-xs">

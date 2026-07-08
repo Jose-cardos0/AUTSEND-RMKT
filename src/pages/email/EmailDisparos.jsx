@@ -166,7 +166,6 @@ export default function EmailDisparos() {
     <PageShell
       badge="E-mail · Disparos"
       title="Disparos de e-mail"
-      subtitle="Envie um template para uma lista de uma vez (envio em massa, em lotes)."
     >
       <div className="space-y-4 sm:space-y-5">
       {!configOk && (

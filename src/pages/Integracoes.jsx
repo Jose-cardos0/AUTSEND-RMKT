@@ -10,7 +10,7 @@ import {
   setSelectedInstance,
   deleteInstance,
   createWebhook,
-  getWebhooks,
+  getKiwifyWebhooks,
   updateWebhook,
   deleteWebhook,
 } from '../lib/firestore'
@@ -28,10 +28,27 @@ import {
   X,
   Trash2,
   Star,
+  ChevronDown,
 } from 'lucide-react'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
+
+/** Seção recolhível (dropdown), começa minimizada. */
+function Secao({ title, icon: Icon, open, onToggle, children }) {
+  return (
+    <div className="app-panel rounded-2xl overflow-hidden">
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3.5 hover:bg-surface-50 transition">
+        <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
+          {Icon && <Icon className="w-5 h-5 text-primary-600 shrink-0" />}
+          <span className="truncate">{title}</span>
+        </span>
+        <ChevronDown className={`w-5 h-5 text-stone-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="px-4 sm:px-5 pb-4 pt-1">{children}</div>}
+    </div>
+  )
+}
 
 export default function Integracoes() {
   const [user] = useAuthState(auth)
@@ -45,6 +62,8 @@ export default function Integracoes() {
   const [numeroWhatsapp, setNumeroWhatsapp] = useState('')
   const [qrBase64, setQrBase64] = useState(null)
   const [showQrModal, setShowQrModal] = useState(false)
+  const [secoes, setSecoes] = useState({ whatsapp: false, kiwify: false })
+  const toggleSecao = (k) => setSecoes((s) => ({ ...s, [k]: !s[k] }))
   const [instanceEmConexao, setInstanceEmConexao] = useState(null)
   const [verificando, setVerificando] = useState(false)
   const [buscandoGruposId, setBuscandoGruposId] = useState(null)
@@ -65,7 +84,7 @@ export default function Integracoes() {
       .then((evo) => {
         setEvolution(evo)
         setSelectedInstanceId(evo?.id ?? null)
-        return getWebhooks(user.uid)
+        return getKiwifyWebhooks(user.uid)
       })
       .then(setWebhooks)
       .catch(() => {})
@@ -266,7 +285,7 @@ export default function Integracoes() {
         tipo: 'kiwify_abandoned_checkout',
         nome: `Kiwify ${new Date().toLocaleDateString('pt-BR')}`,
       })
-      const lista = await getWebhooks(user.uid)
+      const lista = await getKiwifyWebhooks(user.uid)
       setWebhooks(lista)
       toast.success('Novo webhook criado! Use a URL na Kiwify. Você pode ter vários webhooks.')
     } catch (err) {
@@ -316,7 +335,7 @@ export default function Integracoes() {
     const valor = (nome || '').trim() || 'Webhook Kiwify'
     try {
       await updateWebhook(user.uid, webhookId, { nome: valor })
-      const lista = await getWebhooks(user.uid)
+      const lista = await getKiwifyWebhooks(user.uid)
       setWebhooks(lista)
     } catch (err) {
       toast.error(err.message || 'Erro ao salvar nome')
@@ -328,7 +347,7 @@ export default function Integracoes() {
     if (!window.confirm('Excluir este webhook? A URL deixará de funcionar na Kiwify.')) return
     try {
       await deleteWebhook(user.uid, webhookId)
-      const lista = await getWebhooks(user.uid)
+      const lista = await getKiwifyWebhooks(user.uid)
       setWebhooks(lista)
       toast.success('Webhook excluído.')
     } catch (err) {
@@ -349,10 +368,8 @@ export default function Integracoes() {
 
   return (
     <PageShell
-      fill
       badge="Conexões"
       title="Integrações"
-      subtitle="Evolution API, grupos do WhatsApp e webhooks Kiwify — tudo em um só lugar."
     >
       {/* Modal QR Code — overlay preto/50 */}
       {showQrModal && qrBase64 && (
@@ -386,9 +403,9 @@ export default function Integracoes() {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
-      <Panel title="WhatsApp (Evolution)" icon={WhatsAppIcon} flexFill>
-          <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft space-y-4 pr-0.5">
+      <div className="space-y-3">
+      <Secao title="WhatsApp" icon={WhatsAppIcon} open={secoes.whatsapp} onToggle={() => toggleSecao('whatsapp')}>
+          <div className="space-y-4">
           <p className="text-sm font-medium text-stone-700">Adicionar nova instância</p>
           <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
             <div className="w-full sm:w-56 min-w-0">
@@ -550,20 +567,15 @@ export default function Integracoes() {
             <p className="text-sm text-stone-500">Nenhuma instância ainda. Crie uma acima e escaneie o QR Code no popup.</p>
           )}
           </div>
-      </Panel>
+      </Secao>
 
-      <Panel
-        flexFill
-        title="Webhook Kiwify"
-        icon={Webhook}
-        description={
-          <>
-            Cada clique em &quot;Criar webhook Kiwify&quot; gera um <strong>novo</strong> webhook (não substitui os anteriores).
-            Use a URL na Kiwify; os webhooks antigos continuam válidos.
-          </>
-        }
-      >
-          <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft space-y-4 pr-0.5">
+      {/* Webhook Kiwify escondido — migrado para MundPay + webhook custom no Tracker */}
+      {false && (
+      <Secao title="Webhook Kiwify" icon={Webhook} open={secoes.kiwify} onToggle={() => toggleSecao('kiwify')}>
+          <div className="space-y-4">
+          <p className="text-sm text-stone-500 leading-relaxed">
+            Cada clique em &quot;Criar webhook Kiwify&quot; gera um <strong>novo</strong> webhook (não substitui os anteriores). Use a URL na Kiwify; os webhooks antigos continuam válidos.
+          </p>
           <button
             onClick={handleCriarWebhookKiwify}
             disabled={criandoWebhook}
@@ -616,7 +628,8 @@ export default function Integracoes() {
             </div>
           )}
           </div>
-      </Panel>
+      </Secao>
+      )}
       </div>
     </PageShell>
   )

@@ -187,7 +187,6 @@ export default function EmailConstrutor() {
       fill
       badge="E-mail · Construtor"
       title="Construtor de e-mail"
-      subtitle="Monte arrastando blocos ou colando/editando o código. Cada template serve às automações por evento."
       right={
         <div className="flex flex-wrap gap-2">
           <button onClick={novoTemplate} className="btn-secondary text-sm min-h-[40px]">

@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Setinha custom em TODOS os <select> — não fica colada na borda, com espaço à direita */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a8a29e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 1rem;
+  padding-right: 2.5rem !important;
+}
+
 /* App em altura de viewport: sem scroll no documento; só dentro dos painéis */
 @layer utilities {
   .app-viewport {

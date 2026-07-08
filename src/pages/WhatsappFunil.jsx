@@ -6,13 +6,13 @@ import {
   ReactFlow, Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState, Handle, Position,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { auth, functions } from '../../lib/firebase'
-import { getEmailFunnels, saveEmailFunnel, deleteEmailFunnel, getEmailTemplates, getProductGroups, getFunnelSends, getEmailProviders } from '../../lib/firestore'
-import RemetentePicker from '../../components/RemetentePicker'
-import { KIWIFY_EVENTS } from '../../lib/constants'
-import PageShell from '../../components/PageShell'
-import PageLoader from '../../components/PageLoader'
-import { Play, Mail, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight } from 'lucide-react'
+import { auth, functions } from '../lib/firebase'
+import { getWhatsappFunnels, saveWhatsappFunnel, deleteWhatsappFunnel, getProductGroups, getFunnelSends } from '../lib/firestore'
+import { KIWIFY_EVENTS } from '../lib/constants'
+import PageShell from '../components/PageShell'
+import PageLoader from '../components/PageLoader'
+import WhatsAppIcon from '../components/WhatsAppIcon'
+import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
 const formatDate = (ts) => {
@@ -34,10 +34,10 @@ function InicioNode({ selected, data }) {
 }
 function EnviarNode({ data, selected }) {
   return (
-    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[170px] ${selected ? 'border-primary-500' : 'border-primary-200'}`}>
+    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[180px] max-w-[220px] ${selected ? 'border-primary-500' : 'border-green-200'}`}>
       <Handle type="target" position={Position.Top} />
-      <div className="flex items-center gap-2 text-primary-700 font-semibold text-sm"><Mail className="w-4 h-4" /> Enviar e-mail</div>
-      <p className="text-[11px] text-stone-500 mt-0.5 truncate max-w-[150px]">{data?.templateNome || 'Escolha um template'}</p>
+      <div className="flex items-center gap-2 text-green-700 font-semibold text-sm"><WhatsAppIcon className="w-4 h-4" /> Enviar mensagem</div>
+      <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{data?.mensagem ? data.mensagem : 'Escreva a mensagem'}</p>
       {data?._enviados > 0 && (
         <span className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center shadow" title={`${data._enviados} envio(s)`}>{data._enviados}</span>
       )}
@@ -55,13 +55,12 @@ function EsperarNode({ data, selected }) {
     </div>
   )
 }
-function CondicaoNode({ data, selected }) {
-  const label = data?.evento === 'clicked' ? 'Clicou no link?' : 'Abriu o e-mail?'
+function CondicaoNode({ selected }) {
   return (
     <div className={`rounded-xl border-2 px-4 py-3 bg-violet-50 shadow-sm min-w-[170px] relative ${selected ? 'border-primary-500' : 'border-violet-300'}`}>
       <Handle type="target" position={Position.Top} />
-      <div className="flex items-center gap-2 text-violet-700 font-semibold text-sm"><GitBranch className="w-4 h-4" /> Condição</div>
-      <p className="text-[11px] text-violet-600/90 mt-0.5">{label}</p>
+      <div className="flex items-center gap-2 text-violet-700 font-semibold text-sm"><ShoppingBag className="w-4 h-4" /> Condição</div>
+      <p className="text-[11px] text-violet-600/90 mt-0.5">Comprou?</p>
       <span className="absolute right-2 top-[30%] text-[10px] font-bold text-green-600">Sim</span>
       <span className="absolute right-2 top-[64%] text-[10px] font-bold text-red-500">Não</span>
       <Handle type="source" position={Position.Right} id="sim" style={{ top: '35%', background: '#16a34a' }} />
@@ -72,12 +71,12 @@ function CondicaoNode({ data, selected }) {
 const nodeTypes = { inicio: InicioNode, enviar: EnviarNode, esperar: EsperarNode, condicao: CondicaoNode }
 
 const novoInicio = () => ({ id: `inicio_${Date.now()}`, type: 'inicio', position: { x: 280, y: 40 }, data: {} })
+const VARS = ['{nome_cliente}', '{nome_produto}']
 
-export default function EmailFunil() {
+export default function WhatsappFunil() {
   const [user] = useAuthState(auth)
   const [loading, setLoading] = useState(true)
   const [funis, setFunis] = useState([])
-  const [templates, setTemplates] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [nome, setNome] = useState('')
   const [ativo, setAtivo] = useState(false)
@@ -88,28 +87,23 @@ export default function EmailFunil() {
   const [inscrevendo, setInscrevendo] = useState(false)
   const [grupos, setGrupos] = useState([])
   const [funnelSends, setFunnelSends] = useState([])
-  const [reenviandoId, setReenviandoId] = useState(null)
   const [pSends, setPSends] = useState(1)
-  const [providers, setProviders] = useState([])
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
   useEffect(() => {
     if (!user?.uid) return
-    Promise.all([getEmailFunnels(user.uid), getEmailTemplates(user.uid), getProductGroups(user.uid), getFunnelSends(user.uid), getEmailProviders(user.uid)])
-      .then(([fs, tpls, gs, sends, provs]) => {
+    Promise.all([getWhatsappFunnels(user.uid), getProductGroups(user.uid), getFunnelSends(user.uid)])
+      .then(([fs, gs, sends]) => {
         setFunis(fs)
-        setTemplates(tpls)
         setGrupos(gs)
         setFunnelSends(sends)
-        setProviders(provs)
         if (fs.length > 0) carregarFunil(fs[0])
       })
       .finally(() => setLoading(false))
   }, [user?.uid])
 
-  // Injeta a contagem de envios em cada nó "Enviar" (bolinha vermelha)
   useEffect(() => {
     if (!selectedId) return
     const counts = {}
@@ -140,7 +134,7 @@ export default function EmailFunil() {
 
   const addNode = (type) => {
     const id = `${type}_${Date.now()}`
-    const data = type === 'esperar' ? { valor: 1, unidade: 'dias' } : type === 'condicao' ? { evento: 'opened' } : {}
+    const data = type === 'esperar' ? { valor: 1, unidade: 'dias' } : type === 'enviar' ? { mensagem: '' } : {}
     setNodes((nds) => [...nds, { id, type, position: { x: 200 + Math.round(Math.random() * 120), y: 160 + nds.length * 30 }, data }])
   }
 
@@ -169,8 +163,8 @@ export default function EmailFunil() {
       const inicio = nodes.find((n) => n.type === 'inicio')
       const gatilhoEvento = inicio?.data?.evento || null
       const gatilhoGrupoId = inicio?.data?.grupoId || null
-      const id = await saveEmailFunnel(user.uid, selectedId, { nome: nome.trim(), ativo, gatilhoEvento, gatilhoGrupoId, nodes: cleanNodes, edges: cleanEdges })
-      setFunis(await getEmailFunnels(user.uid))
+      const id = await saveWhatsappFunnel(user.uid, selectedId, { nome: nome.trim(), ativo, gatilhoEvento, gatilhoGrupoId, nodes: cleanNodes, edges: cleanEdges })
+      setFunis(await getWhatsappFunnels(user.uid))
       setSelectedId(id)
       toast.success('Funil salvo.')
     } catch (err) {
@@ -184,15 +178,15 @@ export default function EmailFunil() {
     if (!selectedId) { toast.error('Salve o funil primeiro para poder inscrever.'); return }
     const recipients = enrollList.split(/\n/).map((l) => l.trim()).filter(Boolean).map((line) => {
       const parts = line.split(/[\t,;]/).map((p) => p.trim()).filter(Boolean)
-      const email = parts.find((p) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p)) || parts[0] || ''
-      const nome = parts.filter((p) => p !== email).join(' ')
-      return { email, nome }
-    }).filter((r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email))
-    if (recipients.length === 0) { toast.error('Nenhum e-mail válido na lista.'); return }
+      const telefone = (parts.find((p) => p.replace(/\D/g, '').length >= 8) || parts[0] || '').replace(/\D/g, '')
+      const nomeC = parts.filter((p) => p.replace(/\D/g, '') !== telefone).join(' ')
+      return { telefone, nome: nomeC }
+    }).filter((r) => r.telefone.length >= 8)
+    if (recipients.length === 0) { toast.error('Nenhum número válido na lista.'); return }
     setInscrevendo(true)
     try {
       const fn = httpsCallable(functions, 'enrollFunnel')
-      const res = await fn({ funnelId: selectedId, recipients })
+      const res = await fn({ funnelId: selectedId, recipients, canal: 'whatsapp' })
       toast.success(`${res.data?.inscritos || 0} contato(s) inscrito(s) no funil.`)
       setShowEnroll(false)
       setEnrollList('')
@@ -208,33 +202,23 @@ export default function EmailFunil() {
     try { setFunnelSends(await getFunnelSends(user.uid)) } catch (_) {}
   }
 
-  const reenviarSend = async (s) => {
-    if (!s.contato?.email || !s.templateId) { toast.error('Sem e-mail ou template para reenviar.'); return }
-    setReenviandoId(s.id)
-    try {
-      const fn = httpsCallable(functions, 'sendTemplateManual')
-      await fn({ templateId: s.templateId, to: s.contato.email, nome: s.contato.nome, produto: s.contato.produto })
-      toast.success(`Reenviado para ${s.contato.email}.`)
-      await carregarSends()
-    } catch (err) {
-      toast.error(err.message || 'Falha ao reenviar.')
-    } finally {
-      setReenviandoId(null)
-    }
-  }
-
   const handleExcluir = async () => {
     if (!selectedId) return
     if (!window.confirm(`Excluir o funil "${nome}"?`)) return
     try {
-      await deleteEmailFunnel(user.uid, selectedId)
-      const fs = await getEmailFunnels(user.uid)
+      await deleteWhatsappFunnel(user.uid, selectedId)
+      const fs = await getWhatsappFunnels(user.uid)
       setFunis(fs)
       fs.length ? carregarFunil(fs[0]) : novoFunil()
       toast.success('Funil excluído.')
     } catch (err) {
       toast.error(err.message || 'Erro ao excluir')
     }
+  }
+
+  const inserirVar = (v) => {
+    if (!selectedNode) return
+    updateNodeData(selectedNode.id, { mensagem: `${selectedNode.data?.mensagem || ''}${v}` })
   }
 
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
@@ -247,8 +231,8 @@ export default function EmailFunil() {
 
   return (
     <PageShell
-      badge="E-mail · Funil"
-      title="Funil de e-mail"
+      badge="WhatsApp · Funil"
+      title="Funil de WhatsApp"
       right={
         <div className="flex flex-wrap gap-2 items-center">
           <select value={selectedId || ''} onChange={(e) => { const f = funis.find((x) => x.id === e.target.value); f ? carregarFunil(f) : novoFunil() }} className="px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white">
@@ -262,7 +246,6 @@ export default function EmailFunil() {
       }
     >
       <div className="space-y-3">
-      {/* Barra: nome + ativo + adicionar nós */}
       <div className="shrink-0 app-panel rounded-2xl p-3 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
         <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do funil" className="w-full sm:w-56 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
         <label className="flex items-center gap-2 text-sm text-stone-600">
@@ -273,14 +256,13 @@ export default function EmailFunil() {
         </label>
         <div className="flex flex-wrap gap-2 sm:ml-auto">
           <span className="text-xs text-stone-400 self-center">Adicionar:</span>
-          <button onClick={() => addNode('enviar')} className="btn-secondary text-xs min-h-[38px] px-3"><Mail className="w-3.5 h-3.5" /> Enviar</button>
+          <button onClick={() => addNode('enviar')} className="btn-secondary text-xs min-h-[38px] px-3"><WhatsAppIcon className="w-3.5 h-3.5" /> Mensagem</button>
           <button onClick={() => addNode('esperar')} className="btn-secondary text-xs min-h-[38px] px-3"><Clock className="w-3.5 h-3.5" /> Esperar</button>
           <button onClick={() => addNode('condicao')} className="btn-secondary text-xs min-h-[38px] px-3"><GitBranch className="w-3.5 h-3.5" /> Condição</button>
           <button onClick={() => setShowEnroll(true)} className="btn-primary text-xs min-h-[38px] px-3"><UserPlus className="w-3.5 h-3.5" /> Inscrever lista</button>
         </div>
       </div>
 
-      {/* Canvas */}
       <div className="relative app-panel rounded-2xl overflow-hidden h-[60vh]">
         <ReactFlow
           nodes={nodes}
@@ -298,12 +280,11 @@ export default function EmailFunil() {
           <MiniMap pannable zoomable className="!bg-surface-50" />
         </ReactFlow>
 
-        {/* Painel de configuração do nó */}
         {selectedNode && (
-          <div className="absolute top-3 right-3 w-64 bg-white rounded-2xl shadow-xl border border-surface-200 p-4 space-y-3 z-10">
+          <div className="absolute top-3 right-3 w-72 bg-white rounded-2xl shadow-xl border border-surface-200 p-4 space-y-3 z-10">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-stone-800">
-                {selectedNode.type === 'inicio' ? 'Início (quem entra)' : selectedNode.type === 'enviar' ? 'Enviar e-mail' : selectedNode.type === 'esperar' ? 'Esperar' : 'Condição'}
+                {selectedNode.type === 'inicio' ? 'Início (quem entra)' : selectedNode.type === 'enviar' ? 'Enviar mensagem' : selectedNode.type === 'esperar' ? 'Esperar' : 'Condição — Comprou?'}
               </p>
               <button onClick={() => setSelectedNodeId(null)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
             </div>
@@ -315,7 +296,7 @@ export default function EmailFunil() {
                   <option value="">Somente manual (lista)</option>
                   {KIWIFY_EVENTS.map((ev) => <option key={ev.id} value={ev.id}>{ev.label}</option>)}
                 </select>
-                <p className="text-[11px] text-stone-400 mt-1">Com um evento, quem disparar esse evento no Tracker entra sozinho. Você também pode inscrever uma lista manualmente.</p>
+                <p className="text-[11px] text-stone-400 mt-1">Com um evento, quem disparar esse evento no Tracker entra sozinho (precisa ter telefone). Também dá pra inscrever uma lista manualmente.</p>
 
                 <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Produto (grupo)</label>
                 <select
@@ -326,27 +307,25 @@ export default function EmailFunil() {
                   <option value="">Todos os produtos</option>
                   {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
                 </select>
-                <p className="text-[11px] text-stone-400 mt-1">Se escolher um produto, só quem for desse grupo entra no funil pelo evento.</p>
               </div>
             )}
 
             {selectedNode.type === 'enviar' && (
               <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Template</label>
-                <select
-                  value={selectedNode.data?.templateId || ''}
-                  onChange={(e) => {
-                    const t = templates.find((x) => x.id === e.target.value)
-                    updateNodeData(selectedNode.id, { templateId: e.target.value, templateNome: t?.nome || '' })
-                  }}
-                  className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white"
-                >
-                  <option value="">{templates.length === 0 ? 'SEM TEMPLATE' : '— escolha —'}</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                </select>
-
-                <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Remetente</label>
-                <RemetentePicker providers={providers} value={selectedNode.data?.remetenteId || null} onChange={(id) => updateNodeData(selectedNode.id, { remetenteId: id })} />
+                <label className="block text-xs font-medium text-stone-600 mb-1">Mensagem</label>
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {VARS.map((v) => (
+                    <button key={v} type="button" onClick={() => inserirVar(v)} className="text-[11px] px-2 py-1 rounded-lg bg-surface-100 text-stone-600 hover:bg-surface-200">{v}</button>
+                  ))}
+                </div>
+                <textarea
+                  value={selectedNode.data?.mensagem || ''}
+                  onChange={(e) => updateNodeData(selectedNode.id, { mensagem: e.target.value })}
+                  rows={5}
+                  placeholder={'Olá {nome_cliente}! Vi que você se interessou por {nome_produto}...'}
+                  className="w-full p-2.5 rounded-xl border border-surface-200 text-sm resize-y"
+                />
+                <p className="text-[11px] text-stone-400 mt-1">Use *texto* p/ negrito e _texto_ p/ itálico no WhatsApp. Envia pela instância selecionada nas Integrações.</p>
               </div>
             )}
 
@@ -363,12 +342,8 @@ export default function EmailFunil() {
 
             {selectedNode.type === 'condicao' && (
               <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Se o contato…</label>
-                <select value={selectedNode.data?.evento || 'opened'} onChange={(e) => updateNodeData(selectedNode.id, { evento: e.target.value })} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white">
-                  <option value="opened">Abriu o e-mail</option>
-                  <option value="clicked">Clicou no link</option>
-                </select>
-                <p className="text-[11px] text-stone-400 mt-1">Ligue a saída <strong className="text-green-600">Sim</strong> e a <strong className="text-red-500">Não</strong> a próximos passos.</p>
+                <p className="text-xs text-stone-600">Verifica se o contato <strong>fez uma compra aprovada</strong> depois de entrar no funil.</p>
+                <p className="text-[11px] text-stone-400 mt-1">Ligue a saída <strong className="text-green-600">Sim</strong> (comprou) e a <strong className="text-red-500">Não</strong> (não comprou) aos próximos passos. Ex.: se comprou, para de cobrar.</p>
               </div>
             )}
 
@@ -387,28 +362,24 @@ export default function EmailFunil() {
         </div>
         <div className="overflow-x-auto">
           {sendsDoFunil.length === 0 ? (
-            <p className="p-6 text-sm text-stone-400 text-center">Nenhum envio deste funil ainda. Quando um contato entrar e um nó "Enviar" disparar, aparece aqui (e a bolinha vermelha no nó sobe).</p>
+            <p className="p-6 text-sm text-stone-400 text-center">Nenhum envio deste funil ainda. Quando um contato entrar e um nó "Enviar mensagem" disparar, aparece aqui.</p>
           ) : (
-            <table className="w-full text-sm min-w-[720px]">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="border-b border-surface-100 text-left text-stone-500">
                   <th className="px-4 py-2.5 font-medium text-xs">Contato</th>
+                  <th className="px-4 py-2.5 font-medium text-xs">Telefone</th>
                   <th className="px-4 py-2.5 font-medium text-xs">Produto</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">E-mail enviado</th>
                   <th className="px-4 py-2.5 font-medium text-xs">Enviado?</th>
                   <th className="px-4 py-2.5 font-medium text-xs">Quando</th>
-                  <th className="px-4 py-2.5 font-medium text-xs"></th>
                 </tr>
               </thead>
               <tbody>
                 {sendsPagina.map((s) => (
                   <tr key={s.id} className="border-b border-surface-50 hover:bg-surface-50/70">
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium text-stone-800 truncate max-w-[180px]">{s.contato?.nome || '—'}</div>
-                      <div className="text-xs text-stone-400 truncate max-w-[180px]">{s.contato?.email || ''}</div>
-                    </td>
+                    <td className="px-4 py-2.5 font-medium text-stone-800 truncate max-w-[160px]">{s.contato?.nome || '—'}</td>
+                    <td className="px-4 py-2.5 text-stone-600 font-mono text-xs">{s.contato?.telefone || '—'}</td>
                     <td className="px-4 py-2.5 text-stone-600 truncate max-w-[120px]">{s.contato?.produto || '—'}</td>
-                    <td className="px-4 py-2.5 text-stone-600 truncate max-w-[160px]">{s.templateNome || '—'}</td>
                     <td className="px-4 py-2.5">
                       {s.status === 'enviado' ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700"><CheckCircle2 className="w-3.5 h-3.5" /> Enviado</span>
@@ -417,13 +388,6 @@ export default function EmailFunil() {
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-stone-500 whitespace-nowrap">{formatDate(s.createdAt)}</td>
-                    <td className="px-4 py-2.5">
-                      {s.status !== 'enviado' && (
-                        <button onClick={() => reenviarSend(s)} disabled={reenviandoId === s.id} className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:bg-primary-50 rounded-lg px-2 py-1.5 disabled:opacity-40">
-                          {reenviandoId === s.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Reenviar
-                        </button>
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -449,10 +413,10 @@ export default function EmailFunil() {
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><UserPlus className="w-5 h-5" /></span>
               <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-stone-800">Inscrever lista no funil</h3>
-                <p className="text-xs text-stone-500">Um e-mail por linha (email ou email,nome).</p>
+                <p className="text-xs text-stone-500">Um número por linha (telefone ou telefone,nome).</p>
               </div>
             </div>
-            <textarea value={enrollList} onChange={(e) => setEnrollList(e.target.value)} rows={8} placeholder={'cliente@email.com\nmaria@email.com,Maria'} className="w-full p-3 rounded-xl border border-surface-200 font-mono text-sm resize-y" autoFocus />
+            <textarea value={enrollList} onChange={(e) => setEnrollList(e.target.value)} rows={8} placeholder={'5511999999999\n5511888888888,Maria'} className="w-full p-3 rounded-xl border border-surface-200 font-mono text-sm resize-y" autoFocus />
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowEnroll(false)} className="btn-secondary min-h-[44px]">Cancelar</button>
               <button onClick={inscreverLista} disabled={inscrevendo} className="btn-primary min-h-[44px]">{inscrevendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />} Inscrever</button>

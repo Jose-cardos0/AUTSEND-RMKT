@@ -246,10 +246,25 @@ export default function EmailMetricas() {
       }))
   }, [leads, grupoSel, produtosGrupo])
 
-  const atividadeBase = useMemo(
-    () => [...eventosF.filter((e) => e.tipo === 'opened' || e.tipo === 'clicked'), ...estornoAtividade],
-    [eventosF, estornoAtividade]
-  )
+  // Agrupa aberturas/cliques repetidos do mesmo contato (o cliente de e-mail recarrega o pixel
+  // várias vezes) numa linha só, com contador ×N e a data mais recente.
+  const atividadeBase = useMemo(() => {
+    const ms = (c) => (c?.toMillis ? c.toMillis() : c?.seconds ? c.seconds * 1000 : 0)
+    const grupos = new Map()
+    for (const e of eventosF) {
+      if (e.tipo !== 'opened' && e.tipo !== 'clicked') continue
+      const key = `${(e.email || '').toLowerCase()}|${e.tipo}|${e.link || ''}`
+      const g = grupos.get(key)
+      const t = ms(e.createdAt)
+      if (!g) {
+        grupos.set(key, { ...e, count: 1, _ms: t })
+      } else {
+        g.count++
+        if (t > g._ms) { g._ms = t; g.createdAt = e.createdAt; g.id = e.id }
+      }
+    }
+    return [...grupos.values(), ...estornoAtividade]
+  }, [eventosF, estornoAtividade])
 
   const atividadeFiltrada = useMemo(() => {
     let list = atividadeBase
@@ -303,7 +318,6 @@ export default function EmailMetricas() {
     <PageShell
       badge="E-mail · Métricas"
       title="Dashboard de E-mail"
-      subtitle="Aberturas, cliques e desempenho dos seus envios (dados do rastreamento do Resend)."
       right={
         <div className="flex flex-wrap gap-2 items-center">
           {grupos.length > 0 && (
@@ -453,7 +467,10 @@ export default function EmailMetricas() {
                   return (
                     <tr key={e.id} className="border-b border-surface-50 hover:bg-surface-50/70">
                       <td className="px-4 py-2.5 text-stone-700 truncate max-w-[180px]">{e.email || '-'}</td>
-                      <td className="px-4 py-2.5"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${t.cls}`}>{t.label}</span></td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${t.cls}`}>{t.label}</span>
+                        {e.count > 1 && <span className="ml-1.5 text-xs font-semibold text-stone-500" title={`${e.count} vezes`}>×{e.count}</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-xs text-stone-500 truncate max-w-[200px]" title={e.link || ''}>{e.link || '—'}</td>
                       <td className="px-4 py-2.5 text-xs text-stone-600 truncate max-w-[140px]" title={prod || ''}>{prod || '—'}</td>
                       {isEst ? (

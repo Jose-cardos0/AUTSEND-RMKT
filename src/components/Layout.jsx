@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LogOut, Link2, MessageCircle, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
@@ -12,6 +12,15 @@ import { SUPPORT_WHATSAPP } from '../lib/constants'
 // Navegação por canal. Cada grupo vira um dropdown no desktop e uma seção no mobile.
 const navGroups = [
   {
+    key: 'geral',
+    label: 'Geral',
+    icon: Settings,
+    items: [
+      { to: '/tracker', label: 'Tracker', icon: Radar },
+      { to: '/produtos', label: 'Produtos', icon: Package },
+    ],
+  },
+  {
     key: 'whatsapp',
     label: 'WhatsApp',
     icon: WhatsAppIcon,
@@ -21,6 +30,7 @@ const navGroups = [
       { to: '/remarketing', label: 'Remarketing', icon: MessageCircle },
       { to: '/remarketing-grupos', label: 'Grupos', icon: Users },
       { to: '/enviar-mensagem', label: 'Disparos', icon: Send },
+      { to: '/funil', label: 'Funil', icon: GitBranch },
     ],
   },
   {
@@ -29,8 +39,6 @@ const navGroups = [
     icon: Mail,
     items: [
       { to: '/email/integracoes', label: 'Integrações', icon: Link2 },
-      { to: '/email/tracker', label: 'Tracker', icon: Radar },
-      { to: '/email/produtos', label: 'Produtos', icon: Package },
       { to: '/email/construtor', label: 'Construtor', icon: LayoutTemplate },
       { to: '/email/automacoes', label: 'Automações', icon: Zap },
       { to: '/email/disparos', label: 'Disparos', icon: Send },
@@ -118,8 +126,8 @@ export default function Layout() {
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [openKey, setOpenKey] = useState(null)
-  // O construtor de e-mail usa mais largura (editor lado a lado)
-  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil')
+  // O construtor de e-mail, o funil e o remarketing usam mais largura (lista/editor lado a lado)
+  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes')
 
   const handleLogout = async () => {
     setMenuOpen(false)

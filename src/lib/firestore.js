@@ -187,6 +187,12 @@ export async function getWebhooks(uid) {
     })
 }
 
+/** Só os webhooks Kiwify (exclui os 'custom' do Tracker — evita apagá-los por engano nas Integrações). */
+export async function getKiwifyWebhooks(uid) {
+  const todos = await getWebhooks(uid)
+  return todos.filter((w) => w.tipo !== 'custom')
+}
+
 export async function updateWebhook(uid, webhookId, data) {
   const ref = doc(db, 'users', uid, 'webhooks', webhookId)
   await updateDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }))
@@ -338,6 +344,21 @@ export async function deleteEmailProvider(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'emailProviders', id))
 }
 
+// ── Produtos escondidos do seletor de WhatsApp (preferência do usuário) ──
+export async function getWaHiddenProducts(uid) {
+  const snap = await getDoc(doc(db, 'users', uid, 'config', 'whatsapp'))
+  return snap.exists() ? snap.data().hiddenProducts || [] : []
+}
+
+export async function saveWaHiddenProducts(uid, hiddenProducts) {
+  await setDoc(doc(db, 'users', uid, 'config', 'whatsapp'), { hiddenProducts, updatedAt: serverTimestamp() }, { merge: true })
+}
+
+/** Contador de reenvios manuais de um lead (para o "Enviado +N"). */
+export async function setLeadReenvios(uid, leadId, reenvios) {
+  await setDoc(doc(db, 'users', uid, 'leads', leadId), { reenvios }, { merge: true })
+}
+
 // ── Templates de E-mail (construtor GrapesJS) ──
 
 export function userEmailTemplatesRef(uid) {
@@ -477,6 +498,27 @@ export async function deleteEmailFunnel(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'emailFunnels', id))
 }
 
+// ── Funil de WhatsApp (mesmo motor do funil de e-mail, canal 'whatsapp') ──
+export async function getWhatsappFunnels(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'whatsappFunnels'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
+}
+
+export async function saveWhatsappFunnel(uid, id, data) {
+  if (id) {
+    await setDoc(doc(db, 'users', uid, 'whatsappFunnels', id), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(collection(db, 'users', uid, 'whatsappFunnels'), removeUndefined({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+  return ref.id
+}
+
+export async function deleteWhatsappFunnel(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'whatsappFunnels', id))
+}
+
 /** Registros de envio do funil (um por e-mail enviado por um nó "Enviar"). */
 export async function getFunnelSends(uid) {
   const snap = await getDocs(collection(db, 'users', uid, 'funnelSends'))
@@ -534,6 +576,12 @@ export async function saveAutoMessage(uid, evento, produto, data) {
   const docId = autoMessageDocId(evento, produto ?? '')
   const ref = doc(db, 'users', uid, 'autoMessages', docId)
   await setDoc(ref, removeUndefined({ evento, produto: produto ?? '', ...data, updatedAt: serverTimestamp() }), { merge: true })
+}
+
+/** Automação de WhatsApp por GRUPO de produto (mesmo modelo do e-mail). docId: `${grupoId}__${evento}`. */
+export async function saveAutoMessageGrupo(uid, grupoId, evento, data) {
+  const ref = doc(db, 'users', uid, 'autoMessages', `${grupoId}__${evento}`)
+  await setDoc(ref, removeUndefined({ grupoId, evento, ...data, updatedAt: serverTimestamp() }), { merge: true })
 }
 
 // ── Message Logs ──

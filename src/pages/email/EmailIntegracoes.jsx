@@ -164,7 +164,6 @@ export default function EmailIntegracoes() {
     <PageShell
       badge="E-mail · Conexões"
       title="Integrações de E-mail"
-      subtitle="Conecte um ou mais provedores Resend, com quantos remetentes quiser. Totalmente separado do WhatsApp."
       right={
         conectado ? (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">

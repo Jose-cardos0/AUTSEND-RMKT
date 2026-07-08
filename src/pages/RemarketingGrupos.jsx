@@ -114,7 +114,6 @@ export default function RemarketingGrupos() {
       fill
       badge="WhatsApp"
       title="Remarketing em grupos"
-      subtitle="Grupos da Integração — selecione e envie uma mensagem para todos de uma vez."
     >
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
         <Panel title="Seus grupos" icon={Users} noPadding flexFill className="min-w-0 lg:min-w-[45%]">

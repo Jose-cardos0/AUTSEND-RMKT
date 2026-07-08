@@ -21,6 +21,7 @@ import PageLoader from './components/PageLoader'
 
 const EmailConstrutor = lazy(() => import('./pages/email/EmailConstrutor'))
 const EmailFunil = lazy(() => import('./pages/email/EmailFunil'))
+const WhatsappFunil = lazy(() => import('./pages/WhatsappFunil'))
 import ParticlesBackground from './components/ParticlesBackground'
 
 function ProtectedRoute({ children }) {
@@ -75,6 +76,16 @@ export default function App() {
           <Route path="remarketing" element={<Remarketing />} />
           <Route path="remarketing-grupos" element={<RemarketingGrupos />} />
           <Route path="enviar-mensagem" element={<EnviarMensagem />} />
+          <Route
+            path="funil"
+            element={
+              <Suspense fallback={<PageLoader label="Carregando funil…" />}>
+                <WhatsappFunil />
+              </Suspense>
+            }
+          />
+          <Route path="tracker" element={<Tracker />} />
+          <Route path="produtos" element={<EmailProdutos />} />
           <Route path="email/integracoes" element={<EmailIntegracoes />} />
           <Route path="email/tracker" element={<Tracker />} />
           <Route

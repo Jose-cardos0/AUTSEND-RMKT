@@ -608,31 +608,23 @@ function parseRequestBody(req) {
 
 async function tryAutoSend(userId, leadRef, evento, customer, product) {
   try {
-    // Busca todas as automações do evento (não filtra ativo aqui).
-    // Se existe regra para o produto exato, ela manda: inativa = não envia (nem cai na global).
-    const autoMsgSnap = await db
-      .collection('users').doc(userId).collection('autoMessages')
-      .where('evento', '==', evento)
-      .limit(50)
-      .get()
-
-    if (autoMsgSnap.empty) return
-
-    const docs = autoMsgSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    const productName = (product.nome || '').trim()
-    const productId = (product.id || '').trim()
-    const norm = (p) => (p == null ? '' : String(p).trim())
-
-    const exactMatch = docs.find(
-      (d) => norm(d.produto) === productName || norm(d.produto) === productId
-    )
-    const globalMatch = docs.find((d) => !norm(d.produto))
+    // Automações de WhatsApp por GRUPO de produto (mesmo modelo do e-mail).
+    const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
+    const pNome = (product.nome || '').trim()
+    const pId = (product.id || '').trim()
+    const grupo = gruposSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
 
     let autoMsg = null
-    if (exactMatch) {
-      if (exactMatch.ativo === true) autoMsg = exactMatch
-    } else if (globalMatch && globalMatch.ativo === true) {
-      autoMsg = globalMatch
+    if (grupo) {
+      const gSnap = await db.doc(`users/${userId}/autoMessages/${grupo.id}__${evento}`).get()
+      if (gSnap.exists) { const d = gSnap.data(); if (d.ativo === true && d.mensagem) autoMsg = d }
+    }
+    // Fallback: automação global do evento (sem grupo/produto)
+    if (!autoMsg) {
+      const globalSnap = await db.doc(`users/${userId}/autoMessages/${evento}`).get()
+      if (globalSnap.exists) { const d = globalSnap.data(); if (d.ativo === true && d.mensagem && !d.grupoId && !d.produto) autoMsg = d }
     }
 
     if (!autoMsg) return
@@ -823,20 +815,70 @@ async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteI
   } catch (err) { console.error('enviarTemplateFunil', err); return false }
 }
 
-/** Cria o funnelRun no primeiro passo após o Início. */
-async function inscreverNoFunil(userId, funnelId, funnel, contato) {
+/** Cria o funnelRun no primeiro passo após o Início. canal: 'email' | 'whatsapp'. */
+async function inscreverNoFunil(userId, funnelId, funnel, contato, canal = 'email') {
   const inicio = nodeInicio(funnel)
   const primeiro = inicio ? proximoNode(funnel, inicio.id) : null
-  if (!primeiro || !contato?.email) return false
+  const idKey = canal === 'whatsapp' ? (contato?.telefone || '') : (contato?.email || '')
+  if (!primeiro || !idKey) return false
   await db.collection('users').doc(userId).collection('funnelRuns').add({
     funnelId,
-    contato: { email: contato.email, nome: contato.nome || '', produto: contato.produto || '' },
+    canal,
+    contato: { email: contato.email || '', telefone: contato.telefone || '', nome: contato.nome || '', produto: contato.produto || '' },
     currentNodeId: primeiro,
     status: 'ativo',
     nextRunAt: admin.firestore.Timestamp.now(),
     enteredAt: admin.firestore.FieldValue.serverTimestamp(),
   })
   return true
+}
+
+/** Envia uma mensagem de WhatsApp de um nó de funil (via n8n/Evolution). */
+async function enviarMensagemFunil(userId, mensagem, contato) {
+  try {
+    if (!contato?.telefone || !mensagem) return false
+    const evolution = await getEvolutionConfigForUser(userId)
+    if (!evolution?.nomeInstancia) return false
+    const customer = { nome: contato.nome || '', telefone: contato.telefone, email: contato.email || '' }
+    const product = { nome: contato.produto || '' }
+    const msg = replaceVariables(mensagem, customer, product)
+    const numeroWhatsApp = (evolution.numeroWhatsapp || evolution.numeroWhatsApp || '').toString().replace(/\D/g, '')
+    const payload = {
+      tipoAcao: 'enviar_remarketing',
+      contatos: [{ nome: customer.nome, telefone: customer.telefone, email: customer.email }],
+      mensagem: msg,
+      nomeInstancia: evolution.nomeInstancia || '',
+      hash: evolution.hash || '',
+      instanciaId: evolution.instanceId || evolution.hash || '',
+      numeroWhatsApp: numeroWhatsApp || undefined,
+      evento: 'funil',
+      produto: product.nome || '',
+    }
+    const res = await fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    return res.ok
+  } catch (err) { console.error('enviarMensagemFunil', err); return false }
+}
+
+/** Condição do funil de WhatsApp: o contato fez uma compra aprovada depois de entrar? (por e-mail ou telefone) */
+async function comprouDesde(userId, contato, desde) {
+  try {
+    const leadsRef = db.collection('users').doc(userId).collection('leads')
+    const checaSnap = (snap) => snap.docs.some((d) => {
+      const v = d.data()
+      if (canonicalEvento(v.evento) !== 'order_status.purchase_approved') return false
+      const t = v.createdAt?.toMillis ? v.createdAt.toMillis() : 0
+      return t >= desde
+    })
+    if (contato?.email) {
+      const s = await leadsRef.where('email', '==', contato.email).limit(25).get()
+      if (checaSnap(s)) return true
+    }
+    if (contato?.telefone) {
+      const s = await leadsRef.where('telefone', '==', contato.telefone).limit(25).get()
+      if (checaSnap(s)) return true
+    }
+    return false
+  } catch (err) { console.error('comprouDesde', err); return false }
 }
 
 exports.kiwifyAbandonedCheckout = onRequest(
@@ -1156,26 +1198,34 @@ exports.customWebhook = onRequest(
 
     await dispararAcoes(userId, leadRef, evento, customer, product)
 
-    // Inscreve o contato em funis cujo gatilho é este evento (respeitando o grupo de produto)
-    if (customer.email) {
-      try {
-        const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
-        const pNome = (product.nome || '').trim()
-        const pId = (product.id || '').trim()
-        const grupoLead = gruposSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
+    // Inscreve o contato em funis (e-mail e WhatsApp) cujo gatilho é este evento
+    try {
+      const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
+      const pNome = (product.nome || '').trim()
+      const pId = (product.id || '').trim()
+      const grupoLead = gruposSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .find((g) => Array.isArray(g.produtos) && (g.produtos.includes(pNome) || (pId && g.produtos.includes(pId))))
+      const grupoOk = (funnel) => !funnel.gatilhoGrupoId || (grupoLead && grupoLead.id === funnel.gatilhoGrupoId)
+      if (customer.email) {
         const funisSnap = await db.collection('users').doc(userId).collection('emailFunnels')
           .where('gatilhoEvento', '==', evento).limit(20).get()
         for (const fdoc of funisSnap.docs) {
           const funnel = fdoc.data()
-          if (funnel.ativo !== true) continue
-          // Funil de um produto específico só inscreve quem for daquele grupo
-          if (funnel.gatilhoGrupoId && (!grupoLead || grupoLead.id !== funnel.gatilhoGrupoId)) continue
-          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, nome: customer.nome, produto: product.nome })
+          if (funnel.ativo !== true || !grupoOk(funnel)) continue
+          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, nome: customer.nome, produto: product.nome }, 'email')
         }
-      } catch (err) { console.error('Erro ao inscrever em funil:', err) }
-    }
+      }
+      if (customer.telefone) {
+        const funisWaSnap = await db.collection('users').doc(userId).collection('whatsappFunnels')
+          .where('gatilhoEvento', '==', evento).limit(20).get()
+        for (const fdoc of funisWaSnap.docs) {
+          const funnel = fdoc.data()
+          if (funnel.ativo !== true || !grupoOk(funnel)) continue
+          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome }, 'whatsapp')
+        }
+      }
+    } catch (err) { console.error('Erro ao inscrever em funil:', err) }
 
     res.status(200).json({ ok: true, evento, leadId: leadRef.id })
   },
@@ -1187,20 +1237,30 @@ exports.customWebhook = onRequest(
 exports.enrollFunnel = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
-  const { funnelId, recipients } = request.data || {}
+  const { funnelId, recipients, canal } = request.data || {}
   if (!funnelId) throw new HttpsError('invalid-argument', 'Escolha um funil.')
-  const fs = await db.doc(`users/${uid}/emailFunnels/${funnelId}`).get()
+  const col = canal === 'whatsapp' ? 'whatsappFunnels' : 'emailFunnels'
+  const fs = await db.doc(`users/${uid}/${col}/${funnelId}`).get()
   if (!fs.exists) throw new HttpsError('not-found', 'Funil não encontrado.')
   const funnel = fs.data()
   const inicio = nodeInicio(funnel)
   const primeiro = inicio ? proximoNode(funnel, inicio.id) : null
   if (!primeiro) throw new HttpsError('failed-precondition', 'O funil não tem passos após o Início.')
-  const valido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
-  const lista = (Array.isArray(recipients) ? recipients : []).filter((r) => r && valido(r.email)).slice(0, 2000)
+  const lista = Array.isArray(recipients) ? recipients : []
   let n = 0
-  for (const r of lista) {
-    await inscreverNoFunil(uid, funnelId, funnel, { email: String(r.email).trim(), nome: r.nome || '' })
-    n++
+  if (canal === 'whatsapp') {
+    const validos = lista.filter((r) => r && String(r.telefone || '').replace(/\D/g, '').length >= 8).slice(0, 2000)
+    for (const r of validos) {
+      await inscreverNoFunil(uid, funnelId, funnel, { telefone: String(r.telefone).replace(/\D/g, ''), nome: r.nome || '' }, 'whatsapp')
+      n++
+    }
+  } else {
+    const valido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
+    const validos = lista.filter((r) => r && valido(r.email)).slice(0, 2000)
+    for (const r of validos) {
+      await inscreverNoFunil(uid, funnelId, funnel, { email: String(r.email).trim(), nome: r.nome || '' }, 'email')
+      n++
+    }
   }
   return { ok: true, inscritos: n }
 })
@@ -1224,9 +1284,10 @@ exports.processarFunis = onSchedule(
 )
 
 async function processarFunnelRun(userId, runRef, run, cache) {
-  const key = `${userId}/${run.funnelId}`
+  const funnelCol = run.canal === 'whatsapp' ? 'whatsappFunnels' : 'emailFunnels'
+  const key = `${userId}/${funnelCol}/${run.funnelId}`
   if (!(key in cache)) {
-    const fs = await db.doc(`users/${userId}/emailFunnels/${run.funnelId}`).get()
+    const fs = await db.doc(`users/${userId}/${funnelCol}/${run.funnelId}`).get()
     cache[key] = fs.exists ? fs.data() : null
   }
   const funnel = cache[key]
@@ -1241,7 +1302,18 @@ async function processarFunnelRun(userId, runRef, run, cache) {
     if (node.type === 'inicio') { nodeId = proximoNode(funnel, nodeId); continue }
 
     if (node.type === 'enviar') {
-      if (node.data?.templateId) {
+      if (run.canal === 'whatsapp') {
+        if (node.data?.mensagem) {
+          const ok = await enviarMensagemFunil(userId, node.data.mensagem, run.contato)
+          try {
+            await db.collection('users').doc(userId).collection('funnelSends').add({
+              funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'whatsapp',
+              contato: run.contato || {}, status: ok ? 'enviado' : 'erro',
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+          } catch (_) {}
+        }
+      } else if (node.data?.templateId) {
         const ok = await enviarTemplateFunil(userId, node.data.templateId, run.contato, [
           { name: 'funnelId', value: run.funnelId }, { name: 'tipo', value: 'funil' },
         ], node.data?.remetenteId || null)
@@ -1273,20 +1345,24 @@ async function processarFunnelRun(userId, runRef, run, cache) {
     }
 
     if (node.type === 'condicao') {
-      const tipo = node.data?.evento || 'opened'
       const desde = run.enteredAt?.toMillis ? run.enteredAt.toMillis() : 0
       let ocorreu = false
-      try {
-        const evSnap = await db.collection('users').doc(userId).collection('emailEvents')
-          .where('email', '==', run.contato.email).limit(50).get()
-        evSnap.forEach((d) => {
-          const v = d.data()
-          if (v.tipo === tipo) {
-            const t = v.createdAt?.toMillis ? v.createdAt.toMillis() : 0
-            if (t >= desde) ocorreu = true
-          }
-        })
-      } catch (_) {}
+      if (run.canal === 'whatsapp') {
+        ocorreu = await comprouDesde(userId, run.contato, desde)
+      } else {
+        const tipo = node.data?.evento || 'opened'
+        try {
+          const evSnap = await db.collection('users').doc(userId).collection('emailEvents')
+            .where('email', '==', run.contato.email).limit(50).get()
+          evSnap.forEach((d) => {
+            const v = d.data()
+            if (v.tipo === tipo) {
+              const t = v.createdAt?.toMillis ? v.createdAt.toMillis() : 0
+              if (t >= desde) ocorreu = true
+            }
+          })
+        } catch (_) {}
+      }
       nodeId = proximoNode(funnel, nodeId, ocorreu ? 'sim' : 'nao')
       continue
     }

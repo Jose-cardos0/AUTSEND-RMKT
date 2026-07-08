@@ -3,10 +3,10 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth } from '../lib/firebase'
-import { getEvolutionConfig, getDisparos, setDisparo, updateDisparo, deleteDisparo } from '../lib/firestore'
+import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo } from '../lib/firestore'
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
-import { Send, Loader2, AlertCircle, UserPlus, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Send, Loader2, AlertCircle, UserPlus, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
 import PageShell from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 
@@ -29,6 +29,10 @@ function loadHistoricoLocal(uid) {
 export default function EnviarMensagem() {
   const [user] = useAuthState(auth)
   const [evolution, setEvolution] = useState(null)
+  const [instances, setInstances] = useState([])
+  const [instanciaId, setInstanciaId] = useState('')
+  const [instOpen, setInstOpen] = useState(false)
+  const [timelineOpen, setTimelineOpen] = useState(false)
   const [lista, setLista] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [enviadosCount, setEnviadosCount] = useState(0)
@@ -44,7 +48,18 @@ export default function EnviarMensagem() {
   useEffect(() => {
     if (!user?.uid) return
     getEvolutionConfig(user.uid).then(setEvolution)
+    getInstances(user.uid).then(setInstances).catch(() => {})
   }, [user?.uid])
+
+  // Instância padrão do disparo = a selecionada nas Integrações (ou a primeira)
+  useEffect(() => {
+    if (instanciaId || instances.length === 0) return
+    const sel = evolution?.id && instances.find((i) => i.id === evolution.id)
+    const byName = instances.find((i) => i.nomeInstancia === evolution?.nomeInstancia)
+    setInstanciaId((sel || byName || instances[0]).id)
+  }, [instances, evolution, instanciaId])
+
+  const instanciaSelecionada = instances.find((i) => i.id === instanciaId) || evolution
 
   useEffect(() => {
     if (!user?.uid) return
@@ -190,7 +205,7 @@ export default function EnviarMensagem() {
     const nome = (nomeDisparoInput || '').trim() || `Disparo ${new Date().toLocaleString('pt-BR')}`
     setShowNomeDisparoModal(false)
     const contatos = parseLista(lista)
-    const evolutionAtual = await getEvolutionConfig(user.uid)
+    const evolutionAtual = instances.find((i) => i.id === instanciaId) || (await getEvolutionConfig(user.uid))
     if (!evolutionAtual?.nomeInstancia || !evolutionAtual?.hash) {
       setMsg({ type: 'error', text: 'Nenhuma instância conectada. Conecte e selecione uma instância em Integrações.' })
       toast.error('Selecione uma instância em Integrações.')
@@ -297,15 +312,54 @@ export default function EnviarMensagem() {
     <PageShell
       badge="WhatsApp"
       title="Disparos em massa"
-      subtitle="Lista, Excel ou colagem — envio único ao n8n com intervalo entre mensagens."
     >
       <div className="flex flex-col gap-6 sm:gap-8">
       <div className="flex flex-col gap-2">
-      {evolution?.nomeInstancia && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 px-3 py-2.5 sm:px-4 sm:py-3 rounded-xl bg-gradient-to-r from-primary-50 to-violet-50/60 border border-primary-200/80 text-primary-900 text-xs sm:text-sm shadow-sm">
-          <WhatsAppIcon className="w-4 h-4 shrink-0" />
-          <span><strong>Instância selecionada (Integrações):</strong> {evolution.nomeInstancia}</span>
-          {evolution.numeroWhatsapp && <span className="text-primary-600"> — {evolution.numeroWhatsapp}</span>}
+      {instanciaSelecionada?.nomeInstancia && (
+        instances.length > 1 ? (
+          <button type="button" onClick={() => setInstOpen(true)} className="inline-flex items-center gap-2 self-start rounded-xl px-2.5 py-1.5 text-sm hover:bg-surface-100 transition">
+            <WhatsAppIcon className="w-4 h-4 text-green-500 shrink-0" />
+            <strong className="text-stone-800">{instanciaSelecionada.nomeInstancia}</strong>
+            <ChevronDown className="w-4 h-4 text-stone-400" />
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-2 self-start px-2.5 py-1.5 text-sm">
+            <WhatsAppIcon className="w-4 h-4 text-green-500 shrink-0" />
+            <strong className="text-stone-800">{instanciaSelecionada.nomeInstancia}</strong>
+          </span>
+        )
+      )}
+
+      {instOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setInstOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-100 text-green-600 shrink-0"><WhatsAppIcon className="w-4 h-4" /></span>
+              <h3 className="text-base font-semibold text-stone-800">Instância do disparo</h3>
+              <button onClick={() => setInstOpen(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-xs text-stone-500">Escolha qual instância vai enviar este disparo:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {instances.map((inst) => {
+                const sel = inst.id === instanciaId
+                return (
+                  <button
+                    key={inst.id}
+                    type="button"
+                    onClick={() => { setInstanciaId(inst.id); setInstOpen(false) }}
+                    className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition bg-white ${sel ? 'border-primary-500' : 'border-surface-200 hover:border-primary-300'}`}
+                  >
+                    <WhatsAppIcon className="w-4 h-4 text-green-500 shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-stone-800 truncate">{inst.nomeInstancia}</span>
+                      {inst.numeroWhatsapp && <span className="block text-[11px] text-stone-400 truncate">{inst.numeroWhatsapp}</span>}
+                    </span>
+                    {sel && <Check className="w-4 h-4 text-primary-600 shrink-0" />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -322,7 +376,7 @@ export default function EnviarMensagem() {
         </div>
       )}
 
-      {(!evolution?.nomeInstancia || !evolution?.hash) && (
+      {(!instanciaSelecionada?.nomeInstancia || !instanciaSelecionada?.hash) && (
         <div className="p-3 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/90 text-amber-900 text-xs sm:text-sm shadow-sm">
           Conecte uma instância em <strong>Integrações</strong> para enviar.
         </div>
@@ -372,9 +426,13 @@ export default function EnviarMensagem() {
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-stretch">
-          <div className="app-panel rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col flex-1 min-w-0 shadow-sm">
-            <h3 className="text-base font-semibold text-stone-800 mb-3">Mensagem</h3>
+      <div className="flex flex-col lg:flex-row gap-3 items-stretch">
+          <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-w-0 shadow-sm">
+            <div className="shrink-0 px-3 sm:px-5 py-2.5 sm:py-3 border-b border-surface-200/80 app-panel-header flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-primary-600" />
+              <span className="text-sm sm:text-base font-semibold text-stone-800">Mensagem</span>
+            </div>
+            <div className="p-5 sm:p-6 flex flex-col flex-1 min-w-0">
             <MessageEditor
               value={mensagem}
               onChange={setMensagem}
@@ -389,19 +447,21 @@ export default function EnviarMensagem() {
             )}
             <button
               onClick={iniciarEnvio}
-              disabled={!lista.trim() || !mensagem.trim() || !evolution?.nomeInstancia}
+              disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia}
               className="btn-primary mt-4 w-full py-3 min-h-[48px] touch-manipulation text-sm"
             >
               <Send className="w-4 h-4" />
               Enviar mensagem
             </button>
+            </div>
           </div>
 
-          <div className="app-panel rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col flex-1 min-w-0 shadow-sm">
-            <h3 className="text-base font-semibold text-stone-800 mb-2 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 shrink-0 text-primary-600" />
-              Lista de contatos
-            </h3>
+          <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-w-0 shadow-sm">
+            <div className="shrink-0 px-3 sm:px-5 py-2.5 sm:py-3 border-b border-surface-200/80 app-panel-header flex items-center gap-2">
+              <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-primary-600" />
+              <span className="text-sm sm:text-base font-semibold text-stone-800">Lista de contatos</span>
+            </div>
+            <div className="p-5 sm:p-6 flex flex-col flex-1 min-w-0">
             <p className="text-xs sm:text-sm text-stone-500 mb-3 leading-relaxed">
               Uma linha por contato: <strong className="text-stone-600">número</strong> ou <strong className="text-stone-600">número,nome</strong>. Excel: A número, B nome. No n8n:{' '}
               <code className="bg-surface-100 px-1.5 py-0.5 rounded text-[11px]">contatos[].mensagem</code> ou <code className="bg-surface-100 px-1.5 py-0.5 rounded text-[11px]">mensagens</code>.
@@ -422,15 +482,22 @@ export default function EnviarMensagem() {
               rows={10}
               className="w-full p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y text-sm font-mono min-h-[200px] sm:min-h-[240px]"
             />
+            </div>
           </div>
       </div>
 
       {historico.length > 0 && (
-        <div className="app-panel rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col w-full shadow-sm">
-          <h3 className="text-base font-semibold text-stone-800 mb-4 flex items-center gap-2">
-            <History className="w-5 h-5 shrink-0 text-primary-600" />
-            Linha do tempo
-          </h3>
+        <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden w-full shadow-sm">
+          <button type="button" onClick={() => setTimelineOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 px-5 py-4 sm:px-6 hover:bg-surface-50 transition">
+            <span className="text-base font-semibold text-stone-800 flex items-center gap-2">
+              <History className="w-5 h-5 shrink-0 text-primary-600" />
+              Linha do tempo
+              <span className="text-xs font-normal text-stone-400">({historico.length})</span>
+            </span>
+            <ChevronDown className={`w-5 h-5 text-stone-400 shrink-0 transition-transform ${timelineOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {timelineOpen && (
+          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
           <ul className="space-y-4">
             {historicoPagina.map((item) => {
               const remaining = getRemainingMin(item.endTime)
@@ -534,6 +601,8 @@ export default function EnviarMensagem() {
                 </button>
               </div>
             </div>
+          )}
+          </div>
           )}
         </div>
       )}

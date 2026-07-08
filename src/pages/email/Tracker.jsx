@@ -278,9 +278,8 @@ export default function Tracker() {
 
   return (
     <PageShell
-      badge="E-mail · Captura"
+      badge="Captura · Webhook custom"
       title="Tracker"
-      subtitle="Receba eventos de qualquer plataforma, mapeie os campos e escolha o que dispara suas ações."
       right={
         <button onClick={handleCriar} disabled={criando} className="btn-primary text-sm min-h-[44px] touch-manipulation">
           {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}

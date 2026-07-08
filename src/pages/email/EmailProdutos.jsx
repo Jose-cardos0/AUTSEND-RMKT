@@ -104,26 +104,35 @@ export default function EmailProdutos() {
 
   return (
     <PageShell
-      badge="E-mail · Produtos"
+      badge="Geral · Produtos"
       title="Grupos de produtos"
-      subtitle="Agrupe as variações do mesmo produto (ex.: Gekko Pan 1/3/6) para compartilharem a mesma automação, funil e métricas."
     >
-      <div className="space-y-4">
-        <Panel title="Criar grupo" icon={Plus}>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              value={novoNome}
-              onChange={(e) => setNovoNome(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') criarGrupo() }}
-              placeholder="Ex.: Gekko Pan"
-              className="flex-1 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
-            />
-            <button onClick={criarGrupo} disabled={criando} className="btn-primary min-h-[44px]">
-              {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar grupo
-            </button>
+      <div className="flex flex-col lg:flex-row gap-3">
+        {/* Criar grupo — lateral fixa (sticky), estilo Tracker */}
+        <div className="lg:w-72 shrink-0">
+          <div className="lg:sticky lg:top-24">
+            <div className="rounded-2xl border border-surface-200 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-stone-800">
+                <Plus className="w-4 h-4 text-primary-600" /> Criar grupo
+              </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  value={novoNome}
+                  onChange={(e) => setNovoNome(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') criarGrupo() }}
+                  placeholder="Ex.: Gekko Pan"
+                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm"
+                />
+                <button onClick={criarGrupo} disabled={criando} className="btn-primary min-h-[44px] w-full justify-center">
+                  {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar grupo
+                </button>
+              </div>
+            </div>
           </div>
-        </Panel>
+        </div>
 
+        {/* Lista de grupos */}
+        <div className="flex-1 min-w-0 space-y-3">
         {nomesDisponiveis.length === 0 && (
           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
             Ainda não recebemos nenhum produto pelos webhooks. Assim que chegar um evento com produto, os nomes aparecem aqui para você marcar nos grupos.
@@ -226,6 +235,7 @@ export default function EmailProdutos() {
             )
           })
         )}
+        </div>
       </div>
 
       {confirmExcluir && (

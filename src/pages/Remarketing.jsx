@@ -16,6 +16,7 @@ import toast from 'react-hot-toast'
 import { KIWIFY_EVENTS } from '../lib/constants'
 import {
   MessageCircle,
+  MessageSquare,
   Search,
   Send,
   CheckCircle2,
@@ -23,6 +24,7 @@ import {
   Loader2,
   AlertCircle,
   Tag,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Users,
@@ -243,7 +245,6 @@ export default function Remarketing() {
       fill
       badge="Lista & envio"
       title="Remarketing"
-      subtitle="Selecione contatos, use {nome} na mensagem e dispare com controle total."
       right={
         <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
           <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
@@ -277,7 +278,10 @@ export default function Remarketing() {
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
         <aside className="flex flex-col shrink-0 lg:w-[min(380px,36vw)] lg:min-w-[260px] lg:max-w-md h-[min(42dvh,320px)] lg:h-auto lg:min-h-0 overflow-hidden">
           <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col h-full min-h-0 overflow-hidden">
-            <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2">Mensagem</h3>
+            <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 shrink-0 text-primary-600" />
+              Mensagem
+            </h3>
             <MessageEditor
               fillHeight
               className="flex-1 min-h-0"
@@ -303,22 +307,31 @@ export default function Remarketing() {
 
         <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-h-0 min-w-0">
         <div className="p-3 sm:p-4 border-b border-surface-200 space-y-2 shrink-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 text-stone-700">
               <Users className="w-4 h-4" />
               <p className="text-sm font-semibold">Lista de contatos</p>
             </div>
-            <button
-              type="button"
-              onClick={selectAll}
-              className="text-sm font-medium text-primary-600 hover:underline py-1 touch-manipulation"
-            >
-              {selectedIds.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'}
-            </button>
+            <div className="flex flex-col items-end gap-0.5 shrink-0">
+              <button
+                type="button"
+                onClick={selectAll}
+                className="text-sm font-medium text-primary-600 hover:underline py-0.5 touch-manipulation"
+              >
+                {selectedIds.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setApenasNaoEnviados((v) => !v)}
+                className="text-sm font-medium py-0.5 hover:underline touch-manipulation text-primary-600"
+              >
+                {apenasNaoEnviados ? 'Desmarcar não enviados' : 'Apenas não enviados'}
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 items-center">
-            <div className="relative sm:col-span-2 lg:col-span-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
               <input
                 type="text"
@@ -328,24 +341,12 @@ export default function Remarketing() {
                 className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
               />
             </div>
-            <input
-              type="date"
-              value={filtroDataInicio}
-              onChange={(e) => setFiltroDataInicio(e.target.value)}
-              className="lg:col-span-2 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm"
-            />
-            <input
-              type="date"
-              value={filtroDataFim}
-              onChange={(e) => setFiltroDataFim(e.target.value)}
-              className="lg:col-span-2 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm"
-            />
-            <div className="flex items-center gap-1.5 lg:col-span-2 min-w-0">
-              <Tag className="w-4 h-4 text-stone-400 shrink-0" />
+            <div className="relative min-w-0">
+              <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
               <select
                 value={filtroTag}
                 onChange={(e) => setFiltroTag(e.target.value)}
-                className="flex-1 min-w-0 min-h-[44px] px-3 py-2 rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full min-h-[44px] pl-9 pr-9 py-2 rounded-xl border border-surface-200 bg-white text-sm appearance-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               >
                 <option value="">Todos os eventos</option>
                 {KIWIFY_EVENTS.map((e) => (
@@ -353,15 +354,6 @@ export default function Remarketing() {
                 ))}
               </select>
             </div>
-            <label className="sm:col-span-2 lg:col-span-2 flex items-center gap-2 text-xs sm:text-sm text-stone-600 cursor-pointer min-h-[40px] py-1">
-              <input
-                type="checkbox"
-                checked={apenasNaoEnviados}
-                onChange={(e) => setApenasNaoEnviados(e.target.checked)}
-                className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 w-4 h-4"
-              />
-              Apenas não enviados
-            </label>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-stone-500">
