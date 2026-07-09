@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import GerarMensagemIA from '../components/GerarMensagemIA'
+import TemplatePicker from '../components/TemplatePicker'
 import {
   getLeads,
   getProducts,
@@ -224,6 +225,7 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
               {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               {salvando ? 'Salvando...' : 'Salvar automação'}
             </button>
+            <TemplatePicker onPick={setMensagem} className="text-sm w-full sm:w-auto min-h-[44px] justify-center" />
             <GerarMensagemIA
               evento={event.label}
               produto={productName}

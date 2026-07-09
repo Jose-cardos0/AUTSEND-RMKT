@@ -7,6 +7,8 @@ import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
 import logo from '../assets/logo.png'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import ParticlesBackground from '../components/ParticlesBackground'
+import ShootingStars from '../components/ShootingStars'
+import sendlyLogo from '../assets/SENLDY.png'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
 
 export default function Login() {
@@ -43,7 +45,40 @@ export default function Login() {
   }
 
   return (
-    <ParticlesBackground className="flex px-4 sm:px-6 py-6 sm:py-8 bg-gradient-to-br from-surface-50 via-blue-50/50 to-violet-100/35">
+    <ParticlesBackground className="bg-gradient-to-br from-surface-50 via-blue-50/50 to-violet-100/35">
+      {/* Fundo decorativo (só no login): pontilhado + orbs de luz — atrás de tudo */}
+      <div aria-hidden className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div
+          className="absolute inset-0 opacity-60"
+          style={{
+            backgroundImage: 'radial-gradient(circle, rgba(99,102,241,0.16) 1px, transparent 1.6px)',
+            backgroundSize: '22px 22px',
+          }}
+        />
+        <div className="absolute -top-24 -left-20 w-80 h-80 rounded-full bg-primary-400/25 blur-3xl animate-float" />
+        <div className="absolute top-1/4 -right-24 w-96 h-96 rounded-full bg-violet-400/20 blur-3xl animate-float-slow" />
+        <div className="absolute bottom-4 left-1/3 w-72 h-72 rounded-full bg-sky-300/20 blur-3xl animate-float" />
+      </div>
+      {/* world.svg como decoração de fundo à direita (desktop): altura TOTAL, sangrando pra fora da borda */}
+      <div aria-hidden className="hidden lg:block absolute inset-x-0 bottom-0 h-[55%] z-[1] pointer-events-none overflow-hidden">
+        <img
+          src={`${import.meta.env.BASE_URL}world.svg`}
+          alt=""
+          className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-[65%] w-[100%] max-w-none opacity-80 select-none"
+        />
+      </div>
+
+      {/* world.svg no mobile: no rodapé, sangrando pra baixo (só o topo do globo aparece) */}
+      <div aria-hidden className="lg:hidden absolute inset-x-0 bottom-0 h-[40%] z-[1] pointer-events-none overflow-hidden">
+        <img
+          src={`${import.meta.env.BASE_URL}world.svg`}
+          alt=""
+          className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-[42%] w-[156%] max-w-none opacity-80 select-none"
+        />
+      </div>
+      {/* Estrelas cadentes cruzando a tela (atrás do card) */}
+      <ShootingStars />
+
       <a
         href={`https://wa.me/${SUPPORT_WHATSAPP}`}
         target="_blank"
@@ -54,26 +89,26 @@ export default function Login() {
       >
         <WhatsAppIcon className="w-6 h-6 sm:w-7 sm:h-7" white />
       </a>
-      <div className="w-full max-w-[440px]">
+      <div className="w-full max-w-[440px] relative z-10 px-4 sm:px-6">
         <motion.div
           initial={{ opacity: 0, y: 20, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          className="relative rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 bg-white/90 backdrop-blur-xl border border-white/80 shadow-[0_25px_50px_-12px_rgba(74,70,222,0.2),0_0_0_1px_rgba(255,255,255,0.9)_inset]"
+          className="relative rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 bg-white/30 backdrop-blur-xl border border-white/40 shadow-[0_25px_50px_-12px_rgba(74,70,222,0.18),0_0_0_1px_rgba(255,255,255,0.3)_inset]"
         >
           <div className="absolute -inset-px rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary-400/20 via-transparent to-violet-400/15 -z-10 blur-sm" />
-          <div className="flex justify-center mb-6 sm:mb-8">
+          <div className="flex justify-center mb-1 sm:mb-2">
             <motion.img
               src={logo}
-              alt="CODE NXT"
+              alt="Sendly"
               className=" max-w-28 w-auto drop-shadow-sm"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
             />
           </div>
-          <p className="text-[11px] sm:text-xs text-primary-600/90 text-center mb-6 sm:mb-8 uppercase tracking-[0.2em] font-bold">
-            {isSignUp ? 'Criar conta' : 'CODENXT MARKETING'}
+          <p className="text-[11px] sm:text-xs text-primary-600/90 text-center mb-2 sm:mb-4 uppercase tracking-[0.2em] font-bold">
+            {isSignUp ? 'Criar conta' : <img src={sendlyLogo} alt="Sendly" className="inline-block h-7 sm:h-8 w-auto" />}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">

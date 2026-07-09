@@ -6,6 +6,7 @@ import { auth } from '../lib/firebase'
 import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo } from '../lib/firestore'
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
+import TemplatePicker from '../components/TemplatePicker'
 import { Send, Loader2, AlertCircle, UserPlus, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
 import PageShell from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
@@ -431,6 +432,7 @@ export default function EnviarMensagem() {
             <div className="shrink-0 px-3 sm:px-5 py-2.5 sm:py-3 border-b border-surface-200/80 app-panel-header flex items-center gap-2">
               <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-primary-600" />
               <span className="text-sm sm:text-base font-semibold text-stone-800">Mensagem</span>
+              <TemplatePicker onPick={setMensagem} label="Template" className="ml-auto text-xs min-h-[36px] py-1.5" />
             </div>
             <div className="p-5 sm:p-6 flex flex-col flex-1 min-w-0">
             <MessageEditor

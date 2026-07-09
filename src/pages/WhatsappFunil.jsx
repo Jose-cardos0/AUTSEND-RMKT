@@ -15,6 +15,7 @@ import Select from '../components/Select'
 import { useConfirm } from '../components/ConfirmDialog'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import GerarMensagemIA from '../components/GerarMensagemIA'
+import TemplatePicker from '../components/TemplatePicker'
 import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
@@ -332,6 +333,10 @@ export default function WhatsappFunil() {
                   className="w-full p-2.5 rounded-xl border border-surface-200 text-sm resize-y"
                 />
                 <p className="text-[11px] text-stone-400 mt-1">Use *texto* p/ negrito e _texto_ p/ itálico no WhatsApp. Envia pela instância selecionada nas Integrações.</p>
+                <TemplatePicker
+                  onPick={(msg) => updateNodeData(selectedNode.id, { mensagem: msg })}
+                  className="mt-2 w-full justify-center"
+                />
                 <GerarMensagemIA
                   evento={eventoLabel(nodes.find((n) => n.type === 'inicio')?.data?.evento) || 'remarketing'}
                   produto={nodes.find((n) => n.type === 'inicio')?.data?.grupoNome || ''}

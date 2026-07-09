@@ -5,7 +5,7 @@ import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X,
 import { auth } from '../lib/firebase'
 import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
-import logo from '../assets/logo.png'
+import sendlyLogo from '../assets/SENLDY.png'
 import WhatsAppIcon from './WhatsAppIcon'
 import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
@@ -201,14 +201,8 @@ export default function Layout() {
     <div className="app-viewport bg-transparent md:flex-row">
       {/* SIDEBAR — desktop */}
       <aside className="hidden md:flex md:flex-col w-[15.5rem] shrink-0 border-r border-surface-200/70 bg-white/70 backdrop-blur-xl">
-        <div className="h-[3.75rem] shrink-0 flex items-center gap-2.5 px-4 border-b border-surface-200/60">
-          <div className="relative shrink-0">
-            <div className="absolute -inset-1 rounded-xl bg-gradient-to-br from-primary-400/20 to-violet-400/20 blur-md" />
-            <img src={logo} alt="CODE NXT" className="relative h-8 w-auto" />
-          </div>
-          <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600/80 truncate">
-            Remarketing
-          </span>
+        <div className="h-[3.75rem] shrink-0 flex items-center px-4 border-b border-surface-200/60">
+          <img src={sendlyLogo} alt="Sendly" className="h-7 w-auto" />
         </div>
 
         <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2.5 py-3 space-y-1">
@@ -238,14 +232,8 @@ export default function Layout() {
         {/* Topbar — mobile */}
         <header className="md:hidden shrink-0 z-40 border-b border-white/40 bg-white/75 backdrop-blur-xl shadow-[0_1px_0_rgba(255,255,255,0.8)]">
           <div className="px-4 h-[3.75rem] flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="relative shrink-0">
-                <div className="absolute -inset-1 rounded-xl bg-gradient-to-br from-primary-400/20 to-violet-400/20 blur-md" />
-                <img src={logo} alt="CODE NXT" className="relative h-8 w-auto" />
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-600/80 truncate">
-                Remarketing
-              </span>
+            <div className="flex items-center min-w-0">
+              <img src={sendlyLogo} alt="Sendly" className="h-7 w-auto" />
             </div>
 
             <button
@@ -266,20 +254,29 @@ export default function Layout() {
                 onClick={closeMenu}
                 aria-hidden="true"
               />
-              <div className="fixed top-[3.75rem] left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-b border-surface-200 shadow-xl py-4 px-4 sm:px-6 max-h-[calc(100vh-3.75rem)] overflow-y-auto overscroll-contain space-y-4">
+              <div className="fixed top-[3.75rem] left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-b border-surface-200 shadow-xl py-4 px-4 sm:px-6 max-h-[calc(100vh-3.75rem)] overflow-y-auto overscroll-contain space-y-2">
                 {navGroups.map((group) => {
                   const Icon = group.icon
+                  const open = !!openGroups[group.key]
                   return (
-                    <div key={group.key} className="space-y-1">
-                      <div className="flex items-center gap-2 px-2 text-[11px] font-bold uppercase tracking-widest text-stone-400">
-                        <Icon className="w-4 h-4" />
-                        {group.label}
-                      </div>
-                      <div className="flex flex-col gap-1 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3">
-                        {group.items.map((item) => (
-                          <ItemLink key={item.to} {...item} onNavigate={closeMenu} />
-                        ))}
-                      </div>
+                    <div key={group.key} className="rounded-xl border border-surface-200/70 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.key)}
+                        className="w-full flex items-center gap-2 px-3 min-h-[48px] text-[12px] font-bold uppercase tracking-widest text-stone-500 hover:bg-surface-50 transition-colors"
+                        aria-expanded={open}
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="flex-1 text-left">{group.label}</span>
+                        <ChevronDown className={clsx('w-4 h-4 shrink-0 transition-transform', open && 'rotate-180')} />
+                      </button>
+                      {open && (
+                        <div className="flex flex-col gap-1 px-2 pb-2 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3">
+                          {group.items.map((item) => (
+                            <ItemLink key={item.to} {...item} onNavigate={closeMenu} />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
