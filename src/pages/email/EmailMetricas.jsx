@@ -6,6 +6,7 @@ import { getEmailDisparos, getEmailEvents, getEmailLogs, getLeads, getProductGro
 import { canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
+import Select from '../../components/Select'
 import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, Search, ChevronLeft, ChevronRight, TrendingDown } from 'lucide-react'
 
 // Eventos que representam devolução de dinheiro (descontam da receita).
@@ -30,7 +31,7 @@ function formatValor(valor, moeda) {
   return formatMoeda(n, moeda)
 }
 
-function StatCard({ label, value, sub, icon: Icon, color }) {
+function StatCard({ label, value, sub, sub2, icon: Icon, color }) {
   const colors = {
     blue: 'from-sky-50 to-blue-50/80 text-blue-700 border-blue-100/90',
     green: 'from-emerald-50 to-green-50/80 text-emerald-700 border-emerald-100/90',
@@ -47,8 +48,9 @@ function StatCard({ label, value, sub, icon: Icon, color }) {
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-55">{label}</p>
-          <p className="text-2xl sm:text-3xl font-bold mt-1.5 tabular-nums">{value}</p>
+          <p className="text-xl sm:text-2xl font-bold mt-1.5 tabular-nums break-words leading-tight">{value}</p>
           {sub && <p className="text-[11px] opacity-70 mt-0.5">{sub}</p>}
+          {sub2 && <p className="text-[10px] opacity-55 mt-0.5">{sub2}</p>}
         </div>
         {Icon && (
           <div className="w-10 h-10 rounded-xl bg-white/70 flex items-center justify-center ring-1 ring-white/80 shrink-0">
@@ -114,6 +116,8 @@ export default function EmailMetricas() {
   const [sortDir, setSortDir] = useState('desc')
   const [pagina, setPagina] = useState(1)
   const [pDisp, setPDisp] = useState(1)
+  // Painéis "Desempenho por disparo" e "Links mais clicados": dropdown compartilhado, começa fechado.
+  const [paineisAbertos, setPaineisAbertos] = useState(false)
 
   // ── Filtro por grupo de produto ──
   const grupoSel = useMemo(() => grupos.find((g) => g.id === grupoFiltro) || null, [grupos, grupoFiltro])
@@ -321,10 +325,12 @@ export default function EmailMetricas() {
       right={
         <div className="flex flex-wrap gap-2 items-center">
           {grupos.length > 0 && (
-            <select value={grupoFiltro} onChange={(e) => setGrupoFiltro(e.target.value)} className="px-3 py-2 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white font-semibold">
-              <option value="">Todos os produtos</option>
-              {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
-            </select>
+            <Select
+              value={grupoFiltro}
+              onChange={setGrupoFiltro}
+              className="w-full sm:w-52"
+              options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome }))]}
+            />
           )}
           <button onClick={carregar} className="btn-secondary text-sm min-h-[44px]">
             <RefreshCw className="w-4 h-4" /> Atualizar
@@ -332,37 +338,48 @@ export default function EmailMetricas() {
         </div>
       }
     >
-      <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-col lg:flex-row gap-6">
+      {/* KPIs — 3 cards à esquerda (sticky) */}
+      <aside className="lg:w-56 xl:w-60 shrink-0 lg:order-1">
+        <div className="lg:sticky lg:top-24 grid grid-cols-3 lg:grid-cols-1 gap-3">
+          <StatCard label="Enviados" value={stats.enviados} icon={Send} color="blue" />
+          <StatCard label="Aberturas únicas" value={stats.opened} sub={`Taxa: ${pct(stats.opened, stats.enviados)}`} icon={Eye} color="blue" />
+          <StatCard label="Cliques únicos" value={stats.clicked} sub={`Taxa: ${pct(stats.clicked, stats.enviados)}`} icon={MousePointerClick} color="violet" />
+        </div>
+      </aside>
+
+      {/* KPIs — 3 cards à direita (sticky) */}
+      <aside className="lg:w-56 xl:w-60 shrink-0 lg:order-3">
+        <div className="lg:sticky lg:top-24 grid grid-cols-3 lg:grid-cols-1 gap-3">
+          <StatCard label="CTR (clique/abertura)" value={pct(stats.clicked, stats.opened)} icon={Percent} color="amber" />
+          <StatCard
+            label="Receita atribuída (líquida)"
+            value={formatMoeda(atrib.receita, atrib.moeda)}
+            sub={atrib.estorno > 0 ? `${atrib.compras} compra(s) · bruto ${formatMoeda(atrib.bruto, atrib.moeda)}` : `${atrib.compras} compra(s)`}
+            color="green"
+          />
+          <StatCard
+            label="Estornos"
+            value={atrib.estorno > 0 ? `- ${formatMoeda(atrib.estorno, atrib.moeda)}` : formatMoeda(0, atrib.moeda)}
+            sub={`${atrib.estornoQtd} estorno(s)`}
+            sub2="(chargeback + reemb.)"
+            icon={TrendingDown}
+            color="red"
+          />
+        </div>
+      </aside>
+
+      {/* Conteúdo — meio */}
+      <div className="flex-1 min-w-0 lg:order-2 space-y-4 sm:space-y-5">
       {semDados && (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           Ainda não há dados. Envie um disparo e, com o rastreamento ligado no Resend, as aberturas e cliques aparecem aqui.
         </div>
       )}
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <StatCard label="Enviados" value={stats.enviados} icon={Send} color="blue" />
-        <StatCard label="Aberturas únicas" value={stats.opened} sub={`Taxa: ${pct(stats.opened, stats.enviados)}`} icon={Eye} color="blue" />
-        <StatCard label="Cliques únicos" value={stats.clicked} sub={`Taxa: ${pct(stats.clicked, stats.enviados)}`} icon={MousePointerClick} color="violet" />
-        <StatCard label="CTR (clique/abertura)" value={pct(stats.clicked, stats.opened)} icon={Percent} color="amber" />
-        <StatCard
-          label="Receita atribuída (líquida)"
-          value={formatMoeda(atrib.receita, atrib.moeda)}
-          sub={atrib.estorno > 0 ? `${atrib.compras} compra(s) · bruto ${formatMoeda(atrib.bruto, atrib.moeda)}` : `${atrib.compras} compra(s)`}
-          color="green"
-        />
-        <StatCard
-          label="Estornos (chargeback + reemb.)"
-          value={atrib.estorno > 0 ? `- ${formatMoeda(atrib.estorno, atrib.moeda)}` : formatMoeda(0, atrib.moeda)}
-          sub={`${atrib.estornoQtd} estorno(s)`}
-          icon={TrendingDown}
-          color="red"
-        />
-      </div>
-
       <div className="flex flex-col lg:flex-row gap-3">
         {/* Por disparo */}
-        <Panel title="Desempenho por disparo" icon={BarChart3} noPadding className="flex-1">
+        <Panel title="Desempenho por disparo" icon={BarChart3} noPadding className="flex-1" collapsible open={paineisAbertos} onToggle={() => setPaineisAbertos((v) => !v)}>
           <div className="overflow-x-auto">
             {disparosComMetrica.length === 0 ? (
               <p className="p-6 text-sm text-stone-400 text-center">Nenhum disparo ainda.</p>
@@ -404,7 +421,7 @@ export default function EmailMetricas() {
         </Panel>
 
         {/* Top links */}
-        <Panel title="Links mais clicados" icon={Link2} className="lg:w-80 shrink-0">
+        <Panel title="Links mais clicados" icon={Link2} className="lg:w-80 shrink-0" collapsible open={paineisAbertos} onToggle={() => setPaineisAbertos((v) => !v)}>
           {topLinks.length === 0 ? (
             <p className="text-sm text-stone-400">Nenhum clique registrado ainda.</p>
           ) : (
@@ -432,13 +449,18 @@ export default function EmailMetricas() {
               className="w-full pl-9 pr-3 py-2.5 min-h-[42px] rounded-xl border border-surface-200 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
-          <select value={fAcao} onChange={(e) => setFAcao(e.target.value)} className="min-h-[42px] px-3 rounded-xl border border-surface-200 text-sm bg-white">
-            <option value="">Todas as ações</option>
-            <option value="opened">Abriu</option>
-            <option value="clicked">Clicou</option>
-            <option value="chargeback">Chargeback</option>
-            <option value="refund">Reembolso</option>
-          </select>
+          <Select
+            value={fAcao}
+            onChange={setFAcao}
+            className="w-full sm:w-48"
+            options={[
+              { value: '', label: 'Todas as ações' },
+              { value: 'opened', label: 'Abriu' },
+              { value: 'clicked', label: 'Clicou' },
+              { value: 'chargeback', label: 'Chargeback' },
+              { value: 'refund', label: 'Reembolso' },
+            ]}
+          />
         </div>
         <div className="overflow-x-auto">
           {atividadeFiltrada.length === 0 ? (
@@ -496,6 +518,7 @@ export default function EmailMetricas() {
           </div>
         )}
       </Panel>
+      </div>
       </div>
     </PageShell>
   )

@@ -1482,3 +1482,54 @@ ${lista.length ? '- Termine com uma CTA forte convidando a clicar no link.' : ''
   ])
   return { mensagem: (content || '').trim() }
 })
+
+function decodeEntities(s) {
+  return String(s)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&nbsp;/g, ' ')
+}
+
+// Busca metadados OpenGraph de uma URL (pra prévia estilo WhatsApp de link de checkout).
+exports.linkPreview = onCall({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  let url = String(request.data?.url || '').trim()
+  if (!url) throw new HttpsError('invalid-argument', 'URL vazia.')
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`
+  let domain = ''
+  try { domain = new URL(url).hostname.replace(/^www\./, '') } catch { throw new HttpsError('invalid-argument', 'URL inválida.') }
+
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WhatsApp/2.23)', Accept: 'text/html,*/*' },
+      signal: AbortSignal.timeout(12000),
+    })
+    const html = (await res.text()).slice(0, 500000)
+    const pick = (props) => {
+      for (const p of props) {
+        const re1 = new RegExp(`<meta[^>]+(?:property|name)=["']${p}["'][^>]*content=["']([^"']*)["']`, 'i')
+        const re2 = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${p}["']`, 'i')
+        const m = html.match(re1) || html.match(re2)
+        if (m && m[1] && m[1].trim()) return decodeEntities(m[1].trim())
+      }
+      return ''
+    }
+    let title = pick(['og:title', 'twitter:title'])
+    if (!title) { const m = html.match(/<title[^>]*>([^<]+)<\/title>/i); title = m ? decodeEntities(m[1].trim()) : '' }
+    const description = pick(['og:description', 'twitter:description', 'description'])
+    let image = pick(['og:image:secure_url', 'og:image:url', 'og:image', 'twitter:image', 'twitter:image:src'])
+    if (image) {
+      if (image.startsWith('//')) image = `https:${image}`
+      else if (image.startsWith('/')) { try { image = new URL(image, url).href } catch { image = '' } }
+    }
+    return { url, domain, title, description, image }
+  } catch (err) {
+    return { url, domain, title: '', description: '', image: '', error: String(err?.message || err) }
+  }
+})

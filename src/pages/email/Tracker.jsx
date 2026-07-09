@@ -11,24 +11,33 @@ import {
   deleteWebhook,
 } from '../../lib/firestore'
 import { KIWIFY_EVENTS } from '../../lib/constants'
+import { LOJAS, lojaByKey } from '../../lib/lojas'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
+import Select from '../../components/Select'
+import { useConfirm } from '../../components/ConfirmDialog'
 import {
   Radar, Webhook, Plus, Copy, Check, Trash2, Loader2, RefreshCw, Play,
   Power, PowerOff, ChevronRight, ChevronDown, Zap, MousePointerClick, Sparkles,
+  HelpCircle, X, Pencil, Store,
 } from 'lucide-react'
 
 /** Seção recolhível (accordion) — clique no título para abrir/fechar. */
-function Secao({ title, icon: Icon, open, onToggle, children }) {
+function Secao({ title, icon: Icon, open, onToggle, action, children }) {
   return (
     <div className="app-panel rounded-2xl overflow-hidden">
-      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3 hover:bg-surface-50 transition">
-        <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
+      <div className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3 hover:bg-surface-50 transition">
+        <button type="button" onClick={onToggle} className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0 flex-1 text-left">
           {Icon && <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 shrink-0" />}
           <span className="truncate">{title}</span>
-        </span>
-        <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {action}
+          <button type="button" onClick={onToggle} aria-label={open ? 'Recolher' : 'Expandir'} className="p-1 text-stone-400 hover:text-stone-600">
+            <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+      </div>
       {open && <div className="px-4 sm:px-5 pb-4 pt-1 space-y-3">{children}</div>}
     </div>
   )
@@ -114,6 +123,7 @@ function preview(v) {
 
 export default function Tracker() {
   const [user] = useAuthState(auth)
+  const confirm = useConfirm()
   const [loading, setLoading] = useState(true)
   const [webhooks, setWebhooks] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -122,6 +132,15 @@ export default function Tracker() {
   const [fieldMap, setFieldMap] = useState({})
   const [eventRules, setEventRules] = useState([])
   const [criando, setCriando] = useState(false)
+  // Popup de criação: escolher loja + nome
+  const [showCriar, setShowCriar] = useState(false)
+  const [lojaSel, setLojaSel] = useState(null) // key da loja ou 'custom'
+  const [nomeNovo, setNomeNovo] = useState('')
+  // Popup de edição do webhook selecionado (nome + loja)
+  const [showEditar, setShowEditar] = useState(false)
+  const [editNome, setEditNome] = useState('')
+  const [editLoja, setEditLoja] = useState(null)
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [copiado, setCopiado] = useState(false)
   const [secoes, setSecoes] = useState({ url: false, amostras: false, mapear: false, regras: false })
@@ -187,19 +206,48 @@ export default function Tracker() {
     })
   }, [paths, selectedId])
 
+  const abrirCriar = () => { setLojaSel(null); setNomeNovo(''); setShowCriar(true) }
+
   const handleCriar = async () => {
     if (!user?.uid) return
+    if (!lojaSel) { toast.error('Selecione a loja do webhook.'); return }
     setCriando(true)
     try {
-      const id = await createCustomWebhook(user.uid, { nome: `Webhook ${new Date().toLocaleDateString('pt-BR')}` })
+      const lojaNome = lojaByKey(lojaSel)?.nome
+      const nomeFinal = nomeNovo.trim() || `${lojaNome || 'Webhook'} ${new Date().toLocaleDateString('pt-BR')}`
+      const id = await createCustomWebhook(user.uid, { nome: nomeFinal, loja: lojaSel })
       const list = await getCustomWebhooks(user.uid)
       setWebhooks(list)
       setSelectedId(id)
+      setShowCriar(false)
       toast.success('Webhook criado! Cole a URL na sua plataforma e envie um teste.')
     } catch (err) {
       toast.error(err.message || 'Erro ao criar webhook')
     } finally {
       setCriando(false)
+    }
+  }
+
+  const abrirEditar = () => {
+    if (!selected) return
+    setEditNome(selected.nome || '')
+    setEditLoja(selected.loja || null)
+    setShowEditar(true)
+  }
+
+  const handleSalvarEdicao = async () => {
+    if (!selected) return
+    setSalvandoEdicao(true)
+    try {
+      await updateWebhookMapping(user.uid, selected.id, { nome: editNome.trim() || selected.nome, loja: editLoja || '' })
+      const list = await getCustomWebhooks(user.uid)
+      setWebhooks(list)
+      setShowEditar(false)
+      toast.success('Webhook atualizado.')
+    } catch (err) {
+      toast.error(err.message || 'Erro ao salvar')
+    } finally {
+      setSalvandoEdicao(false)
     }
   }
 
@@ -294,7 +342,7 @@ export default function Tracker() {
   }
 
   const handleExcluir = async (w) => {
-    if (!window.confirm(`Excluir "${w.nome}"? A URL deixará de funcionar.`)) return
+    if (!(await confirm({ title: `Excluir "${w.nome}"?`, message: 'A URL deixará de funcionar na sua plataforma.', confirmLabel: 'Excluir' }))) return
     try {
       await deleteWebhook(user.uid, w.id)
       const list = await getCustomWebhooks(user.uid)
@@ -316,7 +364,7 @@ export default function Tracker() {
       badge="Captura · Webhook custom"
       title="Tracker"
       right={
-        <button onClick={handleCriar} disabled={criando} className="btn-primary text-sm min-h-[44px] touch-manipulation">
+        <button onClick={abrirCriar} disabled={criando} className="btn-primary text-sm min-h-[44px] touch-manipulation">
           {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
           Criar webhook custom
         </button>
@@ -339,32 +387,57 @@ export default function Tracker() {
         <div className="flex flex-col lg:flex-row gap-3">
           {/* Lista de webhooks */}
           <div className="lg:w-64 shrink-0 space-y-2">
-            {webhooks.map((w) => (
+            {webhooks.map((w) => {
+              const loja = lojaByKey(w.loja)
+              return (
               <button
                 key={w.id}
                 onClick={() => setSelectedId(w.id)}
-                className={`w-full text-left p-3 rounded-xl border transition ${
+                className={`relative overflow-hidden w-full text-left p-3 rounded-xl border transition ${
                   selectedId === w.id ? 'border-primary-500 bg-primary-50/60' : 'border-surface-200 bg-white/70 hover:bg-white'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-stone-800 text-sm truncate">{w.nome}</span>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                {/* Logo da loja como cover cortado (30% da largura, altura total, 50% opacidade) */}
+                {loja?.logo && (
+                  <img
+                    src={loja.logo}
+                    alt=""
+                    aria-hidden
+                    className="pointer-events-none absolute right-0 top-0 h-full w-[30%] object-cover opacity-50"
+                  />
+                )}
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-stone-800 text-sm truncate">{w.nome}</span>
+                    <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                  </div>
+                  <span className={`inline-flex items-center gap-1 mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                    w.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {w.status === 'active' ? 'Ativo' : 'Testando'}
+                  </span>
                 </div>
-                <span className={`inline-flex items-center gap-1 mt-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                  w.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                }`}>
-                  {w.status === 'active' ? 'Ativo' : 'Testando'}
-                </span>
               </button>
-            ))}
+              )
+            })}
           </div>
 
           {/* Configuração do webhook selecionado */}
           {selected && (
             <div className="flex-1 min-w-0 space-y-3">
               {/* URL + ações */}
-              <Secao title={selected.nome} icon={Webhook} open={secoes.url} onToggle={() => toggleSecao('url')}>
+              <Secao
+                title={selected.nome}
+                icon={Webhook}
+                open={secoes.url}
+                onToggle={() => toggleSecao('url')}
+                action={
+                  <>
+                    <button type="button" onClick={abrirEditar} title="Editar nome" className="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"><Pencil className="w-4 h-4" /></button>
+                    <button type="button" onClick={abrirEditar} title="Trocar loja" className="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"><Store className="w-4 h-4" /></button>
+                  </>
+                }
+              >
                 <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                   <code className="flex-1 min-w-0 text-xs text-stone-600 break-all bg-surface-50 border border-surface-200 rounded-lg px-3 py-2.5">
                     {selected.webhookUrl}
@@ -465,13 +538,12 @@ export default function Tracker() {
                           placeholder="campo (ex.: status)"
                           className="flex-1 min-w-0 px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm font-mono"
                         />
-                        <select
+                        <Select
                           value={rule.op}
-                          onChange={(e) => updateRule(i, { op: e.target.value })}
-                          className="px-2 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm"
-                        >
-                          {OPERADORES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
+                          onChange={(v) => updateRule(i, { op: v })}
+                          className="w-full sm:w-44"
+                          options={OPERADORES}
+                        />
                         {rule.op !== 'exists' && (
                           <input
                             value={rule.value}
@@ -483,13 +555,12 @@ export default function Tracker() {
                       </div>
                       <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                         <span className="text-xs font-semibold text-stone-500 shrink-0">ENTÃO O EVENTO É</span>
-                        <select
+                        <Select
                           value={rule.evento}
-                          onChange={(e) => updateRule(i, { evento: e.target.value })}
-                          className="flex-1 min-w-0 px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm"
-                        >
-                          {KIWIFY_EVENTS.map((ev) => <option key={ev.id} value={ev.id}>{ev.label}</option>)}
-                        </select>
+                          onChange={(v) => updateRule(i, { evento: v })}
+                          className="flex-1 min-w-0"
+                          options={KIWIFY_EVENTS.map((ev) => ({ value: ev.id, label: ev.label }))}
+                        />
                         <button onClick={() => removeRule(i)} className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600 shrink-0" title="Remover regra">
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -520,6 +591,132 @@ export default function Tracker() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Popup: criar webhook — escolher loja + nome */}
+      {showCriar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowCriar(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Webhook className="w-5 h-5" /></span>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-stone-800">Criar webhook custom</h3>
+                <p className="text-xs text-stone-500">De qual loja é esse webhook?</p>
+              </div>
+              <button onClick={() => setShowCriar(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            {/* Lojas */}
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {LOJAS.map((l) => {
+                const sel = lojaSel === l.key
+                return (
+                  <button
+                    key={l.key}
+                    type="button"
+                    onClick={() => setLojaSel(l.key)}
+                    className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border-2 transition ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}
+                  >
+                    <img src={l.logo} alt={l.nome} className="h-9 w-9 object-contain" />
+                    <span className="text-[11px] font-medium text-stone-700 truncate max-w-full">{l.nome}</span>
+                  </button>
+                )
+              })}
+              {/* Loja que não temos nas logos */}
+              <button
+                type="button"
+                onClick={() => setLojaSel('custom')}
+                className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border-2 transition ${lojaSel === 'custom' ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-400"><HelpCircle className="w-5 h-5" /></span>
+                <span className="text-[11px] font-medium text-stone-700">Outra</span>
+              </button>
+            </div>
+
+            {/* Nome — aparece após escolher a loja */}
+            {lojaSel && (
+              <div>
+                <label className="block text-xs font-semibold text-stone-600 mb-1.5">Nome do webhook</label>
+                <input
+                  value={nomeNovo}
+                  onChange={(e) => setNomeNovo(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCriar() }}
+                  placeholder={lojaSel === 'custom' ? 'Ex.: Webhook Braip' : `Ex.: ${lojaByKey(lojaSel)?.nome} principal`}
+                  autoFocus
+                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowCriar(false)} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={handleCriar} disabled={!lojaSel || criando} className="btn-primary min-h-[44px]">
+                {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup: editar webhook — nome + loja */}
+      {showEditar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowEditar(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Pencil className="w-5 h-5" /></span>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-stone-800">Editar webhook</h3>
+                <p className="text-xs text-stone-500">Mude o nome e a loja do webhook.</p>
+              </div>
+              <button onClick={() => setShowEditar(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">Nome do webhook</label>
+              <input
+                value={editNome}
+                onChange={(e) => setEditNome(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSalvarEdicao() }}
+                placeholder="Nome do webhook"
+                autoFocus
+                className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">Loja</label>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {LOJAS.map((l) => {
+                  const sel = editLoja === l.key
+                  return (
+                    <button
+                      key={l.key}
+                      type="button"
+                      onClick={() => setEditLoja(l.key)}
+                      className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border-2 transition ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}
+                    >
+                      <img src={l.logo} alt={l.nome} className="h-9 w-9 object-contain" />
+                      <span className="text-[11px] font-medium text-stone-700 truncate max-w-full">{l.nome}</span>
+                    </button>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => setEditLoja('custom')}
+                  className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border-2 transition ${editLoja === 'custom' ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-400"><HelpCircle className="w-5 h-5" /></span>
+                  <span className="text-[11px] font-medium text-stone-700">Outra</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowEditar(false)} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={handleSalvarEdicao} disabled={salvandoEdicao} className="btn-primary min-h-[44px]">{salvandoEdicao ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar</button>
+            </div>
+          </div>
         </div>
       )}
     </PageShell>

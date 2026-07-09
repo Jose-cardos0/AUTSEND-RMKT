@@ -8,6 +8,7 @@ import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, getEmailConfig, getEmailDisparos, deleteEmailDisparo, getEmailEvents, getEmailProviders } from '../../lib/firestore'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
+import Select from '../../components/Select'
 import RemetentePicker from '../../components/RemetentePicker'
 import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, Mail, ChevronLeft, ChevronRight, ChevronDown, Eye, MousePointerClick } from 'lucide-react'
 
@@ -187,14 +188,13 @@ export default function EmailDisparos() {
           <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Template</label>
-              <select
+              <Select
                 value={templateId}
-                onChange={(e) => onSelectTemplate(e.target.value)}
-                className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white"
-              >
-                <option value="">— escolha —</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-              </select>
+                onChange={onSelectTemplate}
+                placeholder="— escolha —"
+                className="w-full"
+                options={[{ value: '', label: '— escolha —' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Assunto</label>

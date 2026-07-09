@@ -208,6 +208,7 @@ export async function createCustomWebhook(uid, payload = {}) {
     status: 'testing',
     nome: payload.nome || 'Webhook custom',
     plataforma: payload.plataforma || '',
+    loja: payload.loja || '',
     fieldMap: {},
     eventRules: [],
     createdAt: serverTimestamp(),
@@ -413,6 +414,42 @@ export async function saveEmailTemplate(uid, id, data) {
 
 export async function deleteEmailTemplate(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'emailTemplates', id))
+}
+
+// ── Templates de mensagens (copys de WhatsApp salvas) ──
+
+export function userMessageTemplatesRef(uid) {
+  return collection(db, 'users', uid, 'messageTemplates')
+}
+
+export async function getMessageTemplates(uid) {
+  if (!uid) return []
+  const snap = await getDocs(userMessageTemplatesRef(uid))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+/** Cria (id vazio) ou atualiza um template de mensagem. Retorna o id. */
+export async function saveMessageTemplate(uid, id, data) {
+  if (id) {
+    const ref = doc(db, 'users', uid, 'messageTemplates', id)
+    await setDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(userMessageTemplatesRef(uid), {
+    ...removeUndefined(data),
+    createdAt: serverTimestamp(),
+  })
+  return ref.id
+}
+
+export async function deleteMessageTemplate(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'messageTemplates', id))
 }
 
 // ── Automações de E-mail (evento → template) ──

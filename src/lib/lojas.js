@@ -2,7 +2,7 @@ import buygoods from '../assets/lojas/buygoods.png'
 import cartpanda from '../assets/lojas/cartpanda.png'
 import clickbank from '../assets/lojas/clickbank.png'
 import digistore24 from '../assets/lojas/digistore24.png'
-import hotmart from '../assets/lojas/hotmart.jpg'
+import hotmart from '../assets/lojas/hotmart.png'
 import kiwify from '../assets/lojas/kwiify.webp'
 import mundpay from '../assets/lojas/mundpay.png'
 

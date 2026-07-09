@@ -159,7 +159,7 @@ export default function RemarketingGrupos() {
                       className={`
                         p-2.5 sm:p-3 min-h-[52px] rounded-xl border text-left transition text-sm touch-manipulation active:scale-[0.99]
                         ${selectedGrupoIds.has(g.id)
-                          ? 'border-primary-500 bg-gradient-to-br from-primary-50 to-white ring-2 ring-primary-200/80 shadow-sm'
+                          ? 'border-primary-500 bg-gradient-to-br from-primary-50 to-white shadow-sm'
                           : 'border-surface-200/90 bg-white/80 hover:bg-white hover:border-primary-200/50'}
                       `}
                     >

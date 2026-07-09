@@ -45,7 +45,7 @@ export default function EmailIntegracoes() {
   const [testando, setTestando] = useState(false)
   const [testEmail, setTestEmail] = useState('')
 
-  const [secoes, setSecoes] = useState({ provedores: true, testar: false, rastreamento: false })
+  const [secoes, setSecoes] = useState({ provedores: false, testar: false, rastreamento: false })
   const toggleSecao = (k) => setSecoes((s) => ({ ...s, [k]: !s[k] }))
 
   const [hookPopup, setHookPopup] = useState(false)
@@ -177,14 +177,14 @@ export default function EmailIntegracoes() {
       <div className="space-y-3">
         {/* ───── Provedores de envio ───── */}
         <Secao
-          title="Provedores de envio (Resend)"
+          title="Provedores de envio"
           icon={Mail}
           open={secoes.provedores}
           onToggle={() => toggleSecao('provedores')}
           action={
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); addProvider() }}
+              onClick={(e) => { e.stopPropagation(); setSecoes((s) => ({ ...s, provedores: true })); addProvider() }}
               className="w-8 h-8 rounded-lg bg-primary-50 text-primary-600 hover:bg-primary-100 flex items-center justify-center transition"
               title="Adicionar provedor"
             >

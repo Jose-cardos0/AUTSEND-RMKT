@@ -11,6 +11,7 @@ import RemarketingGrupos from './pages/RemarketingGrupos'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
 import Checkouts from './pages/Checkouts'
+import MensagemTemplates from './pages/MensagemTemplates'
 import EmailIntegracoes from './pages/email/EmailIntegracoes'
 import Tracker from './pages/email/Tracker'
 import EmailAutomacoes from './pages/email/EmailAutomacoes'
@@ -19,6 +20,7 @@ import EmailDisparos from './pages/email/EmailDisparos'
 import EmailMetricas from './pages/email/EmailMetricas'
 import EmailEmBreve from './pages/email/EmailEmBreve'
 import PageLoader from './components/PageLoader'
+import { ConfirmProvider } from './components/ConfirmDialog'
 
 const EmailConstrutor = lazy(() => import('./pages/email/EmailConstrutor'))
 const EmailFunil = lazy(() => import('./pages/email/EmailFunil'))
@@ -41,6 +43,7 @@ function ProtectedRoute({ children }) {
 export default function App() {
   return (
     <BrowserRouter basename="/rmkt">
+      <ConfirmProvider>
       <Toaster
         position="top-center"
         toastOptions={{
@@ -88,6 +91,7 @@ export default function App() {
           <Route path="tracker" element={<Tracker />} />
           <Route path="produtos" element={<EmailProdutos />} />
           <Route path="checkouts" element={<Checkouts />} />
+          <Route path="templates" element={<MensagemTemplates />} />
           <Route path="email/integracoes" element={<EmailIntegracoes />} />
           <Route path="email/tracker" element={<Tracker />} />
           <Route
@@ -113,6 +117,7 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </ConfirmProvider>
     </BrowserRouter>
   )
 }

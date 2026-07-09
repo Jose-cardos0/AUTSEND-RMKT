@@ -12,6 +12,7 @@ import {
 } from '../lib/firestore'
 import { enviarRemarketing } from '../lib/remarketingApi'
 import MessageEditor from '../components/MessageEditor'
+import Select from '../components/Select'
 import toast from 'react-hot-toast'
 import { KIWIFY_EVENTS } from '../lib/constants'
 import {
@@ -341,19 +342,12 @@ export default function Remarketing() {
                 className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
               />
             </div>
-            <div className="relative min-w-0">
-              <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
-              <select
-                value={filtroTag}
-                onChange={(e) => setFiltroTag(e.target.value)}
-                className="w-full min-h-[44px] pl-9 pr-9 py-2 rounded-xl border border-surface-200 bg-white text-sm appearance-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-              >
-                <option value="">Todos os eventos</option>
-                {KIWIFY_EVENTS.map((e) => (
-                  <option key={e.id} value={e.label}>{e.label}</option>
-                ))}
-              </select>
-            </div>
+            <Select
+              value={filtroTag}
+              onChange={setFiltroTag}
+              className="w-full sm:w-56 shrink-0"
+              options={[{ value: '', label: 'Todos os eventos' }, ...KIWIFY_EVENTS.map((e) => ({ value: e.label, label: e.label }))]}
+            />
           </div>
 
           <div className="flex items-center gap-2 text-xs text-stone-500">

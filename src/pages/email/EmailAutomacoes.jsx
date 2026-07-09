@@ -6,10 +6,11 @@ import { httpsCallable } from 'firebase/functions'
 import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, getEmailAutomations, saveEmailAutomation, getLeads, getProductGroups, getEmailProviders } from '../../lib/firestore'
 import RemetentePicker from '../../components/RemetentePicker'
+import Select from '../../components/Select'
 import { KIWIFY_EVENTS, canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Mail, Zap, LayoutTemplate, ArrowRight, AlertCircle, History, RefreshCw, CheckCircle2, XCircle, Clock, Send, Loader2, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Mail, Zap, LayoutTemplate, ArrowRight, AlertCircle, History, RefreshCw, CheckCircle2, XCircle, Clock, Send, Loader2, ChevronDown, ChevronLeft, ChevronRight, Package, Check } from 'lucide-react'
 
 /** Seção recolhível (accordion). */
 function Secao({ title, icon: Icon, open, onToggle, children, noPad }) {
@@ -149,7 +150,42 @@ export default function EmailAutomacoes() {
         <button onClick={reload} className="btn-secondary text-sm min-h-[44px]"><RefreshCw className="w-4 h-4" /> Atualizar</button>
       }
     >
-      <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-col lg:flex-row gap-6">
+      {/* Seletor de grupos — coluna lateral direita fixa (sticky), estilo do WhatsApp */}
+      {grupos.length > 0 && (
+        <aside className="lg:w-56 xl:w-60 shrink-0 order-1 lg:order-2">
+          <div className="lg:sticky lg:top-24 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="flex items-center gap-2 text-xs font-bold text-stone-500 uppercase tracking-widest">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Package className="w-4 h-4 shrink-0" /></span>
+                Produtos
+                <span className="text-[10px] font-normal text-stone-400 normal-case tracking-normal">({grupos.length})</span>
+              </span>
+              <Link to="/produtos" className="text-[11px] text-primary-600 hover:underline">Gerenciar</Link>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
+              {grupos.map((g) => {
+                const sel = grupoId === g.id
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setGrupoId(g.id)}
+                    className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition touch-manipulation ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}
+                  >
+                    <span className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 ${sel ? 'bg-primary-500 text-white' : 'bg-surface-100 text-stone-400'}`}><Package className="w-3.5 h-3.5" /></span>
+                    <span className="text-sm font-medium text-stone-800 truncate">{g.nome}</span>
+                    {sel && <Check className="w-4 h-4 text-primary-600 shrink-0 ml-auto" />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </aside>
+      )}
+
+      {/* Conteúdo principal (esquerda) */}
+      <div className="flex-1 min-w-0 order-2 lg:order-1 space-y-4 sm:space-y-5">
       {templates.length === 0 && (
         <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
@@ -160,17 +196,10 @@ export default function EmailAutomacoes() {
         </div>
       )}
 
-      {grupos.length === 0 ? (
+      {grupos.length === 0 && (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           As automações de e-mail são <strong>por produto</strong>. Crie um{' '}
           <Link to="/produtos" className="font-semibold underline">grupo de produto</Link> primeiro (ex.: Gekko Pan, MemoMax).
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-white/70 border border-surface-200">
-          <span className="text-sm font-medium text-stone-600">Automações do produto:</span>
-          <select value={grupoId} onChange={(e) => setGrupoId(e.target.value)} className="px-3 py-2 min-h-[42px] rounded-xl border border-surface-200 text-sm bg-white font-semibold">
-            {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
-          </select>
         </div>
       )}
 
@@ -191,15 +220,14 @@ export default function EmailAutomacoes() {
                 <div className="flex-1 min-w-0 flex items-start gap-2">
                   <ArrowRight className="w-4 h-4 text-stone-300 shrink-0 hidden sm:block mt-3.5" />
                   <div className="flex-1 min-w-0 space-y-2">
-                    <select
+                    <Select
                       value={auto.templateId || ''}
-                      onChange={(e) => setAuto(ev.id, { templateId: e.target.value })}
-                      className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white"
+                      onChange={(v) => setAuto(ev.id, { templateId: v })}
+                      className="w-full"
                       disabled={templates.length === 0}
-                    >
-                      <option value="">{templates.length === 0 ? 'SEM TEMPLATE' : ''}</option>
-                      {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                    </select>
+                      placeholder={templates.length === 0 ? 'SEM TEMPLATE' : 'Escolher template'}
+                      options={[{ value: '', label: 'Sem template' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                    />
                     {auto.templateId && (
                       <RemetentePicker providers={providers} value={auto.remetenteId || null} onChange={(id) => setAuto(ev.id, { remetenteId: id })} />
                     )}
@@ -237,21 +265,30 @@ export default function EmailAutomacoes() {
 
       <Panel title={<span className="flex items-center gap-2"><History className="w-4 h-4 text-primary-600" /> Linha do tempo — eventos recebidos</span>} noPadding>
         <div className="p-3 sm:p-4 border-b border-surface-100 flex flex-col sm:flex-row sm:flex-wrap gap-2 bg-white/40">
-          <select value={fEvento} onChange={(e) => setFEvento(e.target.value)} className="min-h-[40px] px-3 rounded-xl border border-surface-200 text-sm bg-white">
-            <option value="">Todos os eventos</option>
-            {KIWIFY_EVENTS.map((ev) => <option key={ev.id} value={ev.id}>{ev.label}</option>)}
-          </select>
-          <select value={fProduto} onChange={(e) => setFProduto(e.target.value)} className="min-h-[40px] px-3 rounded-xl border border-surface-200 text-sm bg-white">
-            <option value="">Todos os produtos</option>
-            {produtosLista.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="min-h-[40px] px-3 rounded-xl border border-surface-200 text-sm bg-white">
-            <option value="">Todos os envios</option>
-            <option value="enviado">Enviado</option>
-            <option value="pendente">Só recebido</option>
-            <option value="erro">Erro</option>
-            <option value="cancelado_recovery">Cancelado</option>
-          </select>
+          <Select
+            value={fEvento}
+            onChange={setFEvento}
+            className="w-full sm:w-52"
+            options={[{ value: '', label: 'Todos os eventos' }, ...KIWIFY_EVENTS.map((ev) => ({ value: ev.id, label: ev.label }))]}
+          />
+          <Select
+            value={fProduto}
+            onChange={setFProduto}
+            className="w-full sm:w-52"
+            options={[{ value: '', label: 'Todos os produtos' }, ...produtosLista.map((p) => ({ value: p, label: p }))]}
+          />
+          <Select
+            value={fStatus}
+            onChange={setFStatus}
+            className="w-full sm:w-48"
+            options={[
+              { value: '', label: 'Todos os envios' },
+              { value: 'enviado', label: 'Enviado' },
+              { value: 'pendente', label: 'Só recebido' },
+              { value: 'erro', label: 'Erro' },
+              { value: 'cancelado_recovery', label: 'Cancelado' },
+            ]}
+          />
           {(fEvento || fProduto || fStatus) && (
             <button onClick={() => { setFEvento(''); setFProduto(''); setFStatus('') }} className="text-xs text-primary-600 hover:underline px-2 self-center">Limpar filtros</button>
           )}
@@ -316,6 +353,7 @@ export default function EmailAutomacoes() {
         )}
       </Panel>
       </div>
+      </div>
 
       {enviarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setEnviarModal(null)}>
@@ -329,10 +367,13 @@ export default function EmailAutomacoes() {
             </div>
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Template</label>
-              <select value={manualTemplateId} onChange={(e) => setManualTemplateId(e.target.value)} className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white">
-                <option value="">— escolha —</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-              </select>
+              <Select
+                value={manualTemplateId}
+                onChange={setManualTemplateId}
+                placeholder="— escolha —"
+                className="w-full"
+                options={[{ value: '', label: '— escolha —' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+              />
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setEnviarModal(null)} className="btn-secondary min-h-[44px]">Cancelar</button>

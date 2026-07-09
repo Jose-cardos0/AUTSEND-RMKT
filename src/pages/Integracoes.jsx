@@ -33,6 +33,7 @@ import {
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
+import { useConfirm } from '../components/ConfirmDialog'
 
 /** Seção recolhível (dropdown), começa minimizada. */
 function Secao({ title, icon: Icon, open, onToggle, children }) {
@@ -52,6 +53,7 @@ function Secao({ title, icon: Icon, open, onToggle, children }) {
 
 export default function Integracoes() {
   const [user] = useAuthState(auth)
+  const confirm = useConfirm()
   const [instances, setInstances] = useState([])
   const [selectedInstanceId, setSelectedInstanceId] = useState(null)
   const [evolution, setEvolution] = useState(null)
@@ -303,8 +305,7 @@ export default function Integracoes() {
       return
     }
     const nome = inst.nomeInstancia || 'esta instância'
-    const ok = window.confirm(`Excluir "${nome}"? Esta ação desconecta e remove a instância.`)
-    if (!ok) return
+    if (!(await confirm({ title: `Excluir "${nome}"?`, message: 'Esta ação desconecta e remove a instância.', confirmLabel: 'Excluir' }))) return
     try {
       await deleteInstance(user.uid, docId)
       const updated = await getInstances(user.uid)
@@ -344,7 +345,7 @@ export default function Integracoes() {
 
   const handleExcluirWebhook = async (webhookId) => {
     if (!user?.uid) return
-    if (!window.confirm('Excluir este webhook? A URL deixará de funcionar na Kiwify.')) return
+    if (!(await confirm({ title: 'Excluir este webhook?', message: 'A URL deixará de funcionar na Kiwify.', confirmLabel: 'Excluir' }))) return
     try {
       await deleteWebhook(user.uid, webhookId)
       const lista = await getKiwifyWebhooks(user.uid)
@@ -502,14 +503,14 @@ export default function Integracoes() {
                           <button
                             type="button"
                             onClick={() => handleBuscarGrupos(inst)}
-                            disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || Array.isArray(inst.grupos)}
+                            disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || (inst.grupos?.length > 0)}
                             className="p-2.5 rounded-lg border border-surface-200 bg-white text-stone-700 hover:bg-surface-100 transition-colors touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed"
-                            title={Array.isArray(inst.grupos) ? 'Grupos já puxados' : 'Puxar grupos'}
-                            aria-label={Array.isArray(inst.grupos) ? 'Grupos já puxados' : 'Puxar grupos'}
+                            title={inst.grupos?.length > 0 ? 'Grupos já puxados' : 'Puxar grupos'}
+                            aria-label={inst.grupos?.length > 0 ? 'Grupos já puxados' : 'Puxar grupos'}
                           >
                             {buscandoGruposId === inst.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : Array.isArray(inst.grupos) ? (
+                            ) : inst.grupos?.length > 0 ? (
                               <Check className="w-4 h-4 text-green-600" />
                             ) : (
                               <Users className="w-4 h-4" />

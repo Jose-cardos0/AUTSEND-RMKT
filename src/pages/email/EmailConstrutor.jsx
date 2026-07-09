@@ -13,12 +13,15 @@ import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate } from '../../lib/firestore'
 import { TEMPLATE_VARIABLES } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
+import Select from '../../components/Select'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { Loader2, Save, Send, Trash2, Plus, FileText, Code2 } from 'lucide-react'
 
 const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Arial,sans-serif;color:#666">Arraste blocos aqui para montar seu e-mail…</div>'
 
 export default function EmailConstrutor() {
   const [user] = useAuthState(auth)
+  const confirm = useConfirm()
   const [templates, setTemplates] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [nome, setNome] = useState('')
@@ -113,7 +116,7 @@ export default function EmailConstrutor() {
 
   const handleExcluir = async () => {
     if (!user?.uid || !selectedId) { toast.error('Selecione um template salvo para excluir.'); return }
-    if (!window.confirm(`Excluir o template "${nome}"?`)) return
+    if (!(await confirm({ title: `Excluir o template "${nome}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir' }))) return
     try {
       await deleteEmailTemplate(user.uid, selectedId)
       const list = await getEmailTemplates(user.uid)
@@ -211,14 +214,12 @@ export default function EmailConstrutor() {
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Template</label>
               <div className="flex gap-2">
-                <select
+                <Select
                   value={selectedId || ''}
-                  onChange={(e) => setSelectedId(e.target.value || null)}
-                  className="flex-1 min-w-0 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm bg-white"
-                >
-                  <option value="">Novo</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                </select>
+                  onChange={(v) => setSelectedId(v || null)}
+                  className="flex-1 min-w-0"
+                  options={[{ value: '', label: 'Novo' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                />
                 {selectedId && (
                   <button onClick={handleExcluir} className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir template">
                     <Trash2 className="w-4 h-4" />

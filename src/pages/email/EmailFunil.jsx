@@ -12,6 +12,8 @@ import RemetentePicker from '../../components/RemetentePicker'
 import { KIWIFY_EVENTS } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
+import Select from '../../components/Select'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { Play, Mail, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
@@ -75,6 +77,7 @@ const novoInicio = () => ({ id: `inicio_${Date.now()}`, type: 'inicio', position
 
 export default function EmailFunil() {
   const [user] = useAuthState(auth)
+  const confirm = useConfirm()
   const [loading, setLoading] = useState(true)
   const [funis, setFunis] = useState([])
   const [templates, setTemplates] = useState([])
@@ -225,7 +228,7 @@ export default function EmailFunil() {
 
   const handleExcluir = async () => {
     if (!selectedId) return
-    if (!window.confirm(`Excluir o funil "${nome}"?`)) return
+    if (!(await confirm({ title: `Excluir o funil "${nome}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir' }))) return
     try {
       await deleteEmailFunnel(user.uid, selectedId)
       const fs = await getEmailFunnels(user.uid)
@@ -251,10 +254,12 @@ export default function EmailFunil() {
       title="Funil de e-mail"
       right={
         <div className="flex flex-wrap gap-2 items-center">
-          <select value={selectedId || ''} onChange={(e) => { const f = funis.find((x) => x.id === e.target.value); f ? carregarFunil(f) : novoFunil() }} className="px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white">
-            <option value="">Novo funil</option>
-            {funis.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-          </select>
+          <Select
+            value={selectedId || ''}
+            onChange={(v) => { const f = funis.find((x) => x.id === v); f ? carregarFunil(f) : novoFunil() }}
+            className="w-full sm:w-52"
+            options={[{ value: '', label: 'Novo funil' }, ...funis.map((f) => ({ value: f.id, label: f.nome }))]}
+          />
           <button onClick={novoFunil} className="btn-secondary text-sm min-h-[40px]"><Plus className="w-4 h-4" /> Novo</button>
           {selectedId && <button onClick={handleExcluir} className="p-2.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
           <button onClick={handleSalvar} disabled={salvando} className="btn-primary text-sm min-h-[40px]">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar</button>
@@ -311,21 +316,21 @@ export default function EmailFunil() {
             {selectedNode.type === 'inicio' && (
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Gatilho — evento que inicia</label>
-                <select value={selectedNode.data?.evento || ''} onChange={(e) => updateNodeData(selectedNode.id, { evento: e.target.value })} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white">
-                  <option value="">Somente manual (lista)</option>
-                  {KIWIFY_EVENTS.map((ev) => <option key={ev.id} value={ev.id}>{ev.label}</option>)}
-                </select>
+                <Select
+                  value={selectedNode.data?.evento || ''}
+                  onChange={(v) => updateNodeData(selectedNode.id, { evento: v })}
+                  className="w-full"
+                  options={[{ value: '', label: 'Somente manual (lista)' }, ...KIWIFY_EVENTS.map((ev) => ({ value: ev.id, label: ev.label }))]}
+                />
                 <p className="text-[11px] text-stone-400 mt-1">Com um evento, quem disparar esse evento no Tracker entra sozinho. Você também pode inscrever uma lista manualmente.</p>
 
                 <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Produto (grupo)</label>
-                <select
+                <Select
                   value={selectedNode.data?.grupoId || ''}
-                  onChange={(e) => { const g = grupos.find((x) => x.id === e.target.value); updateNodeData(selectedNode.id, { grupoId: e.target.value, grupoNome: g?.nome || '' }) }}
-                  className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white"
-                >
-                  <option value="">Todos os produtos</option>
-                  {grupos.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
-                </select>
+                  onChange={(v) => { const g = grupos.find((x) => x.id === v); updateNodeData(selectedNode.id, { grupoId: v, grupoNome: g?.nome || '' }) }}
+                  className="w-full"
+                  options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome }))]}
+                />
                 <p className="text-[11px] text-stone-400 mt-1">Se escolher um produto, só quem for desse grupo entra no funil pelo evento.</p>
               </div>
             )}
@@ -333,17 +338,13 @@ export default function EmailFunil() {
             {selectedNode.type === 'enviar' && (
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Template</label>
-                <select
+                <Select
                   value={selectedNode.data?.templateId || ''}
-                  onChange={(e) => {
-                    const t = templates.find((x) => x.id === e.target.value)
-                    updateNodeData(selectedNode.id, { templateId: e.target.value, templateNome: t?.nome || '' })
-                  }}
-                  className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white"
-                >
-                  <option value="">{templates.length === 0 ? 'SEM TEMPLATE' : '— escolha —'}</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                </select>
+                  onChange={(v) => { const t = templates.find((x) => x.id === v); updateNodeData(selectedNode.id, { templateId: v, templateNome: t?.nome || '' }) }}
+                  className="w-full"
+                  placeholder={templates.length === 0 ? 'SEM TEMPLATE' : '— escolha —'}
+                  options={[{ value: '', label: templates.length === 0 ? 'SEM TEMPLATE' : '— escolha —' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                />
 
                 <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Remetente</label>
                 <RemetentePicker providers={providers} value={selectedNode.data?.remetenteId || null} onChange={(id) => updateNodeData(selectedNode.id, { remetenteId: id })} />
@@ -353,21 +354,26 @@ export default function EmailFunil() {
             {selectedNode.type === 'esperar' && (
               <div className="flex gap-2">
                 <input type="number" min={1} value={selectedNode.data?.valor ?? 1} onChange={(e) => updateNodeData(selectedNode.id, { valor: Number(e.target.value) })} className="w-20 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm" />
-                <select value={selectedNode.data?.unidade || 'dias'} onChange={(e) => updateNodeData(selectedNode.id, { unidade: e.target.value })} className="flex-1 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white">
-                  <option value="minutos">minutos</option>
-                  <option value="horas">horas</option>
-                  <option value="dias">dias</option>
-                </select>
+                <Select
+                  value={selectedNode.data?.unidade || 'dias'}
+                  onChange={(v) => updateNodeData(selectedNode.id, { unidade: v })}
+                  className="flex-1"
+                  searchable={false}
+                  options={[{ value: 'minutos', label: 'minutos' }, { value: 'horas', label: 'horas' }, { value: 'dias', label: 'dias' }]}
+                />
               </div>
             )}
 
             {selectedNode.type === 'condicao' && (
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Se o contato…</label>
-                <select value={selectedNode.data?.evento || 'opened'} onChange={(e) => updateNodeData(selectedNode.id, { evento: e.target.value })} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm bg-white">
-                  <option value="opened">Abriu o e-mail</option>
-                  <option value="clicked">Clicou no link</option>
-                </select>
+                <Select
+                  value={selectedNode.data?.evento || 'opened'}
+                  onChange={(v) => updateNodeData(selectedNode.id, { evento: v })}
+                  className="w-full"
+                  searchable={false}
+                  options={[{ value: 'opened', label: 'Abriu o e-mail' }, { value: 'clicked', label: 'Clicou no link' }]}
+                />
                 <p className="text-[11px] text-stone-400 mt-1">Ligue a saída <strong className="text-green-600">Sim</strong> e a <strong className="text-red-500">Não</strong> a próximos passos.</p>
               </div>
             )}

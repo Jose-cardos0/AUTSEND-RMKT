@@ -15,6 +15,7 @@ export default function EmailProdutos() {
   const [lojaPopup, setLojaPopup] = useState(null)
   const [lojaSelTemp, setLojaSelTemp] = useState(new Set())
   const [logoAtivo, setLogoAtivo] = useState(null)
+  const [showCriar, setShowCriar] = useState(false)
   const [nomesDisponiveis, setNomesDisponiveis] = useState([])
   const [novoNome, setNovoNome] = useState('')
   const [criando, setCriando] = useState(false)
@@ -55,6 +56,7 @@ export default function EmailProdutos() {
     try {
       await saveProductGroup(user.uid, null, { nome, produtos: [] })
       setNovoNome('')
+      setShowCriar(false)
       setGrupos(await getProductGroups(user.uid))
       toast.success('Grupo criado.')
     } catch (err) { toast.error(err.message || 'Erro ao criar') } finally { setCriando(false) }
@@ -126,33 +128,11 @@ export default function EmailProdutos() {
     <PageShell
       badge="Geral · Produtos"
       title="Grupos de produtos"
+      right={
+        <button onClick={() => { setNovoNome(''); setShowCriar(true) }} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Criar grupo</button>
+      }
     >
-      <div className="flex flex-col lg:flex-row gap-3">
-        {/* Criar grupo — lateral fixa (sticky), estilo Tracker */}
-        <div className="lg:w-72 shrink-0">
-          <div className="lg:sticky lg:top-24">
-            <div className="rounded-2xl border border-surface-200 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-stone-800">
-                <Plus className="w-4 h-4 text-primary-600" /> Criar grupo
-              </div>
-              <div className="flex flex-col gap-2">
-                <input
-                  value={novoNome}
-                  onChange={(e) => setNovoNome(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') criarGrupo() }}
-                  placeholder="Ex.: Gekko Pan"
-                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white/30 text-sm"
-                />
-                <button onClick={criarGrupo} disabled={criando} className="btn-primary min-h-[44px] w-full justify-center">
-                  {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar grupo
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Lista de grupos */}
-        <div className="flex-1 min-w-0 space-y-3">
+      <div className="space-y-3">
         {nomesDisponiveis.length === 0 && (
           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
             Ainda não recebemos nenhum produto pelos webhooks. Assim que chegar um evento com produto, os nomes aparecem aqui para você marcar nos grupos.
@@ -278,8 +258,32 @@ export default function EmailProdutos() {
             )
           })
         )}
-        </div>
       </div>
+
+      {/* Popup: criar grupo */}
+      {showCriar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowCriar(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Plus className="w-5 h-5" /></span>
+              <h3 className="text-base font-semibold text-stone-800">Criar grupo</h3>
+              <button onClick={() => setShowCriar(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+            <input
+              value={novoNome}
+              onChange={(e) => setNovoNome(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') criarGrupo() }}
+              placeholder="Ex.: Gekko Pan"
+              autoFocus
+              className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowCriar(false)} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={criarGrupo} disabled={criando} className="btn-primary min-h-[44px]">{criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {lojaPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setLojaPopup(null)}>
