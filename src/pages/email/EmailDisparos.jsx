@@ -12,6 +12,7 @@ import Select from '../../components/Select'
 import RemetentePicker from '../../components/RemetentePicker'
 import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, Mail, ChevronLeft, ChevronRight, ChevronDown, Eye, MousePointerClick } from 'lucide-react'
 import excelImg from '../../assets/excel.png'
+import { emailPreviewDoc } from '../../lib/emailPreview'
 
 const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
 
@@ -55,6 +56,7 @@ export default function EmailDisparos() {
   const [pHist, setPHist] = useState(1)
   const [events, setEvents] = useState([])
   const [expanded, setExpanded] = useState(null)
+  const [histOpen, setHistOpen] = useState(false)
 
   useEffect(() => {
     if (!user?.uid) return
@@ -218,7 +220,8 @@ export default function EmailDisparos() {
                 onChange={onSelectTemplate}
                 placeholder=""
                 className="w-full"
-                options={templates.map((t) => ({ value: t.id, label: t.nome }))}
+                preview
+                options={templates.map((t) => ({ value: t.id, label: t.nome, preview: emailPreviewDoc(t) }))}
               />
             </div>
             <div>
@@ -299,7 +302,7 @@ export default function EmailDisparos() {
 
       {/* Histórico */}
       {historico.length > 0 && (
-        <Panel title="Histórico de disparos" icon={History} noPadding>
+        <Panel title="Histórico de disparos" icon={History} noPadding collapsible open={histOpen} onToggle={() => setHistOpen((v) => !v)}>
           <div className="divide-y divide-surface-100">
             {historicoPagina.map((d) => {
               const aberto = expanded === d.id

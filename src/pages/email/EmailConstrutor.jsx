@@ -14,6 +14,7 @@ import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate } from '../..
 import { TEMPLATE_VARIABLES } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import Select from '../../components/Select'
+import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { Loader2, Save, Send, Trash2, Plus, FileText, Code2 } from 'lucide-react'
 import EmojiPicker from '../../components/EmojiPicker'
@@ -220,7 +221,8 @@ export default function EmailConstrutor() {
                   value={selectedId || ''}
                   onChange={(v) => setSelectedId(v || null)}
                   className="flex-1 min-w-0"
-                  options={[{ value: '', label: 'Novo' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                  preview
+                  options={[{ value: '', label: 'Novo' }, ...templates.map((t) => ({ value: t.id, label: t.nome, preview: emailPreviewDoc(t) }))]}
                 />
                 {selectedId && (
                   <button onClick={handleExcluir} className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir template">

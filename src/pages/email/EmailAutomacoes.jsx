@@ -7,6 +7,7 @@ import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, getEmailAutomations, saveEmailAutomation, getLeads, getProductGroups, getEmailProviders } from '../../lib/firestore'
 import RemetentePicker from '../../components/RemetentePicker'
 import Select from '../../components/Select'
+import { emailPreviewDoc } from '../../lib/emailPreview'
 import CollapsibleSearch from '../../components/CollapsibleSearch'
 import { KIWIFY_EVENTS, canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
@@ -246,7 +247,8 @@ export default function EmailAutomacoes() {
                       className="w-full"
                       disabled={templates.length === 0}
                       placeholder={templates.length === 0 ? 'SEM TEMPLATE' : 'Escolher template'}
-                      options={[{ value: '', label: 'Sem template' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                      preview
+                      options={[{ value: '', label: 'Sem template' }, ...templates.map((t) => ({ value: t.id, label: t.nome, preview: emailPreviewDoc(t) }))]}
                     />
                     {auto.templateId && (
                       <RemetentePicker providers={providers} value={auto.remetenteId || null} onChange={(id) => setAuto(ev.id, { remetenteId: id })} />
@@ -364,7 +366,8 @@ export default function EmailAutomacoes() {
                 onChange={setManualTemplateId}
                 placeholder=""
                 className="w-full"
-                options={templates.map((t) => ({ value: t.id, label: t.nome }))}
+                preview
+                options={templates.map((t) => ({ value: t.id, label: t.nome, preview: emailPreviewDoc(t) }))}
               />
             </div>
             <div className="flex justify-end gap-2">

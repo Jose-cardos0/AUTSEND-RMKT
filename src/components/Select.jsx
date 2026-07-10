@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Check, Search, X, ChevronLeft, ChevronRight, Package } from 'lucide-react'
+import { ChevronDown, Check, Search, X, ChevronLeft, ChevronRight, Package, Eye } from 'lucide-react'
 import clsx from 'clsx'
 
 const PAGE_SIZE = 5
@@ -37,10 +38,14 @@ export default function Select({
   searchable = true,
   title = 'Selecionar',
   withThumb = false,
+  /** Mostra uma prévia (HTML) no hover de cada opção que tiver option.preview */
+  preview = false,
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
+  const [hoverVal, setHoverVal] = useState(null)
+  const [hoverRect, setHoverRect] = useState(null)
   const inputRef = useRef(null)
 
   const selected = options.find((o) => String(o.value) === String(value))
@@ -55,6 +60,23 @@ export default function Select({
   const pageItems = filtered.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE)
 
   useEffect(() => { setPage(1) }, [q, open])
+  useEffect(() => { if (!open) { setHoverVal(null); setHoverRect(null) } }, [open])
+
+  // Prévia (portal no body) posicionada dinamicamente pra nunca cortar na tela
+  const hoverOpt = preview && hoverVal != null ? options.find((o) => String(o.value) === String(hoverVal) && o.preview) : null
+  let previewStyle = null
+  if (hoverOpt && hoverRect && typeof window !== 'undefined') {
+    const PW = 384
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const PH = Math.min(544, vh - 16)
+    let left = hoverRect.right + 12 - PW * 0.2 // 20% pra esquerda (pode sobrepor o modal)
+    if (left + PW > vw - 8) left = hoverRect.left - 12 - PW * 0.8 // sem espaço à direita → vai pra esquerda
+    left = Math.max(8, Math.min(left, vw - PW - 8))
+    let top = hoverRect.top + hoverRect.height / 2 - PH / 2 // centraliza na opção
+    top = Math.max(8, Math.min(top, vh - PH - 8)) // trava nas bordas
+    previewStyle = { left, top, width: PW, height: PH }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -93,6 +115,7 @@ export default function Select({
         </button>
       </div>
 
+      {typeof document !== 'undefined' && createPortal(
       <AnimatePresence>
         {open && (
           <motion.div
@@ -135,7 +158,11 @@ export default function Select({
                 {pageItems.map((o) => {
                   const sel = String(o.value) === String(value)
                   return (
-                    <li key={String(o.value)}>
+                    <li
+                      key={String(o.value)}
+                      onMouseEnter={preview && o.preview ? (e) => { setHoverVal(o.value); setHoverRect(e.currentTarget.getBoundingClientRect()) } : undefined}
+                      onMouseLeave={preview ? () => setHoverVal((v) => (v === o.value ? null : v)) : undefined}
+                    >
                       <button
                         type="button"
                         onClick={() => pick(o.value)}
@@ -148,6 +175,7 @@ export default function Select({
                       >
                         {withThumb && <Thumb image={o.image} />}
                         <span className="flex-1 truncate">{o.label}</span>
+                        {preview && o.preview && <Eye className="w-3.5 h-3.5 text-stone-300 shrink-0" />}
                         {sel && <Check className="w-4 h-4 text-primary-600 shrink-0" />}
                       </button>
                     </li>
@@ -181,7 +209,33 @@ export default function Select({
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+      )}
+
+      {open && typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {hoverOpt && previewStyle && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.12 }}
+              style={previewStyle}
+              className="hidden sm:block fixed z-[80] pointer-events-none rounded-xl overflow-hidden bg-white border border-surface-200 shadow-[0_18px_50px_-8px_rgba(0,0,0,0.55)]"
+            >
+              <iframe
+                srcDoc={hoverOpt.preview}
+                title="Prévia do template"
+                sandbox=""
+                className="origin-top-left border-0 bg-white"
+                style={{ transform: 'scale(0.4)', width: '250%', height: '250%' }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   )
 }

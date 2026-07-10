@@ -13,6 +13,7 @@ import { KIWIFY_EVENTS } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
+import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { Play, Mail, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -258,7 +259,8 @@ export default function EmailFunil() {
             value={selectedId || ''}
             onChange={(v) => { const f = funis.find((x) => x.id === v); f ? carregarFunil(f) : novoFunil() }}
             className="w-full sm:w-52"
-            options={[{ value: '', label: 'Novo funil' }, ...funis.map((f) => ({ value: f.id, label: f.nome }))]}
+            placeholder="Selecionar funil"
+            options={funis.map((f) => ({ value: f.id, label: f.nome }))}
           />
           <button onClick={novoFunil} className="btn-secondary text-sm min-h-[40px]"><Plus className="w-4 h-4" /> Novo</button>
           {selectedId && <button onClick={handleExcluir} className="p-2.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
@@ -344,7 +346,8 @@ export default function EmailFunil() {
                   onChange={(v) => { const t = templates.find((x) => x.id === v); updateNodeData(selectedNode.id, { templateId: v, templateNome: t?.nome || '' }) }}
                   className="w-full"
                   placeholder={templates.length === 0 ? 'SEM TEMPLATE' : ''}
-                  options={templates.map((t) => ({ value: t.id, label: t.nome }))}
+                  preview
+                  options={templates.map((t) => ({ value: t.id, label: t.nome, preview: emailPreviewDoc(t) }))}
                 />
 
                 <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Remetente</label>
