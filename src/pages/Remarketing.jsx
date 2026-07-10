@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { parseISO } from 'date-fns'
 import { auth } from '../lib/firebase'
@@ -12,6 +12,7 @@ import {
 } from '../lib/firestore'
 import { enviarRemarketing } from '../lib/remarketingApi'
 import MessageEditor from '../components/MessageEditor'
+import TemplatePicker from '../components/TemplatePicker'
 import Select from '../components/Select'
 import toast from 'react-hot-toast'
 import { KIWIFY_EVENTS } from '../lib/constants'
@@ -40,6 +41,7 @@ export default function Remarketing() {
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [mensagem, setMensagem] = useState('')
+  const editorRef = useRef(null)
   const [filtroNome, setFiltroNome] = useState('')
   const [filtroDataInicio, setFiltroDataInicio] = useState('')
   const [filtroDataFim, setFiltroDataFim] = useState('')
@@ -277,24 +279,35 @@ export default function Remarketing() {
       )}
 
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
-        <aside className="flex flex-col shrink-0 lg:w-[min(380px,36vw)] lg:min-w-[260px] lg:max-w-md h-[min(42dvh,320px)] lg:h-auto lg:min-h-0 overflow-hidden">
+        <aside className="flex flex-col shrink-0 lg:w-[min(480px,42vw)] lg:min-w-[320px] lg:max-w-lg h-[min(42dvh,320px)] lg:h-auto lg:min-h-0 overflow-hidden">
           <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col h-full min-h-0 overflow-hidden">
             <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
               <MessageSquare className="w-5 h-5 shrink-0 text-primary-600" />
               Mensagem
+              <TemplatePicker onPick={setMensagem} label="Template" className="ml-auto text-xs min-h-[34px] py-1.5 px-2.5" />
             </h3>
             <MessageEditor
+              ref={editorRef}
               fillHeight
               className="flex-1 min-h-0"
               value={mensagem}
               onChange={setMensagem}
               placeholder="Olá {nome}, você deixou itens no carrinho. Posso te ajudar?"
-              showNomeButton
+              showCheckout
               rows={4}
             />
-            <p className="text-[11px] text-stone-500 mt-2 shrink-0">
-              *negrito* · _itálico_ · {'{nome}'}
-            </p>
+            <div className="flex flex-wrap gap-1.5 shrink-0 mt-2">
+              {['{nome}', '{nome_produto}'].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => editorRef.current?.insert(v)}
+                  className="text-[11px] font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200/70 rounded-full px-2.5 py-1 transition-colors"
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
             <button
               onClick={handleEnviar}
               disabled={enviando || selectedCarts.length === 0 || !mensagem.trim()}

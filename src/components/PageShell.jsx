@@ -16,7 +16,9 @@ const shellItem = {
  * Cabeçalho de página + animação.
  * @param {boolean} [fill] — ocupa a área útil do layout (flex-1) sem scroll na página; filhos devem usar min-h-0 + scroll interno.
  */
-export default function PageShell({ title, subtitle, badge, right, children, className, fill }) {
+export default function PageShell({ title, subtitle, badge, right, children, className, fill, compact }) {
+  // `tight` = cabeçalho compacto (título/badge menores). fill já implica compacto; compact força sem mexer no layout.
+  const tight = fill || compact
   return (
     <motion.div
       variants={shellContainer}
@@ -41,7 +43,7 @@ export default function PageShell({ title, subtitle, badge, right, children, cla
             <span
               className={clsx(
                 'inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary-50 to-violet-50 text-primary-700 font-semibold uppercase tracking-widest border border-primary-200/70',
-                fill ? 'text-[10px] px-2 py-0.5 mb-0.5' : 'text-[11px] px-3 py-1.5 mb-3 shadow-sm'
+                tight ? 'text-[10px] px-2 py-0.5 mb-0.5' : 'text-[11px] px-3 py-1.5 mb-3 shadow-sm'
               )}
             >
               {badge}
@@ -50,7 +52,7 @@ export default function PageShell({ title, subtitle, badge, right, children, cla
           <h1
             className={clsx(
               'font-bold tracking-tight page-title-gradient',
-              fill ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'
+              tight ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'
             )}
           >
             {title}
@@ -59,7 +61,7 @@ export default function PageShell({ title, subtitle, badge, right, children, cla
             <p
               className={clsx(
                 'text-stone-600 leading-snug',
-                fill
+                tight
                   ? 'text-[11px] sm:text-xs mt-0.5 line-clamp-2 max-w-4xl'
                   : 'mt-2 text-sm sm:text-base max-w-2xl leading-relaxed'
               )}
@@ -96,6 +98,8 @@ export function Panel({
   collapsible,
   open = true,
   onToggle,
+  /** Elemento à direita do cabeçalho (ex.: busca, ações) */
+  right,
 }) {
   const showBody = !collapsible || open
   return (
@@ -132,8 +136,11 @@ export function Panel({
             )}
           >
             <div className="flex items-center gap-2 min-w-0">
-              {Icon && <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 shrink-0" />}
-              <div className="text-sm sm:text-base font-semibold text-stone-800 min-w-0">{title}</div>
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {Icon && <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 shrink-0" />}
+                <div className="text-sm sm:text-base font-semibold text-stone-800 min-w-0 truncate">{title}</div>
+              </div>
+              {right}
             </div>
             {description && (
               <p className="mt-1.5 text-[11px] sm:text-xs text-stone-500 leading-relaxed">{description}</p>

@@ -16,6 +16,7 @@ import PageShell from '../../components/PageShell'
 import Select from '../../components/Select'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { Loader2, Save, Send, Trash2, Plus, FileText, Code2 } from 'lucide-react'
+import EmojiPicker from '../../components/EmojiPicker'
 
 const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Arial,sans-serif;color:#666">Arraste blocos aqui para montar seu e-mail…</div>'
 
@@ -35,6 +36,7 @@ export default function EmailConstrutor() {
   const [importCode, setImportCode] = useState('')
   const containerRef = useRef(null)
   const editorRef = useRef(null)
+  const subjectRef = useRef(null)
 
   // Inicializa o GrapesJS uma vez
   useEffect(() => {
@@ -237,8 +239,21 @@ export default function EmailConstrutor() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Assunto do e-mail</label>
+              <div className="flex items-center gap-2 mb-1">
+                <label className="text-xs font-medium text-stone-600">Assunto do e-mail</label>
+                <EmojiPicker
+                  buttonClassName="ml-auto p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                  onPick={(emoji) => {
+                    const ta = subjectRef.current
+                    const text = subject || ''
+                    const start = ta ? ta.selectionStart : text.length
+                    setSubject(text.slice(0, start) + emoji + text.slice(start))
+                    setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + emoji.length, start + emoji.length) } }, 0)
+                  }}
+                />
+              </div>
               <textarea
+                ref={subjectRef}
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
                 rows={3}
@@ -249,13 +264,26 @@ export default function EmailConstrutor() {
           </div>
 
           <div className="app-panel rounded-2xl p-4">
-            <p className="text-xs font-semibold text-stone-600 mb-2 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Variáveis</p>
+            <p className="text-xs font-semibold text-stone-600 mb-2 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Variáveis <span className="font-normal text-stone-400">(clique pra inserir no assunto)</span></p>
             <div className="flex flex-wrap gap-1.5">
               {TEMPLATE_VARIABLES.map((v) => (
-                <code key={v.key} className="px-1.5 py-0.5 rounded bg-primary-50 text-primary-700 border border-primary-200 text-[11px]">{v.key}</code>
+                <button
+                  key={v.key}
+                  type="button"
+                  title={v.label || v.key}
+                  onClick={() => {
+                    const ta = subjectRef.current
+                    const text = subject || ''
+                    const start = ta ? ta.selectionStart : text.length
+                    setSubject(text.slice(0, start) + v.key + text.slice(start))
+                    setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + v.key.length, start + v.key.length) } }, 0)
+                  }}
+                  className="px-2.5 py-1 rounded-full bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200/70 text-[11px] font-medium transition-colors"
+                >
+                  {v.key}
+                </button>
               ))}
             </div>
-            <p className="text-[11px] text-stone-400 mt-2">Use nos textos ou no assunto — trocadas pelos dados do lead no envio.</p>
           </div>
         </div>
 

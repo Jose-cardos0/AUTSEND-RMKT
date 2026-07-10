@@ -17,6 +17,10 @@ export default {
           '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
           '50%': { transform: 'translate(24px, -18px) scale(1.03)' },
         },
+        'float-soft': {
+          '0%, 100%': { transform: 'translateY(0) rotate(-3deg)' },
+          '50%': { transform: 'translateY(-16px) rotate(3deg)' },
+        },
         'fade-in': {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
@@ -33,6 +37,7 @@ export default {
       animation: {
         float: 'float 20s ease-in-out infinite',
         'float-slow': 'float 28s ease-in-out infinite',
+        'float-soft': 'float-soft 3s ease-in-out infinite',
         'fade-in': 'fade-in 0.5s ease-out forwards',
         'fade-in-up': 'fade-in-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards',
         shimmer: 'shimmer 2.5s ease-in-out infinite',

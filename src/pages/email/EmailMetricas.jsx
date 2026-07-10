@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { auth } from '../../lib/firebase'
 import { getEmailDisparos, getEmailEvents, getEmailLogs, getLeads, getProductGroups } from '../../lib/firestore'
@@ -7,7 +7,7 @@ import { canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
-import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, Search, ChevronLeft, ChevronRight, TrendingDown } from 'lucide-react'
+import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mail, Search, ChevronLeft, ChevronRight, TrendingDown, DollarSign, X } from 'lucide-react'
 
 // Eventos que representam devolução de dinheiro (descontam da receita).
 const ESTORNO_EVENTS = new Set(['order_status.chargeback', 'order_status.refund'])
@@ -43,20 +43,16 @@ function StatCard({ label, value, sub, sub2, icon: Icon, color }) {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`rounded-2xl border bg-gradient-to-br p-4 sm:p-5 shadow-sm ${colors[color] || colors.blue}`}
+      className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br p-4 sm:p-5 shadow-sm ${colors[color] || colors.blue}`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-55">{label}</p>
-          <p className="text-xl sm:text-2xl font-bold mt-1.5 tabular-nums break-words leading-tight">{value}</p>
-          {sub && <p className="text-[11px] opacity-70 mt-0.5">{sub}</p>}
-          {sub2 && <p className="text-[10px] opacity-55 mt-0.5">{sub2}</p>}
-        </div>
-        {Icon && (
-          <div className="w-10 h-10 rounded-xl bg-white/70 flex items-center justify-center ring-1 ring-white/80 shrink-0">
-            <Icon className="w-5 h-5 opacity-70" />
-          </div>
-        )}
+      {Icon && (
+        <Icon className="pointer-events-none absolute -right-4 -bottom-5 w-28 h-28 opacity-[0.14]" strokeWidth={1.5} />
+      )}
+      <div className="relative min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-55">{label}</p>
+        <p className="text-xl sm:text-2xl font-bold mt-1.5 tabular-nums break-words leading-tight">{value}</p>
+        {sub && <p className="text-[11px] opacity-70 mt-0.5">{sub}</p>}
+        {sub2 && <p className="text-[10px] opacity-55 mt-0.5">{sub2}</p>}
       </div>
     </motion.div>
   )
@@ -111,7 +107,7 @@ export default function EmailMetricas() {
   useEffect(() => { carregar() }, [user?.uid])
 
   const [fTexto, setFTexto] = useState('')
-  const [fAcao, setFAcao] = useState('')
+  const [buscaAberta, setBuscaAberta] = useState(false)
   const [sortKey, setSortKey] = useState('quando')
   const [sortDir, setSortDir] = useState('desc')
   const [pagina, setPagina] = useState(1)
@@ -272,7 +268,6 @@ export default function EmailMetricas() {
 
   const atividadeFiltrada = useMemo(() => {
     let list = atividadeBase
-    if (fAcao) list = list.filter((e) => e.tipo === fAcao)
     if (fTexto.trim()) {
       const q = fTexto.toLowerCase()
       list = list.filter((e) => (e.email || '').toLowerCase().includes(q) || (e.link || '').toLowerCase().includes(q))
@@ -296,9 +291,9 @@ export default function EmailMetricas() {
       if (va > vb) return sortDir === 'asc' ? 1 : -1
       return 0
     })
-  }, [atividadeBase, fAcao, fTexto, sortKey, sortDir, purchaseMap, produtoMap])
+  }, [atividadeBase, fTexto, sortKey, sortDir, purchaseMap, produtoMap])
 
-  useEffect(() => { setPagina(1) }, [fAcao, fTexto, sortKey, sortDir, grupoFiltro])
+  useEffect(() => { setPagina(1) }, [fTexto, sortKey, sortDir, grupoFiltro])
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -329,7 +324,8 @@ export default function EmailMetricas() {
               value={grupoFiltro}
               onChange={setGrupoFiltro}
               className="w-full sm:w-52"
-              options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome }))]}
+              withThumb
+              options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome, image: g.imagem }))]}
             />
           )}
           <button onClick={carregar} className="btn-secondary text-sm min-h-[44px]">
@@ -354,6 +350,7 @@ export default function EmailMetricas() {
           <StatCard label="CTR (clique/abertura)" value={pct(stats.clicked, stats.opened)} icon={Percent} color="amber" />
           <StatCard
             label="Receita atribuída (líquida)"
+            icon={DollarSign}
             value={formatMoeda(atrib.receita, atrib.moeda)}
             sub={atrib.estorno > 0 ? `${atrib.compras} compra(s) · bruto ${formatMoeda(atrib.bruto, atrib.moeda)}` : `${atrib.compras} compra(s)`}
             color="green"
@@ -370,14 +367,14 @@ export default function EmailMetricas() {
       </aside>
 
       {/* Conteúdo — meio */}
-      <div className="flex-1 min-w-0 lg:order-2 space-y-4 sm:space-y-5">
+      <div className="flex-1 min-w-0 lg:order-2 flex flex-col gap-4 sm:gap-5">
       {semDados && (
         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           Ainda não há dados. Envie um disparo e, com o rastreamento ligado no Resend, as aberturas e cliques aparecem aqui.
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-3">
+      <div className="order-2 flex flex-col lg:flex-row gap-3">
         {/* Por disparo */}
         <Panel title="Desempenho por disparo" icon={BarChart3} noPadding className="flex-1" collapsible open={paineisAbertos} onToggle={() => setPaineisAbertos((v) => !v)}>
           <div className="overflow-x-auto">
@@ -438,30 +435,44 @@ export default function EmailMetricas() {
       </div>
 
       {/* Eventos recentes */}
-      <Panel title="Atividade recente" icon={Mail} noPadding>
-        <div className="p-3 sm:p-4 border-b border-surface-100 flex flex-col sm:flex-row gap-2 sm:items-center bg-white/40">
-          <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-            <input
-              value={fTexto}
-              onChange={(e) => setFTexto(e.target.value)}
-              placeholder="Filtrar por contato ou link"
-              className="w-full pl-9 pr-3 py-2.5 min-h-[42px] rounded-xl border border-surface-200 text-sm outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
+      <Panel
+        title="Atividade recente"
+        icon={Mail}
+        noPadding
+        className="order-1"
+        right={
+          <div className="flex items-center gap-1 shrink-0">
+            <AnimatePresence initial={false}>
+              {buscaAberta && (
+                <motion.div
+                  key="busca"
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: '11rem', opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  <input
+                    value={fTexto}
+                    onChange={(e) => setFTexto(e.target.value)}
+                    autoFocus
+                    placeholder="Contato ou link"
+                    className="w-44 h-7 px-3 rounded-lg border border-surface-200 text-sm outline-none focus:outline-none focus:ring-0"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <button
+              type="button"
+              onClick={() => { if (buscaAberta) setFTexto(''); setBuscaAberta((v) => !v) }}
+              title={buscaAberta ? 'Fechar busca' : 'Buscar'}
+              className="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors shrink-0"
+            >
+              {buscaAberta ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+            </button>
           </div>
-          <Select
-            value={fAcao}
-            onChange={setFAcao}
-            className="w-full sm:w-48"
-            options={[
-              { value: '', label: 'Todas as ações' },
-              { value: 'opened', label: 'Abriu' },
-              { value: 'clicked', label: 'Clicou' },
-              { value: 'chargeback', label: 'Chargeback' },
-              { value: 'refund', label: 'Reembolso' },
-            ]}
-          />
-        </div>
+        }
+      >
         <div className="overflow-x-auto">
           {atividadeFiltrada.length === 0 ? (
             <p className="p-6 text-sm text-stone-400 text-center">Nenhuma atividade encontrada.</p>

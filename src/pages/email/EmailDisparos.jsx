@@ -11,6 +11,7 @@ import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
 import RemetentePicker from '../../components/RemetentePicker'
 import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, Mail, ChevronLeft, ChevronRight, ChevronDown, Eye, MousePointerClick } from 'lucide-react'
+import excelImg from '../../assets/excel.png'
 
 const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim())
 
@@ -163,10 +164,29 @@ export default function EmailDisparos() {
   const pagHistAtual = Math.min(pHist, totalPagHist)
   const historicoPagina = historico.slice((pagHistAtual - 1) * HIST_POR_PAGINA, pagHistAtual * HIST_POR_PAGINA)
 
+  const estLotes = contatos.length > 0 ? Math.ceil(contatos.length / Math.max(1, loteSize)) : 0
+
   return (
     <PageShell
+      compact
       badge="E-mail · Disparos"
       title="Disparos de e-mail"
+      right={
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
+          <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Contatos</p>
+            <p className="text-lg font-bold text-stone-800 tabular-nums">{contatos.length}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 text-center shadow-sm shadow-emerald-500/10">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Lotes</p>
+            <p className="text-lg font-bold text-emerald-700 tabular-nums">{estLotes}</p>
+          </div>
+          <div className="rounded-2xl border border-primary-200/90 bg-gradient-to-br from-primary-50 to-white px-3 py-2.5 text-center shadow-sm shadow-primary-500/10">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-primary-600">Envios</p>
+            <p className="text-lg font-bold text-primary-700 tabular-nums">{historico.length}</p>
+          </div>
+        </div>
+      }
     >
       <div className="space-y-4 sm:space-y-5">
       {!configOk && (
@@ -182,18 +202,23 @@ export default function EmailDisparos() {
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row gap-3">
+      <div className="flex flex-col lg:flex-row gap-3 items-stretch">
         {/* Config do disparo */}
-        <Panel title="Configuração" icon={Mail} className="lg:w-96 shrink-0">
-          <div className="space-y-3">
+        <aside className="flex flex-col shrink-0 lg:w-[min(480px,42vw)] lg:min-w-[320px] lg:max-w-lg">
+          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-w-0">
+            <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-3 flex items-center gap-2">
+              <Mail className="w-5 h-5 shrink-0 text-primary-600" />
+              Configuração
+            </h3>
+            <div className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Template</label>
               <Select
                 value={templateId}
                 onChange={onSelectTemplate}
-                placeholder="— escolha —"
+                placeholder=""
                 className="w-full"
-                options={[{ value: '', label: '— escolha —' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                options={templates.map((t) => ({ value: t.id, label: t.nome }))}
               />
             </div>
             <div>
@@ -240,30 +265,36 @@ export default function EmailDisparos() {
               {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               {enviando ? 'Enviando...' : `Enviar para ${contatos.length} contato(s)`}
             </button>
+            </div>
           </div>
-        </Panel>
+        </aside>
 
         {/* Lista */}
-        <Panel title="Lista de e-mails" icon={Users} className="flex-1">
-          <div className="space-y-3">
-            <p className="text-xs text-stone-500">Uma linha por contato: <strong>email</strong> ou <strong>email,nome</strong>. Ou suba um Excel (A = e-mail, B = nome).</p>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={handleBaixarExemplo} className="btn-secondary text-sm min-h-[40px] px-4"><Download className="w-4 h-4" /> Exemplo</button>
-              <label className="btn-secondary text-sm min-h-[40px] px-4 cursor-pointer flex items-center gap-2">
+        <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-w-0">
+          <div className="p-3 sm:p-4 border-b border-surface-200 shrink-0 flex items-center gap-2 text-stone-700">
+            <Users className="w-4 h-4" />
+            <p className="text-sm font-semibold">Lista de e-mails</p>
+          </div>
+          <div className="p-3 sm:p-4 flex flex-col flex-1 min-w-0">
+            <div className="relative flex flex-1 min-h-[220px]">
+              <img src={excelImg} alt="" className="pointer-events-none absolute bottom-3 right-3 h-24 w-24 object-contain opacity-50 z-0 animate-float-soft" />
+              <textarea
+                value={lista}
+                onChange={(e) => setLista(e.target.value)}
+                placeholder={'cliente@email.com\nmaria@email.com,Maria'}
+                className="relative z-10 w-full flex-1 p-4 rounded-xl border border-surface-200 bg-transparent focus:border-surface-300 focus:ring-0 outline-none resize-y text-sm font-mono min-h-[220px]"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 touch-manipulation"><Download className="w-4 h-4" /> Exemplo</button>
+              <label className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 cursor-pointer touch-manipulation flex items-center justify-center gap-2">
                 <Upload className="w-4 h-4" /> Subir Excel
                 <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
               </label>
             </div>
-            <textarea
-              value={lista}
-              onChange={(e) => setLista(e.target.value)}
-              rows={10}
-              placeholder={'cliente@email.com\nmaria@email.com,Maria'}
-              className="w-full p-3 rounded-xl border border-surface-200 font-mono text-sm resize-y min-h-[220px]"
-            />
-            <p className="text-xs text-stone-400">{contatos.length} e-mail(s) válido(s) detectado(s).</p>
+            <p className="text-xs text-stone-400 mt-2">{contatos.length} e-mail(s) válido(s) detectado(s).</p>
           </div>
-        </Panel>
+        </div>
       </div>
 
       {/* Histórico */}

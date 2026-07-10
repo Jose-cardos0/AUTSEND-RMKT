@@ -36,17 +36,18 @@ import PageLoader from '../components/PageLoader'
 import { useConfirm } from '../components/ConfirmDialog'
 
 /** Seção recolhível (dropdown), começa minimizada. */
-function Secao({ title, icon: Icon, open, onToggle, children }) {
+function Secao({ title, icon: Icon, open, onToggle, children, bgIcon: BgIcon }) {
   return (
-    <div className="app-panel rounded-2xl overflow-hidden">
-      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3.5 hover:bg-surface-50 transition">
+    <div className="app-panel rounded-2xl overflow-hidden relative">
+      {BgIcon && <BgIcon className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-[#25D366] opacity-[0.07] z-0" />}
+      <button type="button" onClick={onToggle} className="relative z-10 w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3.5 transition">
         <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
           {Icon && <Icon className="w-5 h-5 text-primary-600 shrink-0" />}
           <span className="truncate">{title}</span>
         </span>
         <ChevronDown className={`w-5 h-5 text-stone-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && <div className="px-4 sm:px-5 pb-4 pt-1">{children}</div>}
+      {open && <div className="relative z-10 px-4 sm:px-5 pb-4 pt-1">{children}</div>}
     </div>
   )
 }
@@ -405,7 +406,7 @@ export default function Integracoes() {
       )}
 
       <div className="space-y-3">
-      <Secao title="WhatsApp" icon={WhatsAppIcon} open={secoes.whatsapp} onToggle={() => toggleSecao('whatsapp')}>
+      <Secao title="WhatsApp" icon={WhatsAppIcon} bgIcon={WhatsAppIcon} open={secoes.whatsapp} onToggle={() => toggleSecao('whatsapp')}>
           <div className="space-y-4">
           <p className="text-sm font-medium text-stone-700">Adicionar nova instância</p>
           <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">

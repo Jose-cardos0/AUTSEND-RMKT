@@ -329,7 +329,8 @@ export default function EmailFunil() {
                   value={selectedNode.data?.grupoId || ''}
                   onChange={(v) => { const g = grupos.find((x) => x.id === v); updateNodeData(selectedNode.id, { grupoId: v, grupoNome: g?.nome || '' }) }}
                   className="w-full"
-                  options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome }))]}
+                  withThumb
+                  options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome, image: g.imagem }))]}
                 />
                 <p className="text-[11px] text-stone-400 mt-1">Se escolher um produto, só quem for desse grupo entra no funil pelo evento.</p>
               </div>
@@ -342,8 +343,8 @@ export default function EmailFunil() {
                   value={selectedNode.data?.templateId || ''}
                   onChange={(v) => { const t = templates.find((x) => x.id === v); updateNodeData(selectedNode.id, { templateId: v, templateNome: t?.nome || '' }) }}
                   className="w-full"
-                  placeholder={templates.length === 0 ? 'SEM TEMPLATE' : '— escolha —'}
-                  options={[{ value: '', label: templates.length === 0 ? 'SEM TEMPLATE' : '— escolha —' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                  placeholder={templates.length === 0 ? 'SEM TEMPLATE' : ''}
+                  options={templates.map((t) => ({ value: t.id, label: t.nome }))}
                 />
 
                 <label className="block text-xs font-medium text-stone-600 mb-1 mt-3">Remetente</label>

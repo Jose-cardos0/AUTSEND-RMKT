@@ -17,7 +17,15 @@ export async function enviarRemarketing(contatos, mensagem, evolution) {
 
   for (const contato of contatos) {
     const nome = contato.nome ?? contato.name ?? ''
-    const mensagemPersonalizada = mensagem.replace(/\{nome\}/gi, nome)
+    const produto = contato.produto ?? contato.nome_produto ?? ''
+    const email = contato.email ?? ''
+    const telefone = contato.telefone ?? contato.phone ?? contato.numero ?? ''
+    const mensagemPersonalizada = mensagem
+      .replace(/\{nome_cliente\}/gi, nome)
+      .replace(/\{nome_produto\}/gi, produto)
+      .replace(/\{numero_cliente\}/gi, telefone)
+      .replace(/\{email_cliente\}/gi, email)
+      .replace(/\{nome\}/gi, nome)
     const payload = {
       ...basePayload,
       contatos: [contato],

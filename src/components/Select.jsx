@@ -1,9 +1,19 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Check, Search, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, Check, Search, X, ChevronLeft, ChevronRight, Package } from 'lucide-react'
 import clsx from 'clsx'
 
 const PAGE_SIZE = 5
+
+/** Miniatura do produto (imagem ou caixinha padrão) */
+function Thumb({ image, size = 'w-7 h-7' }) {
+  if (image) return <img src={image} alt="" className={clsx('rounded-lg object-contain shrink-0', size)} />
+  return (
+    <span className={clsx('flex items-center justify-center rounded-lg bg-surface-100 text-stone-400 shrink-0', size)}>
+      <Package className="w-1/2 h-1/2" />
+    </span>
+  )
+}
 
 /**
  * Select custom que abre um POPUP centralizado com busca e paginação (5 por página).
@@ -26,6 +36,7 @@ export default function Select({
   disabled = false,
   searchable = true,
   title = 'Selecionar',
+  withThumb = false,
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -72,8 +83,11 @@ export default function Select({
                 : 'border-surface-200 hover:border-primary-300'
           )}
         >
-          <span className={clsx('truncate', selected ? 'text-stone-800' : 'text-stone-400')}>
-            {selected ? selected.label : placeholder}
+          <span className="flex items-center gap-2 min-w-0">
+            {withThumb && selected && <Thumb image={selected.image} size="w-6 h-6" />}
+            <span className={clsx('truncate', selected ? 'text-stone-800' : 'text-stone-400')}>
+              {selected ? selected.label : placeholder}
+            </span>
           </span>
           <ChevronDown className={clsx('w-4 h-4 text-stone-400 shrink-0 transition-transform', open && 'rotate-180')} />
         </button>
@@ -132,6 +146,7 @@ export default function Select({
                           sel ? 'bg-primary-50 text-primary-700 font-medium ring-1 ring-primary-200' : 'text-stone-700 hover:bg-surface-100'
                         )}
                       >
+                        {withThumb && <Thumb image={o.image} />}
                         <span className="flex-1 truncate">{o.label}</span>
                         {sel && <Check className="w-4 h-4 text-primary-600 shrink-0" />}
                       </button>

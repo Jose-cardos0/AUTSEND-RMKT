@@ -9,6 +9,27 @@ import { FileText, Search, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-
 
 const PAGE_SIZE = 5
 
+// Prévia estilo WhatsApp (variáveis com exemplo + formatação)
+const SAMPLE = { nome_cliente: 'João', numero_cliente: '+55 11 99999-9999', email_cliente: 'joao@email.com', nome_produto: 'Gekko Pan' }
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+function renderWhatsapp(text) {
+  let t = escapeHtml(text || '')
+  t = t
+    .replace(/\{nome_cliente\}/gi, SAMPLE.nome_cliente)
+    .replace(/\{numero_cliente\}/gi, SAMPLE.numero_cliente)
+    .replace(/\{email_cliente\}/gi, SAMPLE.email_cliente)
+    .replace(/\{nome_produto\}/gi, SAMPLE.nome_produto)
+  t = t
+    .replace(/```([\s\S]+?)```/g, '<code>$1</code>')
+    .replace(/\*(.+?)\*/g, '<strong>$1</strong>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    .replace(/~(.+?)~/g, '<del>$1</del>')
+    .replace(/\n/g, '<br/>')
+  return t
+}
+
 /**
  * Botão + popup pra escolher um template de mensagem salvo (copy).
  * Ao escolher, chama onPick(textoDaMensagem).
@@ -20,6 +41,7 @@ export default function TemplatePicker({ onPick, label = 'Usar template', classN
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
+  const [hoverId, setHoverId] = useState(null)
 
   const abrir = async () => {
     setOpen(true); setQ(''); setPage(1)
@@ -80,11 +102,37 @@ export default function TemplatePicker({ onPick, label = 'Usar template', classN
                   <ul className="space-y-1 min-h-[60px]">
                     {itens.length === 0 && <li className="px-3 py-6 text-sm text-stone-400 text-center">Nada encontrado</li>}
                     {itens.map((t) => (
-                      <li key={t.id}>
+                      <li
+                        key={t.id}
+                        className="relative"
+                        onMouseEnter={() => setHoverId(t.id)}
+                        onMouseLeave={() => setHoverId((h) => (h === t.id ? null : h))}
+                      >
                         <button type="button" onClick={() => pick(t)} className="w-full flex flex-col gap-0.5 px-3 py-2 rounded-xl hover:bg-surface-100 text-left transition-colors">
                           <span className="text-sm font-medium text-stone-800 truncate">{t.nome || 'Sem título'}</span>
                           <span className="text-[11px] text-stone-400 line-clamp-2 leading-snug">{t.mensagem}</span>
                         </button>
+
+                        {/* Balão de prévia ao passar o mouse */}
+                        <AnimatePresence>
+                          {hoverId === t.id && (
+                            <motion.div
+                              initial={{ opacity: 0, x: -6 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -6 }}
+                              transition={{ duration: 0.15 }}
+                              className="hidden sm:block absolute left-full bottom-0 -ml-16 w-64 z-50 pointer-events-none rounded-xl overflow-hidden bg-white shadow-[0_14px_44px_-6px_rgba(0,0,0,0.5)]"
+                            >
+                              <div className="px-2.5 py-1.5 bg-[#075E54] text-white text-[10px] font-semibold">Prévia no WhatsApp</div>
+                              <div className="p-2.5 bg-[#ece5dd] flex">
+                                <div className="max-w-full ml-auto bg-[#d9fdd3] rounded-lg rounded-tr-sm px-2.5 py-1.5 shadow-sm">
+                                  <p className="text-[12px] text-stone-800 break-words wa-preview leading-snug line-clamp-[12]" dangerouslySetInnerHTML={{ __html: renderWhatsapp(t.mensagem) }} />
+                                  <span className="block text-right text-[9px] text-stone-500 mt-0.5">23:15 ✓✓</span>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </li>
                     ))}
                   </ul>

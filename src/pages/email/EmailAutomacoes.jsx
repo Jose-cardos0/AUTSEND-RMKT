@@ -7,6 +7,7 @@ import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, getEmailAutomations, saveEmailAutomation, getLeads, getProductGroups, getEmailProviders } from '../../lib/firestore'
 import RemetentePicker from '../../components/RemetentePicker'
 import Select from '../../components/Select'
+import CollapsibleSearch from '../../components/CollapsibleSearch'
 import { KIWIFY_EVENTS, canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
@@ -41,9 +42,13 @@ export default function EmailAutomacoes() {
   const [enviandoManual, setEnviandoManual] = useState(false)
   const [eventosAbertos, setEventosAbertos] = useState(false)
   const [pTimeline, setPTimeline] = useState(1)
-  const [fEvento, setFEvento] = useState('')
-  const [fProduto, setFProduto] = useState('')
-  const [fStatus, setFStatus] = useState('')
+  const [sortKey, setSortKey] = useState('quando')
+  const [sortDir, setSortDir] = useState('desc')
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir('asc') }
+  }
+  const [buscaTL, setBuscaTL] = useState('')
   const [providers, setProviders] = useState([])
 
   useEffect(() => {
@@ -123,24 +128,35 @@ export default function EmailAutomacoes() {
   const templatesById = useMemo(() => Object.fromEntries(templates.map((t) => [t.id, t])), [templates])
 
   const produtosLista = useMemo(() => [...new Set(leads.map((l) => l.produto).filter(Boolean))].sort(), [leads])
-  const leadsFiltrados = useMemo(() => leads.filter((l) => {
-    if (fEvento && canonicalEvento(l.evento) !== fEvento) return false
-    if (fProduto && l.produto !== fProduto) return false
-    if (fStatus) {
-      const s = l.status || 'pendente'
-      if (fStatus === 'pendente') return s === 'pendente'
-      return s === fStatus
+  const leadsOrdenados = useMemo(() => {
+    const val = (l) => {
+      switch (sortKey) {
+        case 'contato': return (l.nome || l.email || '').toLowerCase()
+        case 'evento': return canonicalEvento(l.evento) || ''
+        case 'produto': return (l.produto || '').toLowerCase()
+        case 'status': return l.status || 'pendente'
+        case 'quando': return l.createdAt?.toMillis?.() ?? l.createdAt ?? 0
+        default: return 0
+      }
     }
-    return true
-  }), [leads, fEvento, fProduto, fStatus])
-  useEffect(() => { setPTimeline(1) }, [fEvento, fProduto, fStatus])
+    let list = leads
+    const q = buscaTL.trim().toLowerCase()
+    if (q) list = list.filter((l) => (l.nome || '').toLowerCase().includes(q) || (l.email || '').toLowerCase().includes(q) || (l.produto || '').toLowerCase().includes(q))
+    return [...list].sort((a, b) => {
+      const va = val(a), vb = val(b)
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [leads, buscaTL, sortKey, sortDir])
+  useEffect(() => { setPTimeline(1) }, [buscaTL, sortKey, sortDir])
 
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
-  const TL_POR_PAGINA = 10
-  const tlTotalPaginas = Math.max(1, Math.ceil(leadsFiltrados.length / TL_POR_PAGINA))
+  const TL_POR_PAGINA = 5
+  const tlTotalPaginas = Math.max(1, Math.ceil(leadsOrdenados.length / TL_POR_PAGINA))
   const tlPagina = Math.min(pTimeline, tlTotalPaginas)
-  const leadsPagina = leadsFiltrados.slice((tlPagina - 1) * TL_POR_PAGINA, tlPagina * TL_POR_PAGINA)
+  const leadsPagina = leadsOrdenados.slice((tlPagina - 1) * TL_POR_PAGINA, tlPagina * TL_POR_PAGINA)
 
   return (
     <PageShell
@@ -173,7 +189,11 @@ export default function EmailAutomacoes() {
                     onClick={() => setGrupoId(g.id)}
                     className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition touch-manipulation ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}
                   >
-                    <span className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 ${sel ? 'bg-primary-500 text-white' : 'bg-surface-100 text-stone-400'}`}><Package className="w-3.5 h-3.5" /></span>
+                    {g.imagem ? (
+                      <img src={g.imagem} alt="" className="h-7 w-7 rounded-lg object-contain shrink-0" />
+                    ) : (
+                      <span className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 ${sel ? 'bg-primary-500 text-white' : 'bg-surface-100 text-stone-400'}`}><Package className="w-3.5 h-3.5" /></span>
+                    )}
                     <span className="text-sm font-medium text-stone-800 truncate">{g.nome}</span>
                     {sel && <Check className="w-4 h-4 text-primary-600 shrink-0 ml-auto" />}
                   </button>
@@ -259,54 +279,26 @@ export default function EmailAutomacoes() {
         </Secao>
       )}
 
-      <p className="text-xs text-stone-500 leading-relaxed">
-        Quando um evento chega e há uma automação <strong>ativa</strong> com template, o e-mail sai automático para o lead (variáveis já preenchidas). Use <strong>Enviar</strong> na linha do tempo para mandar manualmente.
-      </p>
 
-      <Panel title={<span className="flex items-center gap-2"><History className="w-4 h-4 text-primary-600" /> Linha do tempo — eventos recebidos</span>} noPadding>
-        <div className="p-3 sm:p-4 border-b border-surface-100 flex flex-col sm:flex-row sm:flex-wrap gap-2 bg-white/40">
-          <Select
-            value={fEvento}
-            onChange={setFEvento}
-            className="w-full sm:w-52"
-            options={[{ value: '', label: 'Todos os eventos' }, ...KIWIFY_EVENTS.map((ev) => ({ value: ev.id, label: ev.label }))]}
-          />
-          <Select
-            value={fProduto}
-            onChange={setFProduto}
-            className="w-full sm:w-52"
-            options={[{ value: '', label: 'Todos os produtos' }, ...produtosLista.map((p) => ({ value: p, label: p }))]}
-          />
-          <Select
-            value={fStatus}
-            onChange={setFStatus}
-            className="w-full sm:w-48"
-            options={[
-              { value: '', label: 'Todos os envios' },
-              { value: 'enviado', label: 'Enviado' },
-              { value: 'pendente', label: 'Só recebido' },
-              { value: 'erro', label: 'Erro' },
-              { value: 'cancelado_recovery', label: 'Cancelado' },
-            ]}
-          />
-          {(fEvento || fProduto || fStatus) && (
-            <button onClick={() => { setFEvento(''); setFProduto(''); setFStatus('') }} className="text-xs text-primary-600 hover:underline px-2 self-center">Limpar filtros</button>
-          )}
-        </div>
+      <Panel
+        title={<span className="flex items-center gap-2"><History className="w-4 h-4 text-primary-600" /> Linha do tempo</span>}
+        noPadding
+        right={<CollapsibleSearch value={buscaTL} onChange={setBuscaTL} placeholder="Contato ou produto" />}
+      >
         <div className="overflow-x-auto">
-          {leadsFiltrados.length === 0 ? (
+          {leadsOrdenados.length === 0 ? (
             <p className="p-6 text-sm text-stone-400 text-center">
-              {leads.length === 0 ? 'Nenhum evento recebido ainda. Quando a MundPay/Kiwify disparar um webhook, ele aparece aqui.' : 'Nenhum evento com esses filtros.'}
+              {buscaTL ? 'Nenhum evento encontrado.' : 'Nenhum evento recebido ainda. Quando a MundPay/Kiwify disparar um webhook, ele aparece aqui.'}
             </p>
           ) : (
             <table className="w-full text-sm min-w-[740px]">
               <thead>
                 <tr className="border-b border-surface-100 text-left text-stone-500">
-                  <th className="px-4 py-2.5 font-medium text-xs">Contato</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Evento recebido</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Produto</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Envio automático</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Quando</th>
+                  {[['contato', 'Contato'], ['evento', 'Evento recebido'], ['produto', 'Produto'], ['status', 'Envio automático'], ['quando', 'Quando']].map(([key, label]) => (
+                    <th key={key} onClick={() => toggleSort(key)} className="px-4 py-2.5 font-medium text-xs cursor-pointer select-none hover:text-stone-700 whitespace-nowrap">
+                      {label}{sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </th>
+                  ))}
                   <th className="px-4 py-2.5 font-medium text-xs"></th>
                 </tr>
               </thead>
@@ -342,9 +334,9 @@ export default function EmailAutomacoes() {
             </table>
           )}
         </div>
-        {leadsFiltrados.length > TL_POR_PAGINA && (
+        {leadsOrdenados.length > TL_POR_PAGINA && (
           <div className="px-4 py-3 border-t border-surface-100 flex items-center justify-between gap-3">
-            <p className="text-xs text-stone-600">Página {tlPagina} de {tlTotalPaginas} · {leadsFiltrados.length} evento(s)</p>
+            <p className="text-xs text-stone-600">Página {tlPagina} de {tlTotalPaginas} · {leadsOrdenados.length} evento(s)</p>
             <div className="flex items-center gap-2">
               <button onClick={() => setPTimeline((p) => Math.max(1, p - 1))} disabled={tlPagina <= 1} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
               <button onClick={() => setPTimeline((p) => Math.min(tlTotalPaginas, p + 1))} disabled={tlPagina >= tlTotalPaginas} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
@@ -370,9 +362,9 @@ export default function EmailAutomacoes() {
               <Select
                 value={manualTemplateId}
                 onChange={setManualTemplateId}
-                placeholder="— escolha —"
+                placeholder=""
                 className="w-full"
-                options={[{ value: '', label: '— escolha —' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+                options={templates.map((t) => ({ value: t.id, label: t.nome }))}
               />
             </div>
             <div className="flex justify-end gap-2">

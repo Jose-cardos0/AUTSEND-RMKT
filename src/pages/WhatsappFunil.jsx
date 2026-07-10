@@ -8,7 +8,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { auth, functions } from '../lib/firebase'
 import { getWhatsappFunnels, saveWhatsappFunnel, deleteWhatsappFunnel, getProductGroups, getFunnelSends } from '../lib/firestore'
-import { KIWIFY_EVENTS } from '../lib/constants'
+import { KIWIFY_EVENTS, TEMPLATE_VARIABLES } from '../lib/constants'
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import Select from '../components/Select'
@@ -16,6 +16,7 @@ import { useConfirm } from '../components/ConfirmDialog'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import GerarMensagemIA from '../components/GerarMensagemIA'
 import TemplatePicker from '../components/TemplatePicker'
+import MessageEditor from '../components/MessageEditor'
 import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
@@ -312,7 +313,8 @@ export default function WhatsappFunil() {
                   value={selectedNode.data?.grupoId || ''}
                   onChange={(v) => { const g = grupos.find((x) => x.id === v); updateNodeData(selectedNode.id, { grupoId: v, grupoNome: g?.nome || '' }) }}
                   className="w-full"
-                  options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome }))]}
+                  withThumb
+                  options={[{ value: '', label: 'Todos os produtos' }, ...grupos.map((g) => ({ value: g.id, label: g.nome, image: g.imagem }))]}
                 />
               </div>
             )}
@@ -320,19 +322,15 @@ export default function WhatsappFunil() {
             {selectedNode.type === 'enviar' && (
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Mensagem</label>
-                <div className="flex flex-wrap gap-1 mb-1.5">
-                  {VARS.map((v) => (
-                    <button key={v} type="button" onClick={() => inserirVar(v)} className="text-[11px] px-2 py-1 rounded-lg bg-surface-100 text-stone-600 hover:bg-surface-200">{v}</button>
-                  ))}
-                </div>
-                <textarea
+                <MessageEditor
                   value={selectedNode.data?.mensagem || ''}
-                  onChange={(e) => updateNodeData(selectedNode.id, { mensagem: e.target.value })}
-                  rows={5}
+                  onChange={(v) => updateNodeData(selectedNode.id, { mensagem: v })}
                   placeholder={'Olá {nome_cliente}! Vi que você se interessou por {nome_produto}...'}
-                  className="w-full p-2.5 rounded-xl border border-surface-200 text-sm resize-y"
+                  variables={TEMPLATE_VARIABLES}
+                  showCheckout
+                  rows={5}
                 />
-                <p className="text-[11px] text-stone-400 mt-1">Use *texto* p/ negrito e _texto_ p/ itálico no WhatsApp. Envia pela instância selecionada nas Integrações.</p>
+                <p className="text-[11px] text-stone-400 mt-1">Envia pela instância selecionada nas Integrações.</p>
                 <TemplatePicker
                   onPick={(msg) => updateNodeData(selectedNode.id, { mensagem: msg })}
                   className="mt-2 w-full justify-center"

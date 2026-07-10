@@ -7,9 +7,10 @@ import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDispar
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
 import TemplatePicker from '../components/TemplatePicker'
-import { Send, Loader2, AlertCircle, UserPlus, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
+import { Send, Loader2, AlertCircle, Users, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
 import PageShell from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
+import excelImg from '../assets/excel.png'
 
 const MINUTOS_POR_MENSAGEM = 5
 const ITEMS_POR_PAGINA_TIMELINE = 5
@@ -311,11 +312,28 @@ export default function EnviarMensagem() {
 
   return (
     <PageShell
+      compact
       badge="WhatsApp"
       title="Disparos em massa"
+      right={
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
+          <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Contatos</p>
+            <p className="text-lg font-bold text-stone-800 tabular-nums">{totalContatos}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 text-center shadow-sm shadow-emerald-500/10">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">~min</p>
+            <p className="text-lg font-bold text-emerald-700 tabular-nums">{tempoEstimadoMin}</p>
+          </div>
+          <div className="rounded-2xl border border-primary-200/90 bg-gradient-to-br from-primary-50 to-white px-3 py-2.5 text-center shadow-sm shadow-primary-500/10">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-primary-600">Envios</p>
+            <p className="text-lg font-bold text-primary-700 tabular-nums">{historico.length}</p>
+          </div>
+        </div>
+      }
     >
-      <div className="flex flex-col gap-6 sm:gap-8">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-4 sm:gap-5">
+      <div className="flex flex-col gap-2 -mt-2 sm:-mt-4">
       {instanciaSelecionada?.nomeInstancia && (
         instances.length > 1 ? (
           <button type="button" onClick={() => setInstOpen(true)} className="inline-flex items-center gap-2 self-start rounded-xl px-2.5 py-1.5 text-sm hover:bg-surface-100 transition">
@@ -428,47 +446,54 @@ export default function EnviarMensagem() {
       )}
 
       <div className="flex flex-col lg:flex-row gap-3 items-stretch">
-          <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-w-0 shadow-sm">
-            <div className="shrink-0 px-3 sm:px-5 py-2.5 sm:py-3 border-b border-surface-200/80 app-panel-header flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-primary-600" />
-              <span className="text-sm sm:text-base font-semibold text-stone-800">Mensagem</span>
-              <TemplatePicker onPick={setMensagem} label="Template" className="ml-auto text-xs min-h-[36px] py-1.5" />
+          <aside className="flex flex-col shrink-0 lg:w-[min(480px,42vw)] lg:min-w-[320px] lg:max-w-lg">
+            <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-w-0">
+              <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 shrink-0 text-primary-600" />
+                Mensagem
+                <TemplatePicker onPick={setMensagem} label="Template" className="ml-auto text-xs min-h-[34px] py-1.5 px-2.5" />
+              </h3>
+              <MessageEditor
+                value={mensagem}
+                onChange={setMensagem}
+                placeholder="Use {nome} — lista: número,nome"
+                showNomeButton
+                showCheckout
+                fillHeight
+                className="flex-1 min-h-[200px]"
+              />
+              {totalContatos > 0 && (
+                <p className="mt-3 text-sm text-stone-600 shrink-0">
+                  ~<strong>{tempoEstimadoMin} min</strong> · {totalContatos} contato(s)
+                </p>
+              )}
+              <button
+                onClick={iniciarEnvio}
+                disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia}
+                className="btn-primary mt-3 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
+              >
+                <Send className="w-4 h-4" />
+                Enviar mensagem
+              </button>
             </div>
-            <div className="p-5 sm:p-6 flex flex-col flex-1 min-w-0">
-            <MessageEditor
-              value={mensagem}
-              onChange={setMensagem}
-              placeholder="Use {nome} — lista: número,nome"
-              showNomeButton
-              fillHeight
-              className="flex-1 min-h-[200px]"
-            />
-            {totalContatos > 0 && (
-              <p className="mt-3 text-sm text-stone-600">
-                ~<strong>{tempoEstimadoMin} min</strong> · {totalContatos} contato(s)
-              </p>
-            )}
-            <button
-              onClick={iniciarEnvio}
-              disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia}
-              className="btn-primary mt-4 w-full py-3 min-h-[48px] touch-manipulation text-sm"
-            >
-              <Send className="w-4 h-4" />
-              Enviar mensagem
-            </button>
-            </div>
-          </div>
+          </aside>
 
-          <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-w-0 shadow-sm">
-            <div className="shrink-0 px-3 sm:px-5 py-2.5 sm:py-3 border-b border-surface-200/80 app-panel-header flex items-center gap-2">
-              <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 text-primary-600" />
-              <span className="text-sm sm:text-base font-semibold text-stone-800">Lista de contatos</span>
+          <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-w-0">
+            <div className="p-3 sm:p-4 border-b border-surface-200 shrink-0 flex items-center gap-2 text-stone-700">
+              <Users className="w-4 h-4" />
+              <p className="text-sm font-semibold">Lista de contatos</p>
             </div>
-            <div className="p-5 sm:p-6 flex flex-col flex-1 min-w-0">
-            <p className="text-xs sm:text-sm text-stone-500 mb-3 leading-relaxed">
-              Uma linha por contato: <strong className="text-stone-600">número</strong> ou <strong className="text-stone-600">número,nome</strong>. Excel: A número, B nome.
-            </p>
-            <div className="flex flex-wrap gap-2 mb-3">
+            <div className="p-3 sm:p-4 flex flex-col flex-1 min-w-0">
+            <div className="relative flex flex-1 min-h-[200px]">
+              <img src={excelImg} alt="" className="pointer-events-none absolute bottom-3 right-3 h-24 w-24 object-contain opacity-50 z-0 animate-float-soft" />
+              <textarea
+                value={lista}
+                onChange={(e) => setLista(e.target.value)}
+                placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
+                className="relative z-10 w-full flex-1 p-4 rounded-xl border border-surface-200 bg-transparent focus:border-surface-300 focus:ring-0 outline-none resize-y text-sm font-mono min-h-[200px]"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
               <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 touch-manipulation">
                 <Download className="w-4 h-4" /> Exemplo Excel
               </button>
@@ -477,19 +502,13 @@ export default function EnviarMensagem() {
                 <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
               </label>
             </div>
-            <textarea
-              value={lista}
-              onChange={(e) => setLista(e.target.value)}
-              placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
-              className="w-full flex-1 p-4 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y text-sm font-mono min-h-[200px]"
-            />
             </div>
           </div>
       </div>
 
       {historico.length > 0 && (
         <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden w-full shadow-sm">
-          <button type="button" onClick={() => setTimelineOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 px-5 py-4 sm:px-6 hover:bg-surface-50 transition">
+          <button type="button" onClick={() => setTimelineOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 px-5 py-4 sm:px-6 transition">
             <span className="text-base font-semibold text-stone-800 flex items-center gap-2">
               <History className="w-5 h-5 shrink-0 text-primary-600" />
               Linha do tempo

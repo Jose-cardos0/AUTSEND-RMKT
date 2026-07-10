@@ -67,7 +67,6 @@ export default function EmailIntegracoes() {
           }
         }
         setProviders(provs)
-        if (provs[0]) setOpenProv({ [provs[0].id]: true })
         const firstEmail = provs.flatMap((p) => p.remetentes || []).find((r) => r.email)?.email
         if (firstEmail) setTestEmail(firstEmail)
       } finally {
@@ -295,7 +294,7 @@ export default function EmailIntegracoes() {
 
         {/* ───── Rastreamento ───── */}
         <Secao
-          title="Rastreamento — aberturas & cliques"
+          title="Rastreamento"
           icon={Webhook}
           open={secoes.rastreamento}
           onToggle={() => toggleSecao('rastreamento')}

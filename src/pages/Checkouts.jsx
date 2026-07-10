@@ -101,8 +101,8 @@ export default function Checkouts() {
               <div key={store.id} className="app-panel rounded-2xl overflow-hidden">
                 <div className="flex items-center gap-3 px-3 sm:px-4 py-3">
                   <button onClick={() => toggleAberto(store.id)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-surface-200 shrink-0 overflow-hidden">
-                      {loja?.logo ? <img src={loja.logo} alt={loja.nome} className="max-h-8 max-w-8 object-contain" /> : <ShoppingBag className="w-5 h-5 text-stone-400" />}
+                    <span className="flex h-10 w-10 items-center justify-center shrink-0 overflow-hidden">
+                      {loja?.logo ? <img src={loja.logo} alt={loja.nome} className="max-h-9 max-w-9 object-contain" /> : <ShoppingBag className="w-5 h-5 text-stone-400" />}
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-semibold text-stone-800 truncate">{loja?.nome || store.loja}</span>

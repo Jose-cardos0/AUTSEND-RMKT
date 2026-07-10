@@ -10,6 +10,7 @@ import { lojaByKey } from '../lib/lojas'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import WhatsAppIcon from '../components/WhatsAppIcon'
+import EmojiPicker from '../components/EmojiPicker'
 import { useConfirm } from '../components/ConfirmDialog'
 import { MessageSquare, Plus, Pencil, Trash2, Loader2, X, Copy, Check, Bold, Italic, Strikethrough, Code, Smile, Braces, ShoppingBag, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -188,7 +189,16 @@ export default function MensagemTemplates() {
                 <MessageSquare className="w-4 h-4 text-primary-600 shrink-0" />
                 <h3 className="font-semibold text-stone-800 text-sm truncate flex-1">{t.nome || 'Sem título'}</h3>
               </div>
-              <p className="text-xs text-stone-500 whitespace-pre-wrap line-clamp-5 flex-1 leading-relaxed min-h-[3.5rem]">{t.mensagem}</p>
+              {/* Prévia WhatsApp do template */}
+              <div className="rounded-xl overflow-hidden border border-surface-200/80 flex-1">
+                <div className="p-2.5 bg-[#ece5dd] flex h-full">
+                  <div className="max-w-[92%] ml-auto self-end bg-[#d9fdd3] rounded-lg rounded-tr-sm px-2.5 py-1.5 shadow-sm">
+                    <p className="text-[13px] text-stone-800 break-words wa-preview leading-snug line-clamp-[8]" dangerouslySetInnerHTML={{ __html: renderWhatsapp(t.mensagem) }} />
+                    <span className="block text-right text-[9px] text-stone-500 mt-0.5">23:15 ✓✓</span>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center gap-1 pt-2 border-t border-surface-100">
                 <button onClick={() => copiar(t)} className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-medium text-stone-600 hover:bg-surface-100 rounded-lg py-2 transition-colors">
                   {copiadoId === t.id ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />} {copiadoId === t.id ? 'Copiado' : 'Copiar'}
@@ -233,16 +243,7 @@ export default function MensagemTemplates() {
                     <button type="button" onClick={() => insertAtCursor('~', '~')} title="Tachado" className="p-2 rounded-lg text-stone-500 hover:bg-surface-200 hover:text-stone-700 transition-colors"><Strikethrough className="w-4 h-4" /></button>
                     <button type="button" onClick={() => insertAtCursor('```', '```')} title="Monoespaçado" className="p-2 rounded-lg text-stone-500 hover:bg-surface-200 hover:text-stone-700 transition-colors"><Code className="w-4 h-4" /></button>
                     <div className="w-px h-5 bg-surface-200 mx-1" />
-                    <div className="relative">
-                      <button type="button" onClick={() => setShowEmojis((s) => !s)} title="Emoji" className="p-2 rounded-lg text-stone-500 hover:bg-surface-200 hover:text-stone-700 transition-colors"><Smile className="w-4 h-4" /></button>
-                      {showEmojis && (
-                        <div className="absolute left-0 top-full mt-1.5 p-2 rounded-xl bg-white border border-surface-200 shadow-lg z-20 grid grid-cols-6 gap-0.5 w-60 max-w-[calc(100vw-3rem)]">
-                          {EMOJIS.map((e) => (
-                            <button key={e} type="button" onClick={() => { inserirTexto(e); setShowEmojis(false) }} className="text-xl hover:bg-surface-100 rounded-lg p-1 transition-colors">{e}</button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <EmojiPicker onPick={(e) => inserirTexto(e)} buttonClassName="p-2 rounded-lg text-stone-500 hover:bg-surface-200 hover:text-stone-700 transition-colors" />
                     <div className="w-px h-5 bg-surface-200 mx-1" />
                     <button type="button" onClick={() => { setCheckoutQ(''); setCheckoutPage(1); setShowCheckouts(true) }} title="Inserir checkout" className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-primary-600 hover:bg-primary-50 text-xs font-semibold transition-colors"><ShoppingBag className="w-3.5 h-3.5" /> Checkout</button>
                   </div>

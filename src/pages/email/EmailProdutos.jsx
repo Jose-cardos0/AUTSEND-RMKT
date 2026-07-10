@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { motion } from 'framer-motion'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../../lib/firebase'
@@ -6,7 +7,7 @@ import { getProductGroups, saveProductGroup, deleteProductGroup, getProducts, ge
 import { LOJAS, lojaByKey } from '../../lib/lojas'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Package, Plus, Trash2, Loader2, Check, ChevronDown, Pencil, X } from 'lucide-react'
+import { Package, Plus, Trash2, Loader2, Check, ChevronDown, Pencil, X, Search } from 'lucide-react'
 
 export default function EmailProdutos() {
   const [user] = useAuthState(auth)
@@ -24,7 +25,44 @@ export default function EmailProdutos() {
   const [addInput, setAddInput] = useState({})
   const [editing, setEditing] = useState(null)
   const [editValor, setEditValor] = useState('')
+  const [imgPopup, setImgPopup] = useState(null)
+  const [imgTemp, setImgTemp] = useState('')
+  const [salvandoImg, setSalvandoImg] = useState(false)
   const toggleAberto = (id) => setAbertos((a) => ({ ...a, [id]: !a[id] }))
+
+  const abrirImg = (grupo) => { setImgTemp(grupo.imagem || ''); setImgPopup(grupo) }
+  const onImgFile = (file) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const img = new Image()
+      img.onload = () => {
+        const max = 220
+        const scale = Math.min(1, max / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(img.width * scale))
+        canvas.height = Math.max(1, Math.round(img.height * scale))
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        setImgTemp(canvas.toDataURL('image/png'))
+      }
+      img.src = ev.target.result
+    }
+    reader.readAsDataURL(file)
+  }
+  const salvarImg = async () => {
+    if (!imgPopup) return
+    setSalvandoImg(true)
+    try {
+      await saveProductGroup(user.uid, imgPopup.id, { imagem: imgTemp || '' })
+      setGrupos(await getProductGroups(user.uid))
+      setImgPopup(null)
+      toast.success(imgTemp ? 'Imagem salva.' : 'Imagem removida.')
+    } catch (err) {
+      toast.error(err.message || 'Erro ao salvar')
+    } finally {
+      setSalvandoImg(false)
+    }
+  }
   const startEdit = (grupo, nome) => { setEditing(`${grupo.id}::${nome}`); setEditValor(nome) }
   const salvarEdicao = async (grupo, antigo) => {
     const novo = editValor.trim()
@@ -147,11 +185,20 @@ export default function EmailProdutos() {
             return (
               <div key={grupo.id} className={`app-panel rounded-2xl relative ${logoAtivo?.g === grupo.id ? 'z-30' : ''}`}>
                 <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3">
-                  <button onClick={() => toggleAberto(grupo.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
-                    <Package className="w-4 h-4 text-primary-600 shrink-0" />
-                    <span className="font-semibold text-stone-800 truncate">Grupo - {grupo.nome || 'Sem nome'}</span>
-                    <span className="text-xs text-stone-400 shrink-0">({(grupo.produtos || []).length})</span>
-                  </button>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="relative shrink-0 group/img">
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden ${grupo.imagem ? '' : 'bg-primary-50'}`}>
+                        {grupo.imagem ? <img src={grupo.imagem} alt="" className="h-full w-full object-contain" /> : <Package className="w-4 h-4 text-primary-600" />}
+                      </span>
+                      <button type="button" onClick={() => abrirImg(grupo)} className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/45 opacity-0 group-hover/img:opacity-100 transition" title="Definir imagem do produto">
+                        <Pencil className="w-3.5 h-3.5 text-white" />
+                      </button>
+                    </div>
+                    <button onClick={() => toggleAberto(grupo.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                      <span className="font-semibold text-stone-800 truncate">Grupo - {grupo.nome || 'Sem nome'}</span>
+                      <span className="text-xs text-stone-400 shrink-0">({(grupo.produtos || []).length})</span>
+                    </button>
+                  </div>
                   {(grupo.lojas || []).length > 0 && (
                     <div className="flex items-center gap-2 shrink-0">
                       {(grupo.lojas || []).map((key) => {
@@ -324,6 +371,52 @@ export default function EmailProdutos() {
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmExcluir(null)} className="btn-secondary min-h-[44px]">Cancelar</button>
               <button onClick={confirmarExcluir} className="min-h-[44px] px-4 rounded-xl bg-red-500 text-white hover:bg-red-600 text-sm font-medium">Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup: imagem do produto do grupo */}
+      {imgPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setImgPopup(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Package className="w-5 h-5" /></span>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-stone-800 truncate">Imagem do produto</h3>
+                <p className="text-xs text-stone-500 truncate">Grupo {imgPopup.nome}</p>
+              </div>
+              <button onClick={() => setImgPopup(null)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="flex flex-col items-center gap-2.5">
+              <label className="relative h-28 w-28 rounded-2xl bg-white border border-surface-200/80 overflow-hidden flex items-center justify-center cursor-pointer hover:border-primary-300 transition group">
+                {imgTemp ? (
+                  <>
+                    <img src={imgTemp} alt="" className="h-full w-full object-contain" />
+                    <span className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                      <Search className="w-6 h-6 text-white" />
+                    </span>
+                  </>
+                ) : (
+                  <motion.div
+                    className="text-stone-400 group-hover:text-primary-500"
+                    animate={{ x: [-15, 0, 0, 0], y: [-15, 0, 0, 0], scale: [1, 1, 0.8, 1], rotate: [0, 0, -10, 0] }}
+                    transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 0.25, times: [0, 0.5, 0.72, 1], ease: 'easeInOut' }}
+                  >
+                    <Search className="w-8 h-8" strokeWidth={2.2} />
+                  </motion.div>
+                )}
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => onImgFile(e.target.files?.[0])} />
+              </label>
+              {imgTemp && (
+                <button onClick={() => setImgTemp('')} className="text-xs text-red-500 hover:underline">Remover imagem</button>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setImgPopup(null)} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={salvarImg} disabled={salvandoImg} className="btn-primary min-h-[44px]">{salvandoImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar</button>
             </div>
           </div>
         </div>

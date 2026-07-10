@@ -6,6 +6,8 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import GerarMensagemIA from '../components/GerarMensagemIA'
 import TemplatePicker from '../components/TemplatePicker'
+import CollapsibleSearch from '../components/CollapsibleSearch'
+import MessageEditor from '../components/MessageEditor'
 import {
   getLeads,
   getProducts,
@@ -59,16 +61,12 @@ function StatCard({ label, value, icon: Icon, color }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -3, transition: { type: 'spring', stiffness: 400, damping: 22 } }}
-      className={`rounded-2xl sm:rounded-3xl border bg-gradient-to-br p-4 sm:p-5 shadow-lg ${colors[color] || colors.blue}`}
+      className={`relative overflow-hidden rounded-2xl sm:rounded-3xl border bg-gradient-to-br p-4 sm:p-5 shadow-lg ${colors[color] || colors.blue}`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-55">{label}</p>
-          <p className="text-2xl sm:text-3xl font-bold mt-2 tracking-tight tabular-nums">{value}</p>
-        </div>
-        <div className="w-11 h-11 rounded-2xl bg-white/70 backdrop-blur-sm shadow-inner flex items-center justify-center ring-1 ring-white/80">
-          <Icon className="w-5 h-5 opacity-70" />
-        </div>
+      {Icon && <Icon className="pointer-events-none absolute -right-4 -bottom-5 w-28 h-28 opacity-[0.14]" strokeWidth={1.5} />}
+      <div className="relative">
+        <p className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-55">{label}</p>
+        <p className="text-2xl sm:text-3xl font-bold mt-2 tracking-tight tabular-nums">{value}</p>
       </div>
     </motion.div>
   )
@@ -138,6 +136,7 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
   const [ativo, setAtivo] = useState(autoMsg?.ativo ?? false)
   const [salvando, setSalvando] = useState(false)
   const taRef = useRef(null)
+  const editorRef = useRef(null)
 
   useEffect(() => {
     setMensagem(autoMsg?.mensagem || '')
@@ -199,21 +198,28 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
       {expanded && (
         <div className="p-4 pt-0 space-y-3 border-t border-surface-100">
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1.5">Variáveis de template</label>
-            <VariableButtons textareaRef={taRef} value={mensagem} onChange={setMensagem} />
+            <label className="block text-sm font-medium text-stone-700 mb-1.5">Mensagem automática</label>
+            <MessageEditor
+              ref={editorRef}
+              value={mensagem}
+              onChange={setMensagem}
+              placeholder={`Ex: Olá {nome_cliente}, notamos que você se interessou por {nome_produto}...`}
+              showCheckout
+              rows={4}
+            />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1.5">Mensagem automática</label>
-            <textarea
-              ref={taRef}
-              value={mensagem}
-              onChange={(e) => setMensagem(e.target.value)}
-              placeholder={`Ex: Olá {nome_cliente}, notamos que você se interessou por {nome_produto}...`}
-              rows={4}
-              className="w-full p-3 rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none text-sm"
-            />
-            <p className="text-xs text-stone-400 mt-1">Use *texto* para negrito e _texto_ para itálico no WhatsApp.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {TEMPLATE_VARIABLES.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                onClick={() => editorRef.current?.insert(v.key)}
+                className="text-[11px] font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200/70 rounded-full px-2.5 py-1 transition-colors"
+              >
+                {v.key}
+              </button>
+            ))}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
@@ -492,7 +498,11 @@ export default function Automacoes() {
                     onClick={() => setGrupoId(g.id)}
                     className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition touch-manipulation ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}
                   >
-                    <span className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 ${sel ? 'bg-primary-500 text-white' : 'bg-surface-100 text-stone-400'}`}><Package className="w-3.5 h-3.5" /></span>
+                    {g.imagem ? (
+                      <img src={g.imagem} alt="" className="h-7 w-7 rounded-lg object-contain shrink-0" />
+                    ) : (
+                      <span className={`flex h-7 w-7 items-center justify-center rounded-lg shrink-0 ${sel ? 'bg-primary-500 text-white' : 'bg-surface-100 text-stone-400'}`}><Package className="w-3.5 h-3.5" /></span>
+                    )}
                     <span className="text-sm font-medium text-stone-800 truncate">{g.nome}</span>
                     {sel && <Check className="w-4 h-4 text-primary-600 shrink-0 ml-auto" />}
                   </button>
@@ -510,7 +520,7 @@ export default function Automacoes() {
         <div className="app-panel rounded-2xl overflow-hidden">
           <button type="button" onClick={() => setAutoMsgAberto((v) => !v)} className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3.5 hover:bg-surface-50 transition">
             <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800">
-              <Zap className="w-5 h-5 text-amber-500 shrink-0" />
+              <Zap className="w-5 h-5 text-primary-600 shrink-0" />
               Automação
             </span>
             <ChevronDown className={`w-5 h-5 text-stone-400 shrink-0 transition-transform ${autoMsgAberto ? 'rotate-180' : ''}`} />
@@ -532,21 +542,12 @@ export default function Automacoes() {
         </div>
       )}
 
-      <Panel title="Leads recebidos" icon={Filter} noPadding>
-        <div className="p-4 border-b border-surface-100 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end bg-white/40">
-          <div className="relative w-full sm:w-56 min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-            <input
-              type="text"
-              value={filtroNome}
-              onChange={(e) => setFiltroNome(e.target.value)}
-              placeholder="Nome, e-mail ou telefone"
-              className="w-full pl-9 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-            />
-          </div>
-          <p className="text-xs text-stone-400 self-center hidden sm:block">Clique nas colunas da tabela para ordenar ↑↓</p>
-        </div>
-
+      <Panel
+        title="Leads recebidos"
+        icon={Filter}
+        noPadding
+        right={<CollapsibleSearch value={filtroNome} onChange={setFiltroNome} placeholder="Nome, e-mail ou telefone" />}
+      >
         <div className="w-full overflow-x-auto">
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-stone-400 text-sm">
