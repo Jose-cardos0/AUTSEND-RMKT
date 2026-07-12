@@ -209,8 +209,8 @@ export async function createCustomWebhook(uid, payload = {}) {
     nome: payload.nome || 'Webhook custom',
     plataforma: payload.plataforma || '',
     loja: payload.loja || '',
-    fieldMap: {},
-    eventRules: [],
+    fieldMap: payload.fieldMap || {},
+    eventRules: payload.eventRules || [],
     createdAt: serverTimestamp(),
   })
   const url = `${CUSTOM_WEBHOOK_BASE_URL}?webhookId=${ref.id}&userId=${uid}`

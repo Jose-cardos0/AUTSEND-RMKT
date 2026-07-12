@@ -12,6 +12,7 @@ import {
 } from '../../lib/firestore'
 import { KIWIFY_EVENTS } from '../../lib/constants'
 import { LOJAS, lojaByKey } from '../../lib/lojas'
+import { getWebhookPreset } from '../../lib/webhookPresets'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
@@ -131,6 +132,8 @@ export default function Tracker() {
   const [carregandoSamples, setCarregandoSamples] = useState(false)
   const [fieldMap, setFieldMap] = useState({})
   const [eventRules, setEventRules] = useState([])
+  const [insSecret, setInsSecret] = useState('')
+  const [salvandoSecret, setSalvandoSecret] = useState(false)
   const [criando, setCriando] = useState(false)
   // Popup de criação: escolher loja + nome
   const [showCriar, setShowCriar] = useState(false)
@@ -165,6 +168,7 @@ export default function Tracker() {
     if (!selected) return
     setFieldMap(selected.fieldMap || {})
     setEventRules(selected.eventRules || [])
+    setInsSecret(selected.insSecret || '')
     carregarSamples(selected.id)
   }, [selectedId])
 
@@ -215,16 +219,41 @@ export default function Tracker() {
     try {
       const lojaNome = lojaByKey(lojaSel)?.nome
       const nomeFinal = nomeNovo.trim() || `${lojaNome || 'Webhook'} ${new Date().toLocaleDateString('pt-BR')}`
-      const id = await createCustomWebhook(user.uid, { nome: nomeFinal, loja: lojaSel })
+      const preset = getWebhookPreset(lojaSel)
+      const id = await createCustomWebhook(user.uid, {
+        nome: nomeFinal,
+        loja: lojaSel,
+        fieldMap: preset?.fieldMap,
+        eventRules: preset?.eventRules,
+      })
       const list = await getCustomWebhooks(user.uid)
       setWebhooks(list)
       setSelectedId(id)
       setShowCriar(false)
-      toast.success('Webhook criado! Cole a URL na sua plataforma e envie um teste.')
+      toast.success(
+        preset
+          ? `Webhook criado com o setup ${lojaNome} pronto! Cole a URL, envie um teste e confira.`
+          : 'Webhook criado! Cole a URL na sua plataforma e envie um teste.'
+      )
     } catch (err) {
       toast.error(err.message || 'Erro ao criar webhook')
     } finally {
       setCriando(false)
+    }
+  }
+
+  const salvarInsSecret = async () => {
+    if (!selected) return
+    setSalvandoSecret(true)
+    try {
+      await updateWebhookMapping(user.uid, selected.id, { insSecret: insSecret.trim() })
+      const list = await getCustomWebhooks(user.uid)
+      setWebhooks(list)
+      toast.success('INS Secret Key salva.')
+    } catch (err) {
+      toast.error(err.message || 'Erro ao salvar a chave.')
+    } finally {
+      setSalvandoSecret(false)
     }
   }
 
@@ -455,6 +484,27 @@ export default function Tracker() {
                 <p className="text-xs text-stone-500">
                   Cole essa URL na sua plataforma (Hotmart, Cartpanda, Braip, etc.) como webhook/postback e dispare um teste.
                 </p>
+
+                {selected.loja === 'clickbank' && (
+                  <div className="mt-1 rounded-xl border border-primary-200/70 bg-primary-50/40 p-3 space-y-2">
+                    <label className="block text-xs font-semibold text-stone-700">INS Secret Key (ClickBank)</label>
+                    <p className="text-[11px] text-stone-500 leading-relaxed">
+                      O ClickBank envia o payload <strong>criptografado</strong>. Cole aqui sua <strong>Secret Key</strong> (ClickBank → Settings → Advanced Tools → Instant Notification) pra descriptografarmos automaticamente.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={insSecret}
+                        onChange={(e) => setInsSecret(e.target.value)}
+                        placeholder="sua INS Secret Key"
+                        className="flex-1 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm font-mono focus:border-surface-300 focus:ring-0 outline-none"
+                      />
+                      <button onClick={salvarInsSecret} disabled={salvandoSecret} className="btn-primary text-sm min-h-[44px] px-4 touch-manipulation shrink-0">
+                        {salvandoSecret ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar chave
+                      </button>
+                    </div>
+                  </div>
+                )}
               </Secao>
 
               {/* Amostras capturadas */}

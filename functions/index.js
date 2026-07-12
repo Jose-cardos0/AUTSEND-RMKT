@@ -1,5 +1,6 @@
 const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
+const crypto = require('crypto')
 const admin = require('firebase-admin')
 admin.initializeApp()
 
@@ -606,6 +607,25 @@ function parseRequestBody(req) {
   return {}
 }
 
+/**
+ * Descriptografa o payload do ClickBank INS (v6+): { notification, iv } em AES-256-CBC.
+ * A chave é os 32 primeiros caracteres do SHA1 (hex) da INS Secret Key do vendedor.
+ * Retorna o objeto decifrado, ou null se falhar / não for um payload cifrado.
+ */
+function decryptClickBankINS(body, secret) {
+  if (!body || !secret || !body.notification || !body.iv) return null
+  try {
+    const key = crypto.createHash('sha1').update(String(secret)).digest('hex').slice(0, 32)
+    const iv = Buffer.from(body.iv, 'base64')
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv)
+    let dec = decipher.update(body.notification, 'base64', 'utf8')
+    dec += decipher.final('utf8')
+    return JSON.parse(dec)
+  } catch (_) {
+    return null
+  }
+}
+
 /** Extrai TODOS os produtos do checkout (principal + order bumps), a partir do path do fieldMap.produto. */
 function extractAllProdutos(body, fieldMap) {
   const nomes = new Set()
@@ -1136,7 +1156,12 @@ exports.customWebhook = onRequest(
       return
     }
     const webhook = webhookSnap.data()
-    const body = parseRequestBody(req)
+    let body = parseRequestBody(req)
+    // ClickBank INS chega criptografado ({ notification, iv }) — decifra com a INS Secret Key do webhook.
+    if (webhook.loja === 'clickbank' && body && body.notification && body.iv && webhook.insSecret) {
+      const dec = decryptClickBankINS(body, webhook.insSecret)
+      if (dec) body = dec
+    }
     const status = webhook.status || 'testing'
 
     // Sempre guarda o payload recebido (últimos 10). Serve para mapear (teste) E para
