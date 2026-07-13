@@ -7,6 +7,7 @@ import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDispar
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
 import TemplatePicker from '../components/TemplatePicker'
+import NichoPicker from '../components/NichoPicker'
 import { Send, Loader2, AlertCircle, Users, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
 import PageShell from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
@@ -494,6 +495,7 @@ export default function EnviarMensagem() {
               />
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
+              <NichoPicker tipo="whatsapp" className="min-h-[44px]" onPick={(linhas) => setLista((prev) => [prev.trim(), linhas.join('\n')].filter(Boolean).join('\n'))} />
               <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 touch-manipulation">
                 <Download className="w-4 h-4" /> Exemplo Excel
               </button>

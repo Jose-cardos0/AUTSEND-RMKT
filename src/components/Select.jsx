@@ -38,6 +38,8 @@ export default function Select({
   searchable = true,
   title = 'Selecionar',
   withThumb = false,
+  /** Gatilho customizado (ex.: só um ícone). Se passado, substitui o botão padrão. */
+  trigger,
   /** Mostra uma prévia (HTML) no hover de cada opção que tiver option.preview */
   preview = false,
 }) {
@@ -90,6 +92,9 @@ export default function Select({
 
   return (
     <>
+      {trigger ? (
+        <span className={clsx('inline-flex', !disabled && 'cursor-pointer', className)} onClick={() => !disabled && setOpen(true)}>{trigger}</span>
+      ) : (
       <div className={clsx('relative', className)}>
         <button
           type="button"
@@ -114,6 +119,7 @@ export default function Select({
           <ChevronDown className={clsx('w-4 h-4 text-stone-400 shrink-0 transition-transform', open && 'rotate-180')} />
         </button>
       </div>
+      )}
 
       {typeof document !== 'undefined' && createPortal(
       <AnimatePresence>
@@ -175,6 +181,11 @@ export default function Select({
                       >
                         {withThumb && <Thumb image={o.image} />}
                         <span className="flex-1 truncate">{o.label}</span>
+                        {o.badge > 0 && (
+                          <span className="shrink-0 inline-flex items-center justify-center h-[22px] min-w-[22px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none tabular-nums">
+                            {o.badge > 99 ? '99+' : o.badge}
+                          </span>
+                        )}
                         {preview && o.preview && <Eye className="w-3.5 h-3.5 text-stone-300 shrink-0" />}
                         {sel && <Check className="w-4 h-4 text-primary-600 shrink-0" />}
                       </button>

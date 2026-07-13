@@ -15,7 +15,9 @@ export const WEBHOOK_PRESETS = {
       produto: 'offers.0.product.name',
       produtoId: 'offers.0.product.id',
       orderId: 'id',
-      valor: 'amount',
+      // OBS: "amount" vem em CENTAVOS (13251 = R$ 132,51). Usamos o campo já formatado
+      // (valor + moeda corretos) pra não inflar o valor. (offer principal; order bump não soma).
+      valor: 'offers.0.total_formatted',
     },
     eventRules: [
       { path: 'event_type', op: 'equals', value: 'order.paid', evento: 'order_status.purchase_approved', ativo: true },
@@ -98,24 +100,31 @@ export const WEBHOOK_PRESETS = {
   },
 
   digistore24: {
-    // Digistore24 IPN: parâmetros FLAT (form-urlencoded). Nome vem separado
-    // (address_first_name + address_last_name) — aqui usamos só o primeiro nome.
+    // Setup via integração "Webhook" do Digistore24 — POST com JSON FLAT (tem tudo, inclusive telefone).
+    // Nome vem separado (first_name + last_name); usamos o primeiro nome.
     fieldMap: {
-      nome: 'address_first_name',
+      nome: 'first_name',
       email: 'email',
-      telefone: 'address_phone_no',
+      telefone: 'phone_no',
       produto: 'product_name',
       produtoId: 'product_id',
       orderId: 'order_id',
-      valor: 'amount',
+      valor: 'amount_brutto',
     },
-    // Gatilho = event. Não há evento nativo de carrinho abandonado no IPN.
+    // Gatilho = event. Cobrimos os dois formatos possíveis do valor (on_payment / payment) com
+    // matches EXATOS, pra não confundir "payment" com "payment_missed". Confirmar com compra real.
     eventRules: [
       { path: 'event', op: 'equals', value: 'on_payment', evento: 'order_status.purchase_approved', ativo: true },
+      { path: 'event', op: 'equals', value: 'payment', evento: 'order_status.purchase_approved', ativo: true },
       { path: 'event', op: 'equals', value: 'on_refund', evento: 'order_status.refund', ativo: true },
+      { path: 'event', op: 'equals', value: 'refund', evento: 'order_status.refund', ativo: true },
       { path: 'event', op: 'equals', value: 'on_chargeback', evento: 'order_status.chargeback', ativo: true },
+      { path: 'event', op: 'equals', value: 'chargeback', evento: 'order_status.chargeback', ativo: true },
       { path: 'event', op: 'equals', value: 'on_payment_missed', evento: 'order_status.purchase_declined', ativo: true },
+      { path: 'event', op: 'equals', value: 'payment_missed', evento: 'order_status.purchase_declined', ativo: true },
+      { path: 'event', op: 'equals', value: 'payment_denial', evento: 'order_status.purchase_declined', ativo: true },
       { path: 'event', op: 'equals', value: 'on_rebill_cancelled', evento: 'subscription_canceled', ativo: true },
+      { path: 'event', op: 'equals', value: 'rebill_cancelled', evento: 'subscription_canceled', ativo: true },
     ],
   },
 
@@ -162,6 +171,54 @@ export const WEBHOOK_PRESETS = {
       { path: 'type', op: 'equals', value: 'REFUND', evento: 'order_status.refund', ativo: true },
       { path: 'type', op: 'equals', value: 'CHARGEBACK', evento: 'order_status.chargeback', ativo: true },
       { path: 'type', op: 'equals', value: 'CANCEL', evento: 'order_status.purchase_declined', ativo: true },
+    ],
+  },
+
+  hubla: {
+    // Hubla Webhook v1 (version "1.0.0"): { type, event: {...} }. Gatilho = top-level "type".
+    // OBS: totalAmount vem em REAIS (não centavos).
+    fieldMap: {
+      nome: 'event.userName',
+      email: 'event.userEmail',
+      telefone: 'event.userPhone',
+      produto: 'event.groupName',
+      produtoId: 'event.groupId',
+      orderId: 'event.transactionId',
+      valor: 'event.totalAmount',
+    },
+    // PendingSale = aguardando pagamento (pix/boleto) → mapeado como pix (mesmo comportamento de
+    // recuperação; boleto pendente também cai aqui). CanceledSale ≈ recusada/cancelada.
+    eventRules: [
+      { path: 'type', op: 'equals', value: 'NewSale', evento: 'order_status.purchase_approved', ativo: true },
+      { path: 'type', op: 'equals', value: 'PendingSale', evento: 'order_status.pix_issued', ativo: true },
+      { path: 'type', op: 'equals', value: 'RefundRequested', evento: 'order_status.refund', ativo: true },
+      { path: 'type', op: 'equals', value: 'InProtestSale', evento: 'order_status.chargeback', ativo: true },
+      { path: 'type', op: 'equals', value: 'AbandonedCheckout', evento: 'abandoned_cart', ativo: true },
+      { path: 'type', op: 'equals', value: 'CanceledSubscription', evento: 'subscription_canceled', ativo: true },
+      { path: 'type', op: 'equals', value: 'CanceledSale', evento: 'order_status.purchase_declined', ativo: true },
+    ],
+  },
+
+  kirvano: {
+    // Kirvano webhook JSON. Gatilho = "event". OBS: total_price vem como STRING "R$ 297,00".
+    fieldMap: {
+      nome: 'customer.name',
+      email: 'customer.email',
+      telefone: 'customer.phone_number',
+      produto: 'products.0.name',
+      produtoId: 'products.0.id',
+      orderId: 'sale_id',
+      valor: 'total_price',
+    },
+    eventRules: [
+      { path: 'event', op: 'equals', value: 'SALE_APPROVED', evento: 'order_status.purchase_approved', ativo: true },
+      { path: 'event', op: 'equals', value: 'SALE_REFUSED', evento: 'order_status.purchase_declined', ativo: true },
+      { path: 'event', op: 'equals', value: 'SALE_REFUNDED', evento: 'order_status.refund', ativo: true },
+      { path: 'event', op: 'equals', value: 'SALE_CHARGEBACK', evento: 'order_status.chargeback', ativo: true },
+      { path: 'event', op: 'equals', value: 'ABANDONED_CART', evento: 'abandoned_cart', ativo: true },
+      { path: 'event', op: 'equals', value: 'PIX_GENERATED', evento: 'order_status.pix_issued', ativo: true },
+      { path: 'event', op: 'equals', value: 'BANK_SLIP_GENERATED', evento: 'order_status.boleto_issued', ativo: true },
+      { path: 'event', op: 'equals', value: 'SUBSCRIPTION_CANCELED', evento: 'subscription_canceled', ativo: true },
     ],
   },
 }

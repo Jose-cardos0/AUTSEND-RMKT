@@ -11,6 +11,7 @@ import RemarketingGrupos from './pages/RemarketingGrupos'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
 import Checkouts from './pages/Checkouts'
+import BancoLeads from './pages/BancoLeads'
 import MensagemTemplates from './pages/MensagemTemplates'
 import EmailIntegracoes from './pages/email/EmailIntegracoes'
 import Tracker from './pages/email/Tracker'
@@ -25,6 +26,7 @@ import { ConfirmProvider } from './components/ConfirmDialog'
 const EmailConstrutor = lazy(() => import('./pages/email/EmailConstrutor'))
 const EmailFunil = lazy(() => import('./pages/email/EmailFunil'))
 const WhatsappFunil = lazy(() => import('./pages/WhatsappFunil'))
+const WhatsappMetricas = lazy(() => import('./pages/WhatsappMetricas'))
 import ParticlesBackground from './components/ParticlesBackground'
 
 function ProtectedRoute({ children }) {
@@ -81,6 +83,14 @@ export default function App() {
           <Route path="remarketing-grupos" element={<RemarketingGrupos />} />
           <Route path="enviar-mensagem" element={<EnviarMensagem />} />
           <Route
+            path="metricas"
+            element={
+              <Suspense fallback={<PageLoader label="Carregando métricas…" />}>
+                <WhatsappMetricas />
+              </Suspense>
+            }
+          />
+          <Route
             path="funil"
             element={
               <Suspense fallback={<PageLoader label="Carregando funil…" />}>
@@ -91,6 +101,7 @@ export default function App() {
           <Route path="tracker" element={<Tracker />} />
           <Route path="produtos" element={<EmailProdutos />} />
           <Route path="checkouts" element={<Checkouts />} />
+          <Route path="banco-leads" element={<BancoLeads />} />
           <Route path="templates" element={<MensagemTemplates />} />
           <Route path="email/integracoes" element={<EmailIntegracoes />} />
           <Route path="email/tracker" element={<Tracker />} />

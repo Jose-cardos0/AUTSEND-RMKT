@@ -359,7 +359,6 @@ export default function EmailMetricas() {
             label="Estornos"
             value={atrib.estorno > 0 ? `- ${formatMoeda(atrib.estorno, atrib.moeda)}` : formatMoeda(0, atrib.moeda)}
             sub={`${atrib.estornoQtd} estorno(s)`}
-            sub2="(chargeback + reemb.)"
             icon={TrendingDown}
             color="red"
           />

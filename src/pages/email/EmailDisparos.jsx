@@ -10,6 +10,7 @@ import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
 import RemetentePicker from '../../components/RemetentePicker'
+import NichoPicker from '../../components/NichoPicker'
 import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, Mail, ChevronLeft, ChevronRight, ChevronDown, Eye, MousePointerClick } from 'lucide-react'
 import excelImg from '../../assets/excel.png'
 import { emailPreviewDoc } from '../../lib/emailPreview'
@@ -289,6 +290,7 @@ export default function EmailDisparos() {
               />
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
+              <NichoPicker tipo="email" className="min-h-[44px]" onPick={(linhas) => setLista((prev) => [prev.trim(), linhas.join('\n')].filter(Boolean).join('\n'))} />
               <button onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 touch-manipulation"><Download className="w-4 h-4" /> Exemplo</button>
               <label className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 cursor-pointer touch-manipulation flex items-center justify-center gap-2">
                 <Upload className="w-4 h-4" /> Subir Excel

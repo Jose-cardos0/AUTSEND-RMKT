@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
@@ -18,6 +18,7 @@ const navGroups = [
     icon: Settings,
     items: [
       { to: '/tracker', label: 'Tracker', icon: Radar },
+      { to: '/banco-leads', label: 'Banco de Leads', icon: Database },
       { to: '/produtos', label: 'Produtos', icon: Package },
       { to: '/checkouts', label: 'Checkouts', icon: ShoppingBag },
       { to: '/templates', label: 'Templates', icon: MessageSquare },
@@ -34,6 +35,7 @@ const navGroups = [
       { to: '/remarketing-grupos', label: 'Grupos', icon: Users },
       { to: '/enviar-mensagem', label: 'Disparos', icon: Send },
       { to: '/funil', label: 'Funil', icon: GitBranch },
+      { to: '/metricas', label: 'Métricas', icon: BarChart3 },
     ],
   },
   {
@@ -175,7 +177,7 @@ export default function Layout() {
     return g ? { [g.key]: true } : {}
   })
   // O construtor de e-mail, o funil e o remarketing usam mais largura (lista/editor lado a lado)
-  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas')
+  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas')
 
   // Ao navegar, garante que o grupo da rota atual esteja aberto.
   useEffect(() => {
@@ -302,7 +304,7 @@ export default function Layout() {
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className={clsx(
                 'w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col flex-1 min-h-0',
-                wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
+                location.pathname.startsWith('/banco-leads') ? 'lg:max-w-[80%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
               )}
             >
               {outlet}

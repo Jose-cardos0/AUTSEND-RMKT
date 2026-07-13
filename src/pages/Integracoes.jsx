@@ -17,6 +17,7 @@ import {
 import { criarInstancia, verificarStatus, buscarGrupos } from '../lib/evolutionApi'
 import {
   QrCode,
+  Plus,
   Users,
   Webhook,
   Copy,
@@ -36,17 +37,22 @@ import PageLoader from '../components/PageLoader'
 import { useConfirm } from '../components/ConfirmDialog'
 
 /** Seção recolhível (dropdown), começa minimizada. */
-function Secao({ title, icon: Icon, open, onToggle, children, bgIcon: BgIcon }) {
+function Secao({ title, icon: Icon, open, onToggle, children, bgIcon: BgIcon, action }) {
   return (
     <div className="app-panel rounded-2xl overflow-hidden relative">
       {BgIcon && <BgIcon className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-[#25D366] opacity-[0.07] z-0" />}
-      <button type="button" onClick={onToggle} className="relative z-10 w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3.5 transition">
-        <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
-          {Icon && <Icon className="w-5 h-5 text-primary-600 shrink-0" />}
-          <span className="truncate">{title}</span>
-        </span>
-        <ChevronDown className={`w-5 h-5 text-stone-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+      <div className="relative z-10 flex items-center gap-2 px-4 sm:px-5 py-3.5">
+        <button type="button" onClick={onToggle} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+          <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
+            {Icon && <Icon className="w-5 h-5 text-primary-600 shrink-0" />}
+            <span className="truncate">{title}</span>
+          </span>
+        </button>
+        {action}
+        <button type="button" onClick={onToggle} className="shrink-0 text-stone-400 hover:text-stone-600 transition-colors" aria-label={open ? 'Recolher' : 'Expandir'}>
+          <ChevronDown className={`w-5 h-5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
       {open && <div className="relative z-10 px-4 sm:px-5 pb-4 pt-1">{children}</div>}
     </div>
   )
@@ -65,6 +71,7 @@ export default function Integracoes() {
   const [numeroWhatsapp, setNumeroWhatsapp] = useState('')
   const [qrBase64, setQrBase64] = useState(null)
   const [showQrModal, setShowQrModal] = useState(false)
+  const [showNovaInst, setShowNovaInst] = useState(false)
   const [secoes, setSecoes] = useState({ whatsapp: false, kiwify: false })
   const toggleSecao = (k) => setSecoes((s) => ({ ...s, [k]: !s[k] }))
   const [instanceEmConexao, setInstanceEmConexao] = useState(null)
@@ -75,7 +82,7 @@ export default function Integracoes() {
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [paginaInstancias, setPaginaInstancias] = useState(1)
   const pollingRef = useRef(null)
-  const INSTANCIAS_POR_PAGINA = 3
+  const INSTANCIAS_POR_PAGINA = 9
 
   useEffect(() => {
     if (!user?.uid) return
@@ -176,6 +183,7 @@ export default function Integracoes() {
       })
       setQrBase64(base64 || null)
       setInstanceEmConexao({ id: newId, nomeInstancia: nome, numeroWhatsapp: num })
+      setShowNovaInst(false)
       if (base64) setShowQrModal(true)
       const list = await getInstances(user.uid)
       setInstances(list)
@@ -373,6 +381,49 @@ export default function Integracoes() {
       badge="Conexões"
       title="Integrações"
     >
+      {/* Popup: Nova instância (nome + número) */}
+      {showNovaInst && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowNovaInst(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><WhatsAppIcon className="w-5 h-5" /></span>
+              <h3 className="text-base font-semibold text-stone-800">Nova instância</h3>
+              <button onClick={() => setShowNovaInst(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Nome da instância</label>
+              <input
+                type="text"
+                value={nomeInstancia}
+                onChange={(e) => setNomeInstancia(e.target.value)}
+                placeholder="minha_instancia"
+                autoFocus
+                className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Número do WhatsApp</label>
+              <input
+                type="text"
+                value={numeroWhatsapp}
+                onChange={(e) => setNumeroWhatsapp(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !criando) handleCriarInstancia() }}
+                placeholder="5511999999999"
+                className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px]"
+              />
+            </div>
+            <button
+              onClick={handleCriarInstancia}
+              disabled={criando}
+              className="btn-primary w-full min-h-[44px] touch-manipulation"
+            >
+              {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+              {criando ? 'Criando...' : 'Criar instância'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Modal QR Code — overlay preto/50 */}
       {showQrModal && qrBase64 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setShowQrModal(false)}>
@@ -406,51 +457,39 @@ export default function Integracoes() {
       )}
 
       <div className="space-y-3">
-      <Secao title="WhatsApp" icon={WhatsAppIcon} bgIcon={WhatsAppIcon} open={secoes.whatsapp} onToggle={() => toggleSecao('whatsapp')}>
+      <Secao
+        title="WhatsApp"
+        icon={WhatsAppIcon}
+        bgIcon={WhatsAppIcon}
+        open={secoes.whatsapp}
+        onToggle={() => toggleSecao('whatsapp')}
+        action={
+          <button
+            type="button"
+            onClick={() => { setNomeInstancia(''); setNumeroWhatsapp(''); setShowNovaInst(true) }}
+            className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Nova instância
+          </button>
+        }
+      >
           <div className="space-y-4">
-          <p className="text-sm font-medium text-stone-700">Adicionar nova instância</p>
-          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-end">
-            <div className="w-full sm:w-56 min-w-0">
-              <label className="block text-sm font-medium text-stone-700 mb-1">Nome da instância</label>
-              <input
-                type="text"
-                value={nomeInstancia}
-                onChange={(e) => setNomeInstancia(e.target.value)}
-                placeholder="minha_instancia"
-                className="w-full sm:w-56 px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm transition-all min-h-[44px]"
-              />
-            </div>
-            <div className="w-full sm:w-44 min-w-0">
-              <label className="block text-sm font-medium text-stone-700 mb-1">Número do WhatsApp</label>
-              <input
-                type="text"
-                value={numeroWhatsapp}
-                onChange={(e) => setNumeroWhatsapp(e.target.value)}
-                placeholder="5511999999999"
-                className="w-full sm:w-44 px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm transition-all min-h-[44px]"
-              />
-            </div>
-            <button
-              onClick={handleCriarInstancia}
-              disabled={criando}
-              className="btn-primary w-full sm:w-auto min-h-[44px] touch-manipulation"
-            >
-              {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
-              {criando ? 'Criando...' : 'Criar instância'}
-            </button>
-          </div>
-
           {instances.length > 0 && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-stone-700">Suas instâncias — selecione qual usar para automações e mensagens</p>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {instanciasPagina.map((inst) => {
                   const isPrincipal = selectedInstanceId === inst.id
                   return (
                     <div
                       key={inst.id}
-                      className={`p-4 sm:p-5 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}
+                      className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}
                     >
+                      {isPrincipal && (
+                        <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
+                          <Star className="w-2.5 h-2.5" /> Principal
+                        </span>
+                      )}
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-semibold text-stone-800 break-all">{inst.nomeInstancia || 'Sem nome'}</p>
@@ -458,11 +497,6 @@ export default function Integracoes() {
                             <p className="text-sm text-stone-500 mt-0.5">{inst.numeroWhatsapp}</p>
                           )}
                           <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {isPrincipal && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
-                                <Star className="w-3 h-3" /> Principal
-                              </span>
-                            )}
                             {inst.conectado === true ? (
                               <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Conectado</span>
                             ) : inst.qrCodeBase64 ? (
@@ -566,7 +600,7 @@ export default function Integracoes() {
           )}
 
           {instances.length === 0 && !evolution?.nomeInstancia && (
-            <p className="text-sm text-stone-500">Nenhuma instância ainda. Crie uma acima e escaneie o QR Code no popup.</p>
+            <p className="text-sm text-stone-500">Nenhuma instância ainda. Clique em <strong>Nova instância</strong> ali em cima e escaneie o QR Code.</p>
           )}
           </div>
       </Secao>

@@ -242,6 +242,14 @@ export default function Tracker() {
     }
   }
 
+  const aplicarPreset = () => {
+    const preset = getWebhookPreset(selected?.loja)
+    if (!preset) return
+    setFieldMap(preset.fieldMap)
+    setEventRules(preset.eventRules)
+    toast.success(`Preset ${lojaByKey(selected.loja)?.nome || ''} aplicado. Confira e clique em Salvar.`)
+  }
+
   const salvarInsSecret = async () => {
     if (!selected) return
     setSalvandoSecret(true)
@@ -539,12 +547,20 @@ export default function Tracker() {
                 <div className="flex items-center justify-between -mt-1">
                   <p className="text-xs text-stone-500">Diga qual campo do JSON é cada informação.</p>
                   <div className="flex items-center gap-3 shrink-0">
-                    <button onClick={handleAdivinhar} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
-                      <Zap className="w-3.5 h-3.5" /> Adivinhar
-                    </button>
-                    <button onClick={handleIA} disabled={iaLoading} className="text-xs font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 disabled:opacity-50">
-                      {iaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Preencher com IA
-                    </button>
+                    {getWebhookPreset(selected.loja) ? (
+                      <button onClick={aplicarPreset} className="text-xs font-medium text-stone-600 hover:text-primary-600 flex items-center gap-1" title="Preencher com o setup pronto desta loja">
+                        <Store className="w-3.5 h-3.5" /> Usar preset {lojaByKey(selected.loja)?.nome}
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={handleAdivinhar} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                          <Zap className="w-3.5 h-3.5" /> Adivinhar
+                        </button>
+                        <button onClick={handleIA} disabled={iaLoading} className="text-xs font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 disabled:opacity-50">
+                          {iaLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Preencher com IA
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">

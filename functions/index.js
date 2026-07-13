@@ -1157,6 +1157,12 @@ exports.customWebhook = onRequest(
     }
     const webhook = webhookSnap.data()
     let body = parseRequestBody(req)
+    // Postbacks via query string (ex.: "URL de postback" do Digistore24, com marcadores na URL).
+    // Mescla os parâmetros da URL no payload (o body tem prioridade). Remove nossos webhookId/userId.
+    if (req.query && typeof req.query === 'object') {
+      const { webhookId: _w, userId: _u, ...qs } = req.query
+      if (Object.keys(qs).length) body = { ...qs, ...body }
+    }
     // ClickBank INS chega criptografado ({ notification, iv }) — decifra com a INS Secret Key do webhook.
     if (webhook.loja === 'clickbank' && body && body.notification && body.iv && webhook.insSecret) {
       const dec = decryptClickBankINS(body, webhook.insSecret)

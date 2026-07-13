@@ -13,6 +13,7 @@ import { KIWIFY_EVENTS } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
+import CollapsibleSearch from '../../components/CollapsibleSearch'
 import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { Play, Mail, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -94,6 +95,35 @@ export default function EmailFunil() {
   const [funnelSends, setFunnelSends] = useState([])
   const [reenviandoId, setReenviandoId] = useState(null)
   const [pSends, setPSends] = useState(1)
+  const [buscaSends, setBuscaSends] = useState('')
+  const [sortSends, setSortSends] = useState({ key: 'quando', dir: 'desc' })
+  const toggleSortSends = (key) =>
+    setSortSends((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
+  useEffect(() => { setPSends(1) }, [buscaSends, sortSends])
+
+  // Badge de novos eventos (envios) por funil que o usuário ainda não viu.
+  const seenKey = user?.uid ? `sendly:email-funnel-seen:${user.uid}` : null
+  const [seenSends, setSeenSends] = useState({})
+  useEffect(() => {
+    if (!seenKey) return
+    try { setSeenSends(JSON.parse(localStorage.getItem(seenKey) || '{}')) } catch { setSeenSends({}) }
+  }, [seenKey])
+  const countByFunnel = useMemo(() => {
+    const m = {}
+    for (const s of funnelSends) m[s.funnelId] = (m[s.funnelId] || 0) + 1
+    return m
+  }, [funnelSends])
+  useEffect(() => {
+    if (!seenKey || !selectedId) return
+    const c = countByFunnel[selectedId] || 0
+    setSeenSends((prev) => {
+      if (prev[selectedId] === c) return prev
+      const next = { ...prev, [selectedId]: c }
+      try { localStorage.setItem(seenKey, JSON.stringify(next)) } catch (_) {}
+      return next
+    })
+  }, [seenKey, selectedId, countByFunnel])
+  const funnelBadge = (id) => Math.max(0, (countByFunnel[id] || 0) - (seenSends[id] || 0))
   const [providers, setProviders] = useState([])
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
@@ -244,10 +274,36 @@ export default function EmailFunil() {
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
   const sendsDoFunil = funnelSends.filter((s) => s.funnelId === selectedId)
+  const sendsOrdenados = (() => {
+    const val = (s) => {
+      switch (sortSends.key) {
+        case 'contato': return (s.contato?.nome || s.contato?.email || '').toLowerCase()
+        case 'produto': return (s.contato?.produto || '').toLowerCase()
+        case 'template': return (s.templateNome || '').toLowerCase()
+        case 'status': return s.status || ''
+        case 'quando': return s.createdAt?.toMillis?.() ?? s.createdAt ?? 0
+        default: return 0
+      }
+    }
+    let list = sendsDoFunil
+    const q = buscaSends.trim().toLowerCase()
+    if (q) list = list.filter((s) =>
+      (s.contato?.nome || '').toLowerCase().includes(q) ||
+      (s.contato?.email || '').toLowerCase().includes(q) ||
+      (s.contato?.produto || '').toLowerCase().includes(q) ||
+      (s.templateNome || '').toLowerCase().includes(q)
+    )
+    return [...list].sort((a, b) => {
+      const va = val(a), vb = val(b)
+      if (va < vb) return sortSends.dir === 'asc' ? -1 : 1
+      if (va > vb) return sortSends.dir === 'asc' ? 1 : -1
+      return 0
+    })
+  })()
   const SENDS_POR_PAGINA = 10
-  const totalPagSends = Math.max(1, Math.ceil(sendsDoFunil.length / SENDS_POR_PAGINA))
+  const totalPagSends = Math.max(1, Math.ceil(sendsOrdenados.length / SENDS_POR_PAGINA))
   const pSendsAtual = Math.min(pSends, totalPagSends)
-  const sendsPagina = sendsDoFunil.slice((pSendsAtual - 1) * SENDS_POR_PAGINA, pSendsAtual * SENDS_POR_PAGINA)
+  const sendsPagina = sendsOrdenados.slice((pSendsAtual - 1) * SENDS_POR_PAGINA, pSendsAtual * SENDS_POR_PAGINA)
 
   return (
     <PageShell
@@ -260,7 +316,7 @@ export default function EmailFunil() {
             onChange={(v) => { const f = funis.find((x) => x.id === v); f ? carregarFunil(f) : novoFunil() }}
             className="w-full sm:w-52"
             placeholder="Selecionar funil"
-            options={funis.map((f) => ({ value: f.id, label: f.nome }))}
+            options={funis.map((f) => ({ value: f.id, label: f.nome, badge: funnelBadge(f.id) }))}
           />
           <button onClick={novoFunil} className="btn-secondary text-sm min-h-[40px]"><Plus className="w-4 h-4" /> Novo</button>
           {selectedId && <button onClick={handleExcluir} className="p-2.5 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}
@@ -392,21 +448,24 @@ export default function EmailFunil() {
       {/* Relatório de envios do funil */}
       <div className="app-panel rounded-2xl overflow-hidden">
         <div className="px-4 sm:px-5 py-3 border-b border-surface-100 flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-sm font-semibold text-stone-800"><Send className="w-4 h-4 text-primary-600" /> Relatório de envios{selectedId ? '' : ' — salve/escolha um funil'}</span>
-          <button onClick={carregarSends} className="text-xs text-primary-600 hover:underline flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Atualizar</button>
+          <span className="flex items-center gap-2 text-sm font-semibold text-stone-800 min-w-0"><Send className="w-4 h-4 text-primary-600 shrink-0" /> <span className="truncate">Relatório de envios{selectedId ? '' : ' — salve/escolha um funil'}</span></span>
+          <div className="flex items-center gap-2 shrink-0">
+            <CollapsibleSearch value={buscaSends} onChange={setBuscaSends} placeholder="Contato, e-mail ou produto" />
+            <button onClick={carregarSends} className="text-xs text-primary-600 hover:underline flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Atualizar</button>
+          </div>
         </div>
         <div className="overflow-x-auto">
-          {sendsDoFunil.length === 0 ? (
-            <p className="p-6 text-sm text-stone-400 text-center">Nenhum envio deste funil ainda. Quando um contato entrar e um nó "Enviar" disparar, aparece aqui (e a bolinha vermelha no nó sobe).</p>
+          {sendsOrdenados.length === 0 ? (
+            <p className="p-6 text-sm text-stone-400 text-center">{buscaSends ? 'Nenhum envio encontrado.' : 'Nenhum envio deste funil ainda. Quando um contato entrar e um nó "Enviar" disparar, aparece aqui (e a bolinha vermelha no nó sobe).'}</p>
           ) : (
             <table className="w-full text-sm min-w-[720px]">
               <thead>
                 <tr className="border-b border-surface-100 text-left text-stone-500">
-                  <th className="px-4 py-2.5 font-medium text-xs">Contato</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Produto</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">E-mail enviado</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Enviado?</th>
-                  <th className="px-4 py-2.5 font-medium text-xs">Quando</th>
+                  {[['contato', 'Contato'], ['produto', 'Produto'], ['template', 'E-mail enviado'], ['status', 'Enviado?'], ['quando', 'Quando']].map(([key, label]) => (
+                    <th key={key} onClick={() => toggleSortSends(key)} className="px-4 py-2.5 font-medium text-xs cursor-pointer select-none hover:text-stone-700 whitespace-nowrap">
+                      {label}{sortSends.key === key ? (sortSends.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                    </th>
+                  ))}
                   <th className="px-4 py-2.5 font-medium text-xs"></th>
                 </tr>
               </thead>
@@ -440,9 +499,9 @@ export default function EmailFunil() {
             </table>
           )}
         </div>
-        {sendsDoFunil.length > SENDS_POR_PAGINA && (
+        {sendsOrdenados.length > SENDS_POR_PAGINA && (
           <div className="px-4 py-3 border-t border-surface-100 flex items-center justify-between gap-3">
-            <p className="text-xs text-stone-600">Página {pSendsAtual} de {totalPagSends} · {sendsDoFunil.length} envio(s)</p>
+            <p className="text-xs text-stone-600">Página {pSendsAtual} de {totalPagSends} · {sendsOrdenados.length} envio(s)</p>
             <div className="flex items-center gap-2">
               <button onClick={() => setPSends((p) => Math.max(1, p - 1))} disabled={pSendsAtual <= 1} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
               <button onClick={() => setPSends((p) => Math.min(totalPagSends, p + 1))} disabled={pSendsAtual >= totalPagSends} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>

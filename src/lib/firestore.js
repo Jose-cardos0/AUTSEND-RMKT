@@ -309,6 +309,11 @@ export async function updateLeadStatus(uid, leadId, data) {
   await updateDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }))
 }
 
+/** Apaga um documento de lead (um evento). Um contato pode ter vários. */
+export async function deleteLead(uid, leadId) {
+  await deleteDoc(doc(db, 'users', uid, 'leads', leadId))
+}
+
 // ── Config de E-mail (Resend) ──
 
 export function userEmailConfigRef(uid) {
@@ -490,6 +495,36 @@ export async function saveProductGroup(uid, id, data) {
   }
   const ref = await addDoc(userProductGroupsRef(uid), { ...removeUndefined(data), createdAt: serverTimestamp() })
   return ref.id
+}
+
+// ── Nichos (segmentos de leads para disparo) ──
+export function userNichosRef(uid) {
+  return collection(db, 'users', uid, 'nichos')
+}
+
+export async function getNichos(uid) {
+  const snap = await getDocs(userNichosRef(uid))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+export async function saveNicho(uid, id, data) {
+  if (id) {
+    const ref = doc(db, 'users', uid, 'nichos', id)
+    await setDoc(ref, removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(userNichosRef(uid), { ...removeUndefined(data), createdAt: serverTimestamp() })
+  return ref.id
+}
+
+export async function deleteNicho(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'nichos', id))
 }
 
 export async function deleteProductGroup(uid, id) {
