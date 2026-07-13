@@ -740,7 +740,7 @@ export default function Admin() {
 
                   <div>
                     <label className="block text-xs font-medium text-stone-600 mb-1">Link do app (no e-mail)</label>
-                    <input value={kiwifyCfg.appUrl} onChange={(e) => setKiwifyCfg((c) => ({ ...c, appUrl: e.target.value }))} placeholder="https://app.autsend.com.br/rmkt" className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm" />
+                    <input value={kiwifyCfg.appUrl} onChange={(e) => setKiwifyCfg((c) => ({ ...c, appUrl: e.target.value }))} placeholder="https://autsend.com.br" className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm" />
                   </div>
 
                   <div>

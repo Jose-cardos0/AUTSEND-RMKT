@@ -921,7 +921,7 @@ async function enviarBoasVindasKiwify(cfg, email, nome, plano) {
   const key = await getSharedResendKey()
   const from = cfg.fromEmail ? (cfg.fromName ? `${cfg.fromName} <${cfg.fromEmail}>` : cfg.fromEmail) : null
   if (!key || !from) { console.warn('Boas-vindas Kiwify: sem RESEND_SHARED_KEY ou config/kiwify.fromEmail — e-mail não enviado.'); return }
-  const url = cfg.appUrl || 'https://app.autsend.com.br/rmkt'
+  const url = cfg.appUrl || 'https://autsend.com.br'
   const nomePlano = plano === 'pro' ? 'Pro' : plano === 'inicial' ? 'Inicial' : 'Padrão'
   const html =
     '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#333">' +

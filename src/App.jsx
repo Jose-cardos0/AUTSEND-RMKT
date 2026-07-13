@@ -68,7 +68,7 @@ function AdminRoute({ children }) {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/rmkt">
+    <BrowserRouter>
       <ConfirmProvider>
       <Toaster
         position="top-center"
