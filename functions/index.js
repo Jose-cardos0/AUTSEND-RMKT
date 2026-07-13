@@ -69,14 +69,16 @@ async function getEvolutionConfigForUser(userId) {
   const selectedId = config?.selectedInstanceId
   if (selectedId) {
     const instSnap = await db.doc(`users/${userId}/instances/${selectedId}`).get()
-    if (instSnap.exists) return instSnap.data()
+    if (instSnap.exists && instSnap.data().bloqueadaPorAdmin !== true) return instSnap.data()
   }
   const instancesSnap = await db.collection(`users/${userId}/instances`).get()
-  if (!instancesSnap.empty) {
-    const sorted = instancesSnap.docs.sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+  // Ignora instâncias desativadas pelo admin (policiamento).
+  const validas = instancesSnap.docs.filter((d) => d.data().bloqueadaPorAdmin !== true)
+  if (validas.length) {
+    const sorted = validas.sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
     return sorted[0].data()
   }
-  if (config && (config.nomeInstancia || config.hash)) return config
+  if (config && (config.nomeInstancia || config.hash) && config.bloqueadaPorAdmin !== true) return config
   return null
 }
 
@@ -385,7 +387,7 @@ exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) =
 
   try {
     const r = await sendEmailViaResend({
-      apiKey: cfg.apiKey, from, to: lead.email, subject, html,
+      apiKey: cfg.apiKey, from: replaceVariables(from, lead, product), to: lead.email, subject, html,
       headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` },
       tags: leadId ? [{ name: 'uid', value: uid }, { name: 'leadId', value: leadId }] : [{ name: 'uid', value: uid }],
     })
@@ -415,7 +417,7 @@ async function enviarLoteEmail(uid, ctx, recipients) {
     const product = { nome: r.produto || '' }
     const htmlBase = replaceVariables(ctx.tplHtml, lead, product)
     return {
-      from: ctx.from,
+      from: replaceVariables(ctx.from, lead, product),
       to: [lead.email],
       subject: limparAssunto(replaceVariables(ctx.subjectBase, lead, product)),
       html: htmlBase + ctx.footer,
@@ -779,13 +781,33 @@ exports.emailAddDomain = onCall({ region: 'us-central1', timeoutSeconds: 60 }, a
   return { id: ref.id, ...doc, createdAt: null, updatedAt: null }
 })
 
-/** Lista os domínios do tenant (com status e registros DNS). */
-exports.emailListDomains = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+/** Lista os domínios do tenant (com status e registros DNS).
+ *  Auto-sincroniza do Resend os domínios ainda não verificados, pra não mostrar status desatualizado. */
+exports.emailListDomains = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const snap = await db.collection(`users/${uid}/emailDomains`).orderBy('createdAt', 'asc').get()
+  const temKey = !!(await getSharedResendKey())
+
+  // Reconsulta o Resend só pros pendentes e atualiza o Firestore. Guarda o resultado fresco por id.
+  const frescos = {}
+  if (temKey) {
+    await Promise.all(snap.docs.map(async (d) => {
+      const x = d.data()
+      if (x.status === 'verified' || !x.resendId) return
+      try {
+        const fresh = await resendSharedApi('GET', `/domains/${x.resendId}`, null)
+        if (fresh && fresh.status && fresh.status !== x.status) {
+          const patch = { status: fresh.status, records: mapDnsRecords(fresh.records) }
+          await d.ref.set({ ...patch, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+          frescos[d.id] = patch
+        }
+      } catch (_) { /* silencioso */ }
+    }))
+  }
+
   const dominios = snap.docs.map((d) => {
-    const x = d.data()
+    const x = { ...d.data(), ...(frescos[d.id] || {}) }
     return {
       id: d.id, name: x.name, status: x.status || 'pending', region: x.region || 'us-east-1',
       records: x.records || [], senders: x.senders || [],
@@ -793,8 +815,7 @@ exports.emailListDomains = onCall({ region: 'us-central1', timeoutSeconds: 30 },
       createdAt: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,
     }
   })
-  const configurado = !!(await getSharedResendKey())
-  return { dominios, configurado }
+  return { dominios, configurado: temKey }
 })
 
 /** Dispara/atualiza a verificação de um domínio no Resend e salva o novo status. */
@@ -1194,7 +1215,7 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product, prod
     try {
       const r = await sendEmailViaResend({
         apiKey: cfg.apiKey,
-        from,
+        from: replaceVariables(from, customer, product),
         to: customer.email,
         subject,
         html: html + footer,
@@ -1266,7 +1287,7 @@ async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteI
     const html = replaceVariables(tpl.inlined || tpl.html || '', lead, product) + footer
     const subject = replaceVariables(tpl.subject || 'Novidade', lead, product)
     const tagsComUid = [{ name: 'uid', value: userId }, ...(Array.isArray(tags) ? tags : [])]
-    const r = await sendEmailViaResend({ apiKey: cfg.apiKey, from, to: contato.email, subject, html, headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` }, tags: tagsComUid })
+    const r = await sendEmailViaResend({ apiKey: cfg.apiKey, from: replaceVariables(from, lead, product), to: contato.email, subject, html, headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` }, tags: tagsComUid })
     const funnelId = (tags || []).find((t) => t && t.name === 'funnelId')?.value
     await registrarEmailSend(userId, r?.id, { funnelId })
     return true
@@ -2099,7 +2120,65 @@ exports.adminGetClienteDetalhe = onCall({ region: 'us-central1', timeoutSeconds:
       }))
   } catch (_) {}
 
-  return { tenant, disparos, leadsCount, reclamacoes }
+  // WhatsApp: instâncias do cliente (pra ver quantas e desativar)
+  let instances = []
+  try {
+    const is = await db.collection(`users/${uid}/instances`).get()
+    instances = is.docs.map((d) => {
+      const x = d.data()
+      return { id: d.id, nome: x.nomeInstancia || x.nome || '—', numero: x.numeroWhatsapp || x.numeroWhatsApp || '', conectado: !!x.conectado, bloqueada: x.bloqueadaPorAdmin === true }
+    })
+  } catch (_) {}
+
+  // Disparos de WhatsApp do cliente (linha do tempo)
+  let waDisparos = []
+  try {
+    const ws = await db.collection(`users/${uid}/disparos`).orderBy('createdAt', 'desc').limit(60).get()
+    waDisparos = ws.docs.map((d) => {
+      const x = d.data()
+      return {
+        id: d.id,
+        nome: x.nomeDisparo || x.nome || 'Disparo',
+        total: x.total || 0,
+        enviados: x.enviadosCount ?? x.enviados ?? 0,
+        status: x.status || '',
+        createdAt: x.createdAt ? (x.createdAt.toMillis ? x.createdAt.toMillis() : x.createdAt) : null,
+      }
+    })
+  } catch (_) {}
+
+  // Templates de WhatsApp (o que ele dispara) — com o texto pra policiar
+  let msgTemplates = []
+  try {
+    const ms = await db.collection(`users/${uid}/messageTemplates`).limit(80).get()
+    msgTemplates = ms.docs.map((d) => {
+      const x = d.data()
+      return { id: d.id, nome: x.nome || x.titulo || 'Sem nome', mensagem: String(x.mensagem || x.texto || x.copy || '').slice(0, 1200) }
+    })
+  } catch (_) {}
+
+  // Templates de e-mail (nome + assunto)
+  let emailTemplates = []
+  try {
+    const es = await db.collection(`users/${uid}/emailTemplates`).limit(60).get()
+    emailTemplates = es.docs.map((d) => {
+      const x = d.data()
+      return { id: d.id, nome: x.nome || 'Sem nome', subject: x.subject || '', html: x.html || '', css: x.css || '', inlined: x.inlined || '' }
+    })
+  } catch (_) {}
+
+  return { tenant, disparos, leadsCount, reclamacoes, instances, waDisparos, msgTemplates, emailTemplates }
+})
+
+/** Admin desativa/reativa uma instância de WhatsApp do cliente (bloqueia o uso no envio). */
+exports.adminSetInstanciaBloqueada = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const { uid, instanceId, bloqueada } = request.data || {}
+  if (!uid || !instanceId) throw new HttpsError('invalid-argument', 'uid e instanceId obrigatórios.')
+  await db.doc(`users/${uid}/instances/${instanceId}`).set(
+    { bloqueadaPorAdmin: !!bloqueada, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }
+  )
+  return { ok: true, bloqueada: !!bloqueada }
 })
 
 /** Atualiza status/plano/cota/notas de um cliente (aprovar/pausar/banir). */

@@ -31,6 +31,7 @@ export async function admin2faVerify(code) { return (await call('admin2faVerify'
 export async function admin2faDisable(code) { return (await call('admin2faDisable')({ code })).data }
 
 export async function adminImpersonar(uid) { return (await call('adminImpersonar')({ uid })).data }
+export async function adminSetInstanciaBloqueada(uid, instanceId, bloqueada) { return (await call('adminSetInstanciaBloqueada')({ uid, instanceId, bloqueada })).data }
 export async function getMeuPlano() { return (await call('getMeuPlano')()).data }
 
 // ── Config Kiwify (onboarding) ──

@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import { emailPreviewDoc } from '../lib/emailPreview'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminSetInstanciaBloqueada } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
@@ -13,7 +15,7 @@ import CollapsibleSearch from '../components/CollapsibleSearch'
 import { useConfirm } from '../components/ConfirmDialog'
 import {
   Users, ShieldCheck, ShieldAlert, Pause, Ban, CheckCircle2, Power, RefreshCw, Filter,
-  X, ChevronLeft, ChevronRight, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag,
+  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink,
 } from 'lucide-react'
 
 const POR_PAGINA = 12
@@ -51,8 +53,11 @@ export default function Admin() {
   const [sel, setSel] = useState(null) // cliente aberto
   const [detalhe, setDetalhe] = useState(null) // { tenant, disparos, leadsCount, reclamacoes }
   const [carregandoDet, setCarregandoDet] = useState(false)
-  const [detTab, setDetTab] = useState('disparos') // 'disparos' | 'reclamacoes'
+  const [detTab, setDetTab] = useState('disparos') // 'disparos' | 'reclamacoes' | 'whatsapp' | 'templates'
   const [detPage, setDetPage] = useState(1)
+  const [instExp, setInstExp] = useState('') // instância expandida
+  const [hoverTpl, setHoverTpl] = useState(null) // template de e-mail em hover (preview)
+  const [hoverRect, setHoverRect] = useState(null)
   const [form, setForm] = useState({ plano: 'free', notas: '', limites: { trackers: 0, instancias: 0, emailsMes: 0, dominios: 0 } })
   const [salvando, setSalvando] = useState(false)
   const [impersonando, setImpersonando] = useState(false)
@@ -204,6 +209,28 @@ export default function Admin() {
     setShowKiwify(true); setKiwifyCfg(null); setProdMap({}); setNovoProdKey('')
     try { const c = await adminGetKiwifyConfig(); setKiwifyCfg(c); setProdMap({ ...(c.produtos || {}) }) } catch (e) { toast.error(e.message || 'Erro ao carregar config') }
   }
+  // Abre o template de e-mail numa nova aba (HTML renderizado)
+  const abrirTemplate = (t) => {
+    const doc = t.inlined || emailPreviewDoc(t) || t.html || ''
+    if (!doc) { toast('Template sem conteúdo.', { icon: 'ℹ️' }); return }
+    try {
+      const blob = new Blob([doc], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (_) { toast.error('Não consegui abrir o template.') }
+  }
+
+  const toggleInstancia = async (inst) => {
+    if (!sel) return
+    const nova = !inst.bloqueada
+    try {
+      await adminSetInstanciaBloqueada(sel.uid, inst.id, nova)
+      setDetalhe((d) => ({ ...d, instances: (d.instances || []).map((x) => (x.id === inst.id ? { ...x, bloqueada: nova } : x)) }))
+      toast.success(nova ? 'Instância desativada.' : 'Instância reativada.')
+    } catch (e) { toast.error(e.message || 'Erro ao alterar instância.') }
+  }
+
   const setPlanoProd = (key, plano) => setProdMap((m) => { const n = { ...m }; if (!plano) delete n[key]; else n[key] = plano; return n })
   const addProdManual = () => {
     const k = novoProdKey.trim()
@@ -434,17 +461,100 @@ export default function Admin() {
 
                 {/* ─── Coluna direita: relatórios com abas ─── */}
                 <div className="rounded-2xl border border-surface-200 bg-surface-50/40 p-3 flex flex-col">
-                  <div className="inline-flex rounded-xl bg-surface-100 p-0.5 self-start mb-3">
-                    <button onClick={() => { setDetTab('disparos'); setDetPage(1) }} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${detTab === 'disparos' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
-                      <span className="inline-flex items-center gap-1.5"><Mail className="w-4 h-4" /> Disparos</span>
-                    </button>
-                    <button onClick={() => { setDetTab('reclamacoes'); setDetPage(1) }} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${detTab === 'reclamacoes' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
-                      <span className="inline-flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Reclamações {(detalhe?.reclamacoes || []).length > 0 && <span className="text-[11px] text-stone-400">({detalhe.reclamacoes.length})</span>}</span>
-                    </button>
+                  <div className="flex flex-wrap gap-0.5 rounded-xl bg-surface-100 p-0.5 self-start mb-3">
+                    {[['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
+                      <button key={k} onClick={() => { setDetTab(k); setDetPage(1) }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+                        <span className="inline-flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /> {lbl}</span>
+                      </button>
+                    ))}
                   </div>
 
                   {carregandoDet ? (
                     <p className="text-xs text-stone-400 py-8 text-center">Carregando…</p>
+                  ) : detTab === 'whatsapp' ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-stone-500">Instâncias de WhatsApp: <strong className="text-stone-700">{(detalhe?.instances || []).length}</strong></p>
+                      {(detalhe?.instances || []).length === 0 ? (
+                        <p className="text-xs text-stone-400 py-6 text-center">Sem instâncias conectadas.</p>
+                      ) : (
+                        (detalhe.instances).map((inst) => {
+                          const exp = instExp === inst.id
+                          return (
+                            <div key={inst.id} className={`rounded-xl border overflow-hidden ${inst.bloqueada ? 'border-rose-200 bg-rose-50/50' : 'border-surface-200 bg-white'}`}>
+                              <div className="flex items-center justify-between gap-2 px-3 py-2">
+                                <button onClick={() => setInstExp(exp ? '' : inst.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                                  <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${exp ? 'rotate-180' : ''}`} />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-medium text-stone-800 truncate">{inst.nome}</span>
+                                    <span className="block text-[11px] text-stone-400 truncate">{inst.numero || '—'} · {inst.conectado ? 'Conectado' : 'Offline'}{inst.bloqueada ? ' · DESATIVADA' : ''}</span>
+                                  </span>
+                                </button>
+                                <button onClick={() => toggleInstancia(inst)} className={`shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ${inst.bloqueada ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'}`}>
+                                  {inst.bloqueada ? 'Reativar' : 'Desativar'}
+                                </button>
+                              </div>
+                              {exp && (
+                                <div className="border-t border-surface-100 p-2.5 bg-surface-50/40">
+                                  <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Disparos de WhatsApp ({(detalhe?.waDisparos || []).length})</p>
+                                  {(detalhe?.waDisparos || []).length === 0 ? (
+                                    <p className="text-xs text-stone-400">Nenhum disparo registrado.</p>
+                                  ) : (
+                                    <div className="space-y-1.5 max-h-64 overflow-y-auto scroll-y-soft">
+                                      {detalhe.waDisparos.map((d) => (
+                                        <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs">
+                                          <span className="min-w-0"><span className="block font-medium text-stone-800 truncate">{d.nome}</span><span className="block text-[10px] text-stone-400">{fmtDateMs(d.createdAt)}{d.status ? ` · ${d.status}` : ''}</span></span>
+                                          <span className="text-stone-500 shrink-0 tabular-nums">{d.enviados}/{d.total}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  ) : detTab === 'templates' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">WhatsApp ({(detalhe?.msgTemplates || []).length})</p>
+                        {(detalhe?.msgTemplates || []).length === 0 ? <p className="text-xs text-stone-400">Nenhum template.</p> : (
+                          <div className="space-y-1.5">
+                            {detalhe.msgTemplates.map((t) => (
+                              <div key={t.id} className="rounded-xl border border-surface-200 bg-white px-3 py-2">
+                                <span className="block text-sm font-medium text-stone-800 truncate">{t.nome}</span>
+                                {t.mensagem && <span className="block text-[11px] text-stone-500 whitespace-pre-wrap mt-0.5 max-h-24 overflow-y-auto scroll-y-soft">{t.mensagem}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">E-mail ({(detalhe?.emailTemplates || []).length})</p>
+                        {(detalhe?.emailTemplates || []).length === 0 ? <p className="text-xs text-stone-400">Nenhum template.</p> : (
+                          <div className="space-y-1.5">
+                            {detalhe.emailTemplates.map((t) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => abrirTemplate(t)}
+                                onMouseEnter={(e) => { setHoverTpl(t); setHoverRect(e.currentTarget.getBoundingClientRect()) }}
+                                onMouseLeave={() => setHoverTpl((h) => (h?.id === t.id ? null : h))}
+                                className="w-full flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2 text-left hover:border-primary-300 transition"
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-sm font-medium text-stone-800 truncate">{t.nome}</span>
+                                  {t.subject && <span className="block text-[11px] text-stone-400 truncate">Assunto: {t.subject}</span>}
+                                </span>
+                                {(t.html || t.inlined) && <Eye className="w-3.5 h-3.5 text-stone-300 shrink-0" />}
+                                <ExternalLink className="w-3.5 h-3.5 text-stone-300 shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ) : (() => {
                     const PD = 6
                     const lista = detTab === 'disparos' ? (detalhe?.disparos || []) : (detalhe?.reclamacoes || [])
@@ -497,6 +607,23 @@ export default function Admin() {
           </div>
         </div>
       )}
+
+      {/* Prévia flutuante do template de e-mail (hover) */}
+      {hoverTpl && hoverRect && (hoverTpl.html || hoverTpl.inlined) && (() => {
+        const PW = 360, vw = window.innerWidth, vh = window.innerHeight
+        const PH = Math.min(520, vh - 16)
+        let left = hoverRect.left - 12 - PW
+        if (left < 8) left = hoverRect.right + 12
+        left = Math.max(8, Math.min(left, vw - PW - 8))
+        let top = hoverRect.top + hoverRect.height / 2 - PH / 2
+        top = Math.max(8, Math.min(top, vh - PH - 8))
+        return createPortal(
+          <div className="fixed z-[90] rounded-xl border border-surface-200 bg-white shadow-2xl overflow-hidden pointer-events-none" style={{ left, top, width: PW, height: PH }}>
+            <iframe srcDoc={emailPreviewDoc(hoverTpl) || hoverTpl.inlined} className="w-full h-full border-0" title="Prévia do template" />
+          </div>,
+          document.body
+        )
+      })()}
 
       {/* Modal: Segurança / 2FA */}
       {showSeg && (

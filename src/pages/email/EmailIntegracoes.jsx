@@ -9,7 +9,9 @@ import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { usePlano } from '../../lib/PlanoContext'
-import { Mail, Globe, KeyRound, Eye, EyeOff, Save, Send, Loader2, Check, ExternalLink, Webhook, Copy, BarChart3, ChevronDown, Plus, Trash2, UserPlus, X, Server } from 'lucide-react'
+import EmojiPicker from '../../components/EmojiPicker'
+import ChavesPicker from '../../components/ChavesPicker'
+import { Mail, Globe, KeyRound, Eye, EyeOff, Save, Send, Loader2, Check, ExternalLink, Webhook, Copy, BarChart3, ChevronDown, Plus, Trash2, UserPlus, X, Server, BadgeCheck } from 'lucide-react'
 
 const FN_BASE = 'https://us-central1-afiliadocdnx.cloudfunctions.net'
 const genId = () => 'rem_' + Math.random().toString(36).slice(2, 10)
@@ -52,6 +54,8 @@ export default function EmailIntegracoes() {
   const [verificandoId, setVerificandoId] = useState(null)
   const [openDom, setOpenDom] = useState({})
   const [copiado, setCopiado] = useState('')
+  const [dnsOpen, setDnsOpen] = useState({})
+  const [salvandoSenders, setSalvandoSenders] = useState('')
   // Abas + fluxo de adicionar
   const [tab, setTab] = useState('dominios') // 'dominios' | 'apis'
   const [addPopup, setAddPopup] = useState(false)
@@ -157,14 +161,18 @@ export default function EmailIntegracoes() {
   const addSender = (dom) => updateDom(dom.id, { senders: [...(dom.senders || []), { id: genId(), email: '', nome: '' }] })
   const removeSender = (dom, sid) => updateDom(dom.id, { senders: (dom.senders || []).filter((s) => s.id !== sid) })
   const updateSender = (dom, sid, patch) => updateDom(dom.id, { senders: (dom.senders || []).map((s) => (s.id === sid ? { ...s, ...patch } : s)) })
+  const appendNome = (dom, s, txt) => updateSender(dom, s.id, { nome: (s.nome || '') + txt })
+  // DNS visível: pendente = aberto por padrão; verificado = minimizado.
+  const dnsVisivel = (dom) => dnsOpen[dom.id] ?? (dom.status !== 'verified')
   const salvarSenders = async (dom) => {
     const bad = (dom.senders || []).find((s) => (s.email || '').trim() && !s.email.trim().toLowerCase().endsWith(`@${dom.name}`))
     if (bad) { toast.error(`Os remetentes precisam terminar em @${dom.name}`); return }
+    setSalvandoSenders(dom.id)
     try {
       const r = await saveDomainSenders(dom.id, (dom.senders || []).filter((s) => (s.email || '').trim()))
       updateDom(dom.id, { senders: r.senders })
       toast.success('Remetentes salvos.')
-    } catch (err) { toast.error(err.message || 'Erro ao salvar remetentes') }
+    } catch (err) { toast.error(err.message || 'Erro ao salvar remetentes') } finally { setSalvandoSenders('') }
   }
   const copiar = (txt, key) => { navigator.clipboard.writeText(txt); setCopiado(key); setTimeout(() => setCopiado(''), 1500) }
 
@@ -301,7 +309,9 @@ export default function EmailIntegracoes() {
       <div className="space-y-3">
         {/* ───── Aba: Domínios ───── */}
         {tab === 'dominios' && (
-          <div className="app-panel rounded-2xl p-4 sm:p-5 space-y-3">
+          <div className="app-panel rounded-2xl p-4 sm:p-5 relative overflow-hidden">
+          <Globe className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-primary-500 opacity-[0.06] z-0" />
+          <div className="relative space-y-3">
           {!domConfigurado && (
             <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2.5">
               O envio por domínio ainda não foi ativado pela plataforma. Fale com o suporte para liberar.
@@ -323,7 +333,11 @@ export default function EmailIntegracoes() {
                     <div className="flex items-center gap-2 px-3 py-2.5 bg-surface-50/50">
                       <Globe className="w-4 h-4 text-primary-600 shrink-0" />
                       <span className="text-sm font-medium text-stone-800 truncate flex-1">{dom.name}</span>
-                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                      {dom.status === 'verified' ? (
+                        <BadgeCheck className="w-5 h-5 text-emerald-500 shrink-0" title="Verificado" aria-label="Verificado" />
+                      ) : (
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                      )}
                       <button onClick={() => setOpenDom((o) => ({ ...o, [dom.id]: !o[dom.id] }))} className="p-1 text-stone-400 hover:text-stone-600" aria-label={aberto ? 'Recolher' : 'Expandir'}>
                         <ChevronDown className={`w-4 h-4 transition-transform ${aberto ? 'rotate-180' : ''}`} />
                       </button>
@@ -331,7 +345,12 @@ export default function EmailIntegracoes() {
                     {aberto && (
                       <div className="p-3 space-y-3">
                         <div>
-                          <p className="text-xs font-semibold text-stone-600 mb-1.5">Registros DNS (adicione no seu provedor de domínio)</p>
+                          <button type="button" onClick={() => setDnsOpen((o) => ({ ...o, [dom.id]: !dnsVisivel(dom) }))} className="w-full flex items-center gap-1.5 text-xs font-semibold text-stone-600 mb-1.5">
+                            <span>Registros DNS</span>
+                            {dom.status === 'verified' && <BadgeCheck className="w-4 h-4 text-emerald-500" title="Verificado" />}
+                            <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${dnsVisivel(dom) ? 'rotate-180' : ''}`} />
+                          </button>
+                          {dnsVisivel(dom) && (
                           <div className="overflow-x-auto rounded-lg border border-surface-100">
                             <table className="w-full text-[11px]">
                               <thead>
@@ -362,6 +381,7 @@ export default function EmailIntegracoes() {
                               </tbody>
                             </table>
                           </div>
+                          )}
                         </div>
 
                         {dom.status === 'verified' && (
@@ -375,22 +395,32 @@ export default function EmailIntegracoes() {
                             ) : (
                               <div className="space-y-1.5">
                                 {(dom.senders || []).map((s) => (
-                                  <div key={s.id} className="flex flex-col sm:flex-row gap-1.5">
-                                    <input value={s.nome || ''} onChange={(e) => updateSender(dom, s.id, { nome: e.target.value })} placeholder="Nome do remetente" className="w-full sm:w-44 px-2.5 py-2 min-h-[38px] rounded-lg border border-surface-200 text-sm" />
-                                    <input value={s.email || ''} onChange={(e) => updateSender(dom, s.id, { email: e.target.value })} placeholder={`contato@${dom.name}`} className="w-full sm:flex-1 px-2.5 py-2 min-h-[38px] rounded-lg border border-surface-200 text-sm" />
-                                    <button onClick={() => removeSender(dom, s.id)} className="p-2 rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600 shrink-0 self-end sm:self-auto" title="Remover remetente"><X className="w-4 h-4" /></button>
+                                  <div key={s.id} className="flex flex-col gap-1.5 rounded-xl border border-surface-100 bg-surface-50/40 p-2">
+                                    <div className="flex items-center gap-0.5 w-full rounded-lg border border-surface-200 bg-white pr-1 focus-within:border-primary-300">
+                                      <input value={s.nome || ''} onChange={(e) => updateSender(dom, s.id, { nome: e.target.value })} placeholder="Nome do remetente" className="flex-1 min-w-0 px-2.5 py-2 min-h-[38px] bg-transparent text-sm outline-none" />
+                                      <EmojiPicker onPick={(em) => appendNome(dom, s, em)} buttonClassName="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 shrink-0" />
+                                      <ChavesPicker onPick={(k) => appendNome(dom, s, k)} buttonClassName="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 shrink-0" />
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <input value={s.email || ''} onChange={(e) => updateSender(dom, s.id, { email: e.target.value })} placeholder={`contato@${dom.name}`} className="flex-1 min-w-0 px-2.5 py-2 min-h-[38px] rounded-lg border border-surface-200 bg-white text-sm" />
+                                      <button onClick={() => removeSender(dom, s.id)} className="p-2 rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600 shrink-0" title="Remover remetente"><X className="w-4 h-4" /></button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
                             )}
-                            <button onClick={() => salvarSenders(dom)} className="btn-secondary text-xs min-h-[36px] mt-2"><Save className="w-3.5 h-3.5" /> Salvar remetentes</button>
                           </div>
                         )}
 
                         <div className="flex items-center gap-2 pt-1">
-                          <button onClick={() => verificar(dom)} disabled={verificandoId === dom.id} className="btn-primary text-xs min-h-[38px]">
-                            {verificandoId === dom.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Verificar
-                          </button>
+                          {dom.status !== 'verified' && (
+                            <button onClick={() => verificar(dom)} disabled={verificandoId === dom.id} className="btn-primary text-xs min-h-[38px]">
+                              {verificandoId === dom.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Verificar
+                            </button>
+                          )}
+                          {dom.status === 'verified' && (
+                            <button onClick={() => salvarSenders(dom)} disabled={salvandoSenders === dom.id} className="btn-secondary text-xs min-h-[38px] disabled:opacity-60">{salvandoSenders === dom.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Salvar remetentes</button>
+                          )}
                           <button onClick={() => excluirDominio(dom)} className="btn-secondary text-xs min-h-[38px] !text-red-600"><Trash2 className="w-3.5 h-3.5" /> Remover</button>
                         </div>
                       </div>
@@ -400,6 +430,7 @@ export default function EmailIntegracoes() {
               })}
             </div>
           )}
+          </div>
           </div>
         )}
 

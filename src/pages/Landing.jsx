@@ -19,9 +19,9 @@ const FEATURES = [
 
 const PLANOS_LP = [
   { key: 'free', preco: 'R$0', tag: null, destaque: false, features: ['1 tracker', 'E-mail (50/mês) via sua API', '1 template + 1 grupo de produto', 'Automação de compra aprovada'] },
-  { key: 'inicial', preco: 'R$67', tag: 'Entrada', destaque: false, features: ['2 trackers', 'WhatsApp completo · 1 instância', '500 e-mails/mês', 'Banco de Leads, Funil e Métricas'] },
-  { key: 'padrao', preco: 'R$127', tag: 'Mais popular', destaque: true, features: ['10 trackers', 'WhatsApp · 2 instâncias', '3.000 e-mails/mês · 1 domínio', 'Tudo desbloqueado'] },
-  { key: 'pro', preco: 'R$197', tag: 'Máximo', destaque: false, features: ['20 trackers', 'WhatsApp · 4 instâncias', '10.000 e-mails/mês · 2 domínios', 'Limites maiores e prioridade'] },
+  { key: 'inicial', preco: 'R$67', tag: 'Entrada', destaque: false, features: ['2 trackers', 'WhatsApp ilimitado · 1 instância', '500 e-mails/mês', 'Banco de Leads, Funil e Métricas'] },
+  { key: 'padrao', preco: 'R$127', tag: 'Mais popular', destaque: true, features: ['10 trackers', 'WhatsApp ilimitado · 2 instâncias', '3.000 e-mails/mês · 1 domínio', 'Tudo desbloqueado'] },
+  { key: 'pro', preco: 'R$197', tag: 'Máximo', destaque: false, features: ['20 trackers', 'WhatsApp ilimitado · 4 instâncias', '10.000 e-mails/mês · 2 domínios', 'Limites maiores e prioridade'] },
 ]
 
 const DEPOIMENTOS = [

@@ -6,7 +6,7 @@ import { getCheckoutStores, saveCheckoutStore, deleteCheckoutStore } from '../li
 import { LOJAS, lojaByKey } from '../lib/lojas'
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
-import { Plus, Trash2, ChevronDown, Loader2, X, Link2, ShoppingBag } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, Loader2, X, Link2, ShoppingBag, HelpCircle } from 'lucide-react'
 
 const genId = () => 'p_' + Math.random().toString(36).slice(2, 9)
 
@@ -102,10 +102,10 @@ export default function Checkouts() {
                 <div className="flex items-center gap-3 px-3 sm:px-4 py-3">
                   <button onClick={() => toggleAberto(store.id)} className="flex items-center gap-3 min-w-0 flex-1 text-left">
                     <span className="flex h-10 w-10 items-center justify-center shrink-0 overflow-hidden">
-                      {loja?.logo ? <img src={loja.logo} alt={loja.nome} className="max-h-9 max-w-9 object-contain" /> : <ShoppingBag className="w-5 h-5 text-stone-400" />}
+                      {loja?.logo ? <img src={loja.logo} alt={loja.nome} className="max-h-9 max-w-9 object-contain" /> : <HelpCircle className="w-5 h-5 text-stone-400" />}
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-stone-800 truncate">{loja?.nome || store.loja}</span>
+                      <span className="block text-sm font-semibold text-stone-800 truncate">{loja?.nome || (store.loja === 'custom' ? 'Outra' : store.loja)}</span>
                       <span className="block text-[11px] text-stone-400">{(store.produtos || []).length} produto(s)</span>
                     </span>
                   </button>
@@ -186,6 +186,15 @@ export default function Checkouts() {
                   <span className="text-xs font-medium text-stone-700">{l.nome}</span>
                 </button>
               ))}
+              {/* Loja que não temos nas logos */}
+              <button
+                type="button"
+                onClick={() => addLoja('custom')}
+                className="flex flex-col items-center gap-2 rounded-xl border-2 border-surface-200 hover:border-primary-300 hover:bg-primary-50 px-3 py-4 transition"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-100 text-stone-400"><HelpCircle className="w-6 h-6" /></span>
+                <span className="text-xs font-medium text-stone-700">Outra</span>
+              </button>
             </div>
             <p className="text-[11px] text-stone-400">Pode adicionar a mesma loja mais de uma vez (ex.: contas diferentes).</p>
           </div>

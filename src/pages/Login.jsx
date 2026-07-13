@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
-import logo from '../assets/logo.png'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import ParticlesBackground from '../components/ParticlesBackground'
 import ShootingStars from '../components/ShootingStars'
@@ -97,19 +96,20 @@ export default function Login() {
           className="relative rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 bg-white/30 backdrop-blur-xl border border-white/40 shadow-[0_25px_50px_-12px_rgba(74,70,222,0.18),0_0_0_1px_rgba(255,255,255,0.3)_inset]"
         >
           <div className="absolute -inset-px rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary-400/20 via-transparent to-violet-400/15 -z-10 blur-sm" />
-          <div className="flex justify-center mb-1 sm:mb-2">
-            <motion.img
-              src={logo}
-              alt="Autsend"
-              className=" max-w-28 w-auto drop-shadow-sm"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
-            />
+          <div className="flex justify-center items-center mb-4 sm:mb-6 min-h-[3.5rem]">
+            {isSignUp ? (
+              <p className="text-xs text-primary-600/90 uppercase tracking-[0.2em] font-bold">Criar conta</p>
+            ) : (
+              <motion.img
+                src={sendlyLogo}
+                alt="Autsend"
+                className="h-12 sm:h-16 w-auto drop-shadow-sm"
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
+              />
+            )}
           </div>
-          <p className="text-[11px] sm:text-xs text-primary-600/90 text-center mb-2 sm:mb-4 uppercase tracking-[0.2em] font-bold">
-            {isSignUp ? 'Criar conta' : <img src={sendlyLogo} alt="Autsend" className="inline-block h-7 sm:h-8 w-auto" />}
-          </p>
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             {error && (
