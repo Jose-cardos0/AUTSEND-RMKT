@@ -16,6 +16,8 @@ import PageShell from '../../components/PageShell'
 import Select from '../../components/Select'
 import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
+import MelhorarPlano from '../../components/MelhorarPlano'
+import { usePlano } from '../../lib/PlanoContext'
 import { Loader2, Save, Send, Trash2, Plus, FileText, Code2 } from 'lucide-react'
 import EmojiPicker from '../../components/EmojiPicker'
 
@@ -24,6 +26,8 @@ const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Aria
 export default function EmailConstrutor() {
   const [user] = useAuthState(auth)
   const confirm = useConfirm()
+  const { limiteDe } = usePlano()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [templates, setTemplates] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [nome, setNome] = useState('')
@@ -91,6 +95,13 @@ export default function EmailConstrutor() {
   const handleSalvar = async () => {
     if (!user?.uid) return
     if (!nome.trim()) { toast.error('Dê um nome ao template (ex.: "E-mail de recuperação").'); return }
+    // Trava de quantidade: só bloqueia ao criar um template NOVO acima do limite do plano
+    const limite = limiteDe('templates')
+    if (!selectedId && templates.length >= limite) {
+      toast.error(`Seu plano permite ${limite} template${limite === 1 ? '' : 's'}. Faça upgrade pra criar mais.`)
+      setUpgradeOpen(true)
+      return
+    }
     const editor = editorRef.current
     if (!editor) return
     setSalvando(true)
@@ -210,6 +221,7 @@ export default function EmailConstrutor() {
         </div>
       }
     >
+      <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-3 overflow-hidden">
         {/* Coluna esquerda: dados do template */}
         <div className="lg:w-72 xl:w-80 shrink-0 flex flex-col gap-3 lg:min-h-0 lg:overflow-y-auto scroll-y-soft pr-0.5">

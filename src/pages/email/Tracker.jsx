@@ -17,6 +17,8 @@ import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
 import { useConfirm } from '../../components/ConfirmDialog'
+import MelhorarPlano from '../../components/MelhorarPlano'
+import { usePlano } from '../../lib/PlanoContext'
 import {
   Radar, Webhook, Plus, Copy, Check, Trash2, Loader2, RefreshCw, Play,
   Power, PowerOff, ChevronRight, ChevronDown, Zap, MousePointerClick, Sparkles,
@@ -125,6 +127,8 @@ function preview(v) {
 export default function Tracker() {
   const [user] = useAuthState(auth)
   const confirm = useConfirm()
+  const { limiteDe } = usePlano()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [webhooks, setWebhooks] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -215,6 +219,13 @@ export default function Tracker() {
   const handleCriar = async () => {
     if (!user?.uid) return
     if (!lojaSel) { toast.error('Selecione a loja do webhook.'); return }
+    const limite = limiteDe('trackers')
+    if (webhooks.length >= limite) {
+      toast.error(`Seu plano permite ${limite} tracker${limite === 1 ? '' : 's'}. Faça upgrade pra criar mais.`)
+      setShowCriar(false)
+      setUpgradeOpen(true)
+      return
+    }
     setCriando(true)
     try {
       const lojaNome = lojaByKey(lojaSel)?.nome
@@ -407,6 +418,7 @@ export default function Tracker() {
         </button>
       }
     >
+      <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
       {webhooks.length === 0 ? (
         <Panel>
           <div className="flex flex-col items-center justify-center text-center gap-3 py-12">

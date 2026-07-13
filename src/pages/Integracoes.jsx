@@ -35,6 +35,8 @@ import WhatsAppIcon from '../components/WhatsAppIcon'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import { useConfirm } from '../components/ConfirmDialog'
+import MelhorarPlano from '../components/MelhorarPlano'
+import { usePlano } from '../lib/PlanoContext'
 
 /** Seção recolhível (dropdown), começa minimizada. */
 function Secao({ title, icon: Icon, open, onToggle, children, bgIcon: BgIcon, action }) {
@@ -61,6 +63,8 @@ function Secao({ title, icon: Icon, open, onToggle, children, bgIcon: BgIcon, ac
 export default function Integracoes() {
   const [user] = useAuthState(auth)
   const confirm = useConfirm()
+  const { limiteDe } = usePlano()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [instances, setInstances] = useState([])
   const [selectedInstanceId, setSelectedInstanceId] = useState(null)
   const [evolution, setEvolution] = useState(null)
@@ -161,6 +165,15 @@ export default function Integracoes() {
 
   const handleCriarInstancia = async () => {
     if (!user?.uid) return
+    const limite = limiteDe('instancias')
+    if (instances.length >= limite) {
+      toast.error(limite === 0
+        ? 'Seu plano não inclui instâncias de WhatsApp. Faça upgrade pra ativar.'
+        : `Seu plano permite ${limite} instância${limite === 1 ? '' : 's'} de WhatsApp. Faça upgrade pra criar mais.`)
+      setShowNovaInst(false)
+      setUpgradeOpen(true)
+      return
+    }
     const nome = nomeInstancia.trim() || `instancia_${Date.now()}`
     const num = (numeroWhatsapp || '').replace(/\D/g, '')
     setCriando(true)
@@ -381,6 +394,7 @@ export default function Integracoes() {
       badge="Conexões"
       title="Integrações"
     >
+      <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
       {/* Popup: Nova instância (nome + número) */}
       {showNovaInst && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowNovaInst(false)}>

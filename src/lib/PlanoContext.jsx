@@ -1,0 +1,45 @@
+import { createContext, useContext, useEffect, useState } from 'react'
+import { useAuthState } from 'react-firebase-hooks/auth'
+import { auth } from './firebase'
+import { getMeuPlano } from './admin'
+import { planoEfetivo } from './plans'
+
+const Ctx = createContext(null)
+
+// Fora do provedor (ex.: tela de login) devolve tudo liberado.
+export function usePlano() {
+  return useContext(Ctx) || { loading: false, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, temFeature: () => true }
+}
+
+export function PlanoProvider({ children }) {
+  const [user] = useAuthState(auth)
+  const [state, setState] = useState({ loading: true, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null })
+
+  useEffect(() => {
+    if (!user?.uid) { setState((s) => ({ ...s, loading: false })); return }
+    const cacheKey = `sendlyPlano:${user.uid}`
+    // usa o cache pra não “piscar” recursos ao carregar
+    try { const c = JSON.parse(localStorage.getItem(cacheKey) || 'null'); if (c) setState({ ...c, loading: true }) } catch { /* ignore */ }
+    getMeuPlano()
+      .then((r) => {
+        const ef = planoEfetivo({ plano: r.plano, overrides: r.overrides })
+        const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites }
+        setState(st)
+        try { localStorage.setItem(cacheKey, JSON.stringify(st)) } catch { /* ignore */ }
+      })
+      .catch(() => setState((s) => ({ ...s, loading: false })))
+  }, [user?.uid])
+
+  // Admin ou enquanto carrega (features null) = liberado. Só bloqueia o que estiver explicitamente false.
+  const temFeature = (key) => state.isAdmin || !state.features || state.features[key] !== false
+  // Quantas unidades o plano libera (admin = ilimitado). Retorna Infinity quando sem limite.
+  const limiteDe = (key) => {
+    if (state.isAdmin) return Infinity
+    const v = state.limites?.[key]
+    return v == null ? Infinity : Number(v)
+  }
+  // true se ainda pode criar mais (atual < limite).
+  const podeMais = (key, atual) => limiteDe(key) === 0 ? false : (atual < limiteDe(key))
+
+  return <Ctx.Provider value={{ ...state, temFeature, limiteDe, podeMais }}>{children}</Ctx.Provider>
+}

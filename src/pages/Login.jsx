@@ -8,7 +8,7 @@ import logo from '../assets/logo.png'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import ParticlesBackground from '../components/ParticlesBackground'
 import ShootingStars from '../components/ShootingStars'
-import sendlyLogo from '../assets/SENLDY.png'
+import sendlyLogo from '../assets/autsendlogo.png'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
 
 export default function Login() {
@@ -100,7 +100,7 @@ export default function Login() {
           <div className="flex justify-center mb-1 sm:mb-2">
             <motion.img
               src={logo}
-              alt="Sendly"
+              alt="Autsend"
               className=" max-w-28 w-auto drop-shadow-sm"
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -108,7 +108,7 @@ export default function Login() {
             />
           </div>
           <p className="text-[11px] sm:text-xs text-primary-600/90 text-center mb-2 sm:mb-4 uppercase tracking-[0.2em] font-bold">
-            {isSignUp ? 'Criar conta' : <img src={sendlyLogo} alt="Sendly" className="inline-block h-7 sm:h-8 w-auto" />}
+            {isSignUp ? 'Criar conta' : <img src={sendlyLogo} alt="Autsend" className="inline-block h-7 sm:h-8 w-auto" />}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">

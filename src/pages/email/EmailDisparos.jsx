@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, getEmailConfig, getEmailDisparos, deleteEmailDisparo, getEmailEvents, getEmailProviders } from '../../lib/firestore'
+import { listDomains } from '../../lib/emailDomains'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
@@ -44,6 +45,7 @@ export default function EmailDisparos() {
   const [templates, setTemplates] = useState([])
   const [config, setConfig] = useState(null)
   const [providers, setProviders] = useState([])
+  const [temDom, setTemDom] = useState(false)
   const [remetenteId, setRemetenteId] = useState(null)
   const [historico, setHistorico] = useState([])
 
@@ -71,6 +73,7 @@ export default function EmailDisparos() {
         if (tpls.length > 0) { setTemplateId(tpls[0].id); setSubject(tpls[0].subject || '') }
       })
       .finally(() => setLoading(false))
+    listDomains().then((r) => setTemDom((r.dominios || []).some((d) => d.status === 'verified' && (d.senders || []).length))).catch(() => {})
   }, [user?.uid])
 
   const onSelectTemplate = (id) => {
@@ -80,7 +83,7 @@ export default function EmailDisparos() {
   }
 
   const contatos = useMemo(() => parseLista(lista), [lista])
-  const configOk = !!(config?.apiKey && config?.fromEmail) || providers.some((p) => p.apiKey && (p.remetentes || []).some((r) => r.email))
+  const configOk = !!(config?.apiKey && config?.fromEmail) || providers.some((p) => p.apiKey && (p.remetentes || []).some((r) => r.email)) || temDom
 
   const handleUploadExcel = (e) => {
     const file = e.target?.files?.[0]

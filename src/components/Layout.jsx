@@ -1,14 +1,19 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
+import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck } from 'lucide-react'
 import { auth } from '../lib/firebase'
+import { isAdmin } from '../lib/admin'
+import { usePlano } from '../lib/PlanoContext'
+import { ROTA_FEATURE } from '../lib/plans'
 import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
-import sendlyLogo from '../assets/SENLDY.png'
+import sendlyLogo from '../assets/autsendlogo.png'
 import WhatsAppIcon from './WhatsAppIcon'
 import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
+import MelhorarPlano from './MelhorarPlano'
 
 // Navegação por canal. Cada grupo vira uma seção colapsável na sidebar (desktop) e no menu mobile.
 const navGroups = [
@@ -166,14 +171,51 @@ function SidebarGroup({ group, open, onToggle }) {
   )
 }
 
+const adminGroup = {
+  key: 'admin',
+  label: 'Admin',
+  icon: ShieldCheck,
+  items: [{ to: '/admin', label: 'Clientes', icon: Users }],
+}
+
+// Tela mostrada quando o plano do cliente não libera o recurso.
+function UpgradeScreen() {
+  return (
+    <div className="flex-1 flex items-center justify-center py-10">
+      <div className="app-panel rounded-3xl p-8 sm:p-10 max-w-md text-center">
+        <span className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-violet-600 text-white mb-4 shadow-lg shadow-primary-600/25">
+          <ShieldCheck className="w-8 h-8" />
+        </span>
+        <h2 className="text-xl font-bold text-stone-800 mb-1.5">Recurso do plano superior</h2>
+        <p className="text-sm text-stone-500 leading-relaxed mb-6">Esse recurso não está incluído no seu plano atual. Faça upgrade pra desbloquear e turbinar seus resultados.</p>
+        <div className="flex justify-center">
+          <MelhorarPlano label="Ver planos disponíveis" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const outlet = useOutlet()
+  const [authUser] = useAuthState(auth)
+  const { temFeature } = usePlano()
+  const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroup] : navGroups
+  // Esconde do menu o que o plano não libera
+  const groups = baseGroups
+    .map((g) => ({ ...g, items: g.items.filter((it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }) }))
+    .filter((g) => g.items.length > 0)
+  // Rota bloqueada pelo plano (acesso direto por URL)
+  const rotaBloqueada = (() => {
+    const k = Object.keys(ROTA_FEATURE).find((k) => location.pathname === k || location.pathname.startsWith(k + '/'))
+    return k ? !temFeature(ROTA_FEATURE[k]) : false
+  })()
   const [menuOpen, setMenuOpen] = useState(false)
   // Grupos abertos na sidebar. Começa com o grupo da rota atual aberto.
   const [openGroups, setOpenGroups] = useState(() => {
-    const g = navGroups.find((gr) => isGroupActive(gr, location.pathname))
+    const g = groups.find((gr) => isGroupActive(gr, location.pathname))
     return g ? { [g.key]: true } : {}
   })
   // O construtor de e-mail, o funil e o remarketing usam mais largura (lista/editor lado a lado)
@@ -181,7 +223,7 @@ export default function Layout() {
 
   // Ao navegar, garante que o grupo da rota atual esteja aberto.
   useEffect(() => {
-    const g = navGroups.find((gr) => isGroupActive(gr, location.pathname))
+    const g = groups.find((gr) => isGroupActive(gr, location.pathname))
     if (g) setOpenGroups((s) => (s[g.key] ? s : { ...s, [g.key]: true }))
   }, [location.pathname])
 
@@ -203,12 +245,12 @@ export default function Layout() {
     <div className="app-viewport bg-transparent md:flex-row">
       {/* SIDEBAR — desktop */}
       <aside className="hidden md:flex md:flex-col w-[15.5rem] shrink-0 border-r border-surface-200/70 bg-white/70 backdrop-blur-xl">
-        <div className="h-[3.75rem] shrink-0 flex items-center px-4 border-b border-surface-200/60">
-          <img src={sendlyLogo} alt="Sendly" className="h-7 w-auto" />
+        <div className="h-[4.25rem] shrink-0 flex items-center justify-center px-4 border-b border-surface-200/60">
+          <img src={sendlyLogo} alt="Autsend" className="h-11 w-auto" />
         </div>
 
         <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2.5 py-3 space-y-1">
-          {navGroups.map((group) => (
+          {groups.map((group) => (
             <SidebarGroup
               key={group.key}
               group={group}
@@ -218,7 +260,8 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="shrink-0 border-t border-surface-200/60 p-2.5">
+        <div className="shrink-0 border-t border-surface-200/60 p-2.5 space-y-1.5">
+          <MelhorarPlano className="w-full" />
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-stone-500 hover:text-red-600 hover:bg-red-50/80 transition-all text-[13px] font-semibold border border-transparent hover:border-red-100"
@@ -235,7 +278,7 @@ export default function Layout() {
         <header className="md:hidden shrink-0 z-40 border-b border-white/40 bg-white/75 backdrop-blur-xl shadow-[0_1px_0_rgba(255,255,255,0.8)]">
           <div className="px-4 h-[3.75rem] flex items-center justify-between gap-3">
             <div className="flex items-center min-w-0">
-              <img src={sendlyLogo} alt="Sendly" className="h-7 w-auto" />
+              <img src={sendlyLogo} alt="Autsend" className="h-7 w-auto" />
             </div>
 
             <button
@@ -257,7 +300,7 @@ export default function Layout() {
                 aria-hidden="true"
               />
               <div className="fixed top-[3.75rem] left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-b border-surface-200 shadow-xl py-4 px-4 sm:px-6 max-h-[calc(100vh-3.75rem)] overflow-y-auto overscroll-contain space-y-2">
-                {navGroups.map((group) => {
+                {groups.map((group) => {
                   const Icon = group.icon
                   const open = !!openGroups[group.key]
                   return (
@@ -282,6 +325,7 @@ export default function Layout() {
                     </div>
                   )
                 })}
+                <MelhorarPlano className="w-full mt-2" />
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-2 w-full min-h-[48px] px-4 py-3 mt-2 rounded-xl text-red-600 hover:bg-red-50 font-semibold text-[13px] touch-manipulation border border-red-100"
@@ -304,10 +348,10 @@ export default function Layout() {
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className={clsx(
                 'w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col flex-1 min-h-0',
-                location.pathname.startsWith('/banco-leads') ? 'lg:max-w-[80%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
+                location.pathname.startsWith('/banco-leads') || location.pathname.startsWith('/admin') ? 'lg:max-w-[80%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
               )}
             >
-              {outlet}
+              {rotaBloqueada ? <UpgradeScreen /> : outlet}
             </motion.div>
           </AnimatePresence>
         </main>

@@ -1,19 +1,37 @@
-import { useState } from 'react'
-import { Mail, Check, X, Server, ChevronDown } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Mail, Check, X, Server, Globe, ChevronDown } from 'lucide-react'
+import { listDomains } from '../lib/emailDomains'
 
 /**
  * Seletor de remetente reutilizável (cards clicáveis, sem <select>).
  * value = remetenteId selecionado (ou null = padrão automático).
- * providers = array de { id, nome, remetentes: [{ id, email, nome }] }.
+ * providers = array de { id, nome, remetentes: [{ id, email, nome }] } (BYO).
+ * Os remetentes de domínios verificados (Fase A) são carregados aqui automaticamente.
  */
 export default function RemetentePicker({ providers = [], value, onChange, label = 'Remetente' }) {
   const [open, setOpen] = useState(false)
+  const [domains, setDomains] = useState([])
 
+  useEffect(() => {
+    let alive = true
+    listDomains()
+      .then((r) => { if (alive) setDomains((r.dominios || []).filter((d) => d.status === 'verified' && (d.senders || []).length)) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  // Resolve o selecionado tanto em provedores quanto em domínios
   let selected = null
-  let selectedProv = null
-  for (const p of providers) {
-    const r = (p.remetentes || []).find((x) => x.id === value)
-    if (r) { selected = r; selectedProv = p; break }
+  let selectedGrupo = null
+  for (const d of domains) {
+    const r = (d.senders || []).find((x) => x.id === value)
+    if (r) { selected = r; selectedGrupo = d.name; break }
+  }
+  if (!selected) {
+    for (const p of providers) {
+      const r = (p.remetentes || []).find((x) => x.id === value)
+      if (r) { selected = r; selectedGrupo = p.nome; break }
+    }
   }
   const display = selected ? (selected.nome || selected.email) : 'Remetente padrão (automático)'
 
@@ -27,7 +45,7 @@ export default function RemetentePicker({ providers = [], value, onChange, label
         <Mail className="w-4 h-4 text-primary-500 shrink-0" />
         <span className="min-w-0 flex-1 truncate">
           {display}
-          {selectedProv && <span className="text-stone-400"> · {selectedProv.nome}</span>}
+          {selectedGrupo && <span className="text-stone-400"> · {selectedGrupo}</span>}
         </span>
         <ChevronDown className="w-4 h-4 text-stone-400 shrink-0" />
       </button>
@@ -47,12 +65,39 @@ export default function RemetentePicker({ providers = [], value, onChange, label
               className={`w-full flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition ${!value ? 'border-primary-500 bg-primary-50' : 'border-surface-200 hover:border-primary-200'}`}
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-100 text-stone-500 shrink-0"><Mail className="w-4 h-4" /></span>
-              <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-stone-800">Remetente padrão</span><span className="block text-[11px] text-stone-400">Usa o 1º provedor automaticamente</span></span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-stone-800">Remetente padrão</span><span className="block text-[11px] text-stone-400">Usa o 1º remetente automaticamente</span></span>
               {!value && <Check className="w-4 h-4 text-primary-600 shrink-0" />}
             </button>
 
-            {providers.length === 0 && <p className="text-sm text-stone-400 text-center py-3">Nenhum provedor. Configure em Integrações de E-mail.</p>}
+            {domains.length === 0 && providers.every((p) => !(p.remetentes || []).some((r) => r.email)) && (
+              <p className="text-sm text-stone-400 text-center py-3">Nenhum remetente. Configure em Integrações de E-mail.</p>
+            )}
 
+            {/* Domínios verificados (Fase A) */}
+            {domains.map((d) => (
+              <div key={d.id} className="space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600 flex items-center gap-1.5 pt-1"><Globe className="w-3.5 h-3.5" /> {d.name}</p>
+                {(d.senders || []).map((r) => {
+                  const sel = value === r.id
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => { onChange(r.id); setOpen(false) }}
+                      className={`w-full flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 text-left transition ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 hover:border-primary-200'}`}
+                    >
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${sel ? 'bg-primary-500 text-white' : 'bg-surface-100 text-stone-500'}`}><Mail className="w-4 h-4" /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-stone-800 truncate">{r.nome || r.email}</span>
+                        {r.nome && <span className="block text-[11px] text-stone-400 truncate">{r.email}</span>}
+                      </span>
+                      {sel && <Check className="w-4 h-4 text-primary-600 shrink-0" />}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+
+            {/* Provedores BYO */}
             {providers.map((p) => {
               const rems = (p.remetentes || []).filter((r) => r.email)
               if (!rems.length) return null

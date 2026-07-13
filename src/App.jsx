@@ -5,6 +5,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { auth } from './lib/firebase'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import Landing from './pages/Landing'
 import Integracoes from './pages/Integracoes'
 import Remarketing from './pages/Remarketing'
 import RemarketingGrupos from './pages/RemarketingGrupos'
@@ -12,6 +13,8 @@ import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
 import Checkouts from './pages/Checkouts'
 import BancoLeads from './pages/BancoLeads'
+import Admin from './pages/Admin'
+import { isAdmin } from './lib/admin'
 import MensagemTemplates from './pages/MensagemTemplates'
 import EmailIntegracoes from './pages/email/EmailIntegracoes'
 import Tracker from './pages/email/Tracker'
@@ -22,6 +25,7 @@ import EmailMetricas from './pages/email/EmailMetricas'
 import EmailEmBreve from './pages/email/EmailEmBreve'
 import PageLoader from './components/PageLoader'
 import { ConfirmProvider } from './components/ConfirmDialog'
+import { PlanoProvider, usePlano } from './lib/PlanoContext'
 
 const EmailConstrutor = lazy(() => import('./pages/email/EmailConstrutor'))
 const EmailFunil = lazy(() => import('./pages/email/EmailFunil'))
@@ -29,7 +33,8 @@ const WhatsappFunil = lazy(() => import('./pages/WhatsappFunil'))
 const WhatsappMetricas = lazy(() => import('./pages/WhatsappMetricas'))
 import ParticlesBackground from './components/ParticlesBackground'
 
-function ProtectedRoute({ children }) {
+// Raiz: deslogado vê a Landing (rota pública), logado entra no app.
+function RootRoute() {
   const [user, loading] = useAuthState(auth)
   if (loading) {
     return (
@@ -38,7 +43,26 @@ function ProtectedRoute({ children }) {
       </ParticlesBackground>
     )
   }
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Landing />
+  return (
+    <PlanoProvider>
+      <Layout />
+    </PlanoProvider>
+  )
+}
+
+function InicioRedirect() {
+  const { temFeature, loading } = usePlano()
+  if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
+  if (temFeature('waIntegracoes')) return <Navigate to="/integracoes" replace />
+  if (temFeature('emailIntegracoes')) return <Navigate to="/email/integracoes" replace />
+  return <Navigate to="/tracker" replace />
+}
+
+function AdminRoute({ children }) {
+  const [user, loading] = useAuthState(auth)
+  if (loading) return <PageLoader className="flex-1 min-h-0 py-10" label="Verificando acesso…" />
+  if (!isAdmin(user)) return <Navigate to="/integracoes" replace />
   return children
 }
 
@@ -68,15 +92,8 @@ export default function App() {
       />
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="/integracoes" replace />} />
+        <Route path="/" element={<RootRoute />}>
+          <Route index element={<InicioRedirect />} />
           <Route path="integracoes" element={<Integracoes />} />
           <Route path="automacoes" element={<Automacoes />} />
           <Route path="remarketing" element={<Remarketing />} />
@@ -102,6 +119,7 @@ export default function App() {
           <Route path="produtos" element={<EmailProdutos />} />
           <Route path="checkouts" element={<Checkouts />} />
           <Route path="banco-leads" element={<BancoLeads />} />
+          <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="templates" element={<MensagemTemplates />} />
           <Route path="email/integracoes" element={<EmailIntegracoes />} />
           <Route path="email/tracker" element={<Tracker />} />

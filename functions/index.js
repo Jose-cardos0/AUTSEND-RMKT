@@ -8,6 +8,56 @@ const db = admin.firestore()
 
 const N8N_REMARKETING_URL = 'https://n8n.iacodenxt.online/webhook/REMARKETING'
 
+// ── Admin (torre de comando) ──
+const ADMIN_EMAIL = 'josedeveloperjs@gmail.com'
+const STATUS_VALIDOS = ['pending', 'approved', 'paused', 'banned']
+
+/** Só o admin (e-mail verificado) passa. */
+function assertAdmin(request) {
+  const email = (request.auth?.token?.email || '').toLowerCase()
+  if (!request.auth?.uid || email !== ADMIN_EMAIL) {
+    throw new HttpsError('permission-denied', 'Acesso restrito ao administrador.')
+  }
+}
+
+/** Bloqueia envio se o cliente estiver pausado/banido/pendente OU se o kill switch global estiver ligado. */
+async function assertTenantAtivo(uid) {
+  const [tSnap, gSnap] = await Promise.all([
+    db.doc(`tenants/${uid}`).get(),
+    db.doc('config/global').get(),
+  ])
+  if (gSnap.exists && gSnap.data().enviosPausados === true) {
+    throw new HttpsError('permission-denied', 'Os envios estão temporariamente pausados pela plataforma.')
+  }
+  const status = (tSnap.exists && tSnap.data().status) || 'approved' // padrão liberado (não trava contas atuais)
+  if (status === 'paused') throw new HttpsError('permission-denied', 'Sua conta está pausada. Fale com o suporte.')
+  if (status === 'banned') throw new HttpsError('permission-denied', 'Sua conta foi bloqueada.')
+  if (status === 'pending') throw new HttpsError('permission-denied', 'Sua conta ainda não foi aprovada para envios.')
+  return tSnap.exists ? tSnap.data() : {}
+}
+
+// Limites por plano (espelho do src/lib/plans.js)
+const PLAN_LIMITS = {
+  free: { trackers: 1, instancias: 0, emailsMes: 50, dominios: 0 },
+  inicial: { trackers: 2, instancias: 1, emailsMes: 500, dominios: 0 },
+  padrao: { trackers: 10, instancias: 2, emailsMes: 3000, dominios: 1 },
+  pro: { trackers: 20, instancias: 4, emailsMes: 10000, dominios: 2 },
+}
+function limitesDoTenant(t) {
+  const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
+  const ov = (t && t.overrides && t.overrides.limites) || {}
+  return { plano, ...PLAN_LIMITS[plano], ...ov }
+}
+async function emailsEnviadosNoMes(uid) {
+  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
+  let total = 0
+  try {
+    const ds = await db.collection(`users/${uid}/emailDisparos`).get()
+    ds.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicio.getTime()) total += Number(x.enviados) || 0 })
+  } catch (_) {}
+  return total
+}
+
 /** Eventos que só enviam automação após 5 min, e só se NÃO houver order_approved do mesmo pedido (recuperar quem desistiu de pagar). */
 const EVENTOS_RECUPERACAO_ATRASADA = ['order_status.boleto_issued', 'order_status.pix_issued']
 const ATRASO_MINUTOS = 2
@@ -197,31 +247,52 @@ async function getEmailProvidersForUser(userId) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 }
 
+/** API key COMPARTILHADA da plataforma (Fase A) — usada pra enviar dos domínios conectados no app.
+ *  Fica só no servidor (env RESEND_SHARED_KEY ou config/resend.apiKey). Nunca vai pro cliente. */
+async function getSharedResendKey() {
+  if (process.env.RESEND_SHARED_KEY) return process.env.RESEND_SHARED_KEY
+  try { const s = await db.doc('config/resend').get(); return s.exists ? (s.data().apiKey || '') : '' } catch { return '' }
+}
+
+/** Remetentes de domínios verificados do tenant (Fase A). Enviam pela key compartilhada. */
+async function getVerifiedDomainSenders(userId) {
+  const key = await getSharedResendKey()
+  if (!key) return []
+  const snap = await db.collection('users').doc(userId).collection('emailDomains').get()
+  const out = []
+  snap.docs.forEach((d) => {
+    const dm = d.data()
+    if (dm.status !== 'verified') return
+    ;(dm.senders || []).forEach((r) => {
+      if (r && r.email) out.push({ apiKey: key, email: r.email, nome: r.nome || '', remetenteId: r.id, providerId: null, source: 'domain', domainId: d.id })
+    })
+  })
+  return out
+}
+
 /** Resolve a config de envio (apiKey + from) a partir de um remetenteId, ou usa o padrão.
- *  Retorna um objeto no mesmo formato do cfg antigo (apiKey/fromEmail) + campo `from` pronto.
- *  Compatível: sem provedores cadastrados, cai na config antiga (config/email). */
+ *  Ordem: domínios verificados (Fase A, key compartilhada) → provedores BYO → config antiga.
+ *  Retorna um objeto no formato do cfg antigo (apiKey/fromEmail) + campo `from` pronto. */
 async function resolverRemetente(userId, remetenteId) {
   const vazio = { apiKey: null, fromEmail: null, fromName: null, from: null, providerId: null, remetenteId: null }
-  const montar = (p, r) => ({
-    apiKey: p.apiKey || null,
-    fromEmail: r.email,
-    fromName: r.nome || '',
-    from: r.nome ? `${r.nome} <${r.email}>` : r.email,
-    providerId: p.id,
-    remetenteId: r.id,
+  const montar = (x) => ({
+    apiKey: x.apiKey || null,
+    fromEmail: x.email,
+    fromName: x.nome || '',
+    from: x.nome ? `${x.nome} <${x.email}>` : x.email,
+    providerId: x.providerId || null,
+    remetenteId: x.remetenteId || null,
   })
+  const domainSenders = await getVerifiedDomainSenders(userId)
   const providers = await getEmailProvidersForUser(userId)
-  if (providers.length) {
-    if (remetenteId) {
-      for (const p of providers) {
-        const r = (p.remetentes || []).find((x) => x && x.id === remetenteId && x.email)
-        if (r) return montar(p, r)
-      }
-    }
-    for (const p of providers) {
-      const r = (p.remetentes || []).find((x) => x && x.email)
-      if (r) return montar(p, r)
-    }
+  const byo = []
+  providers.forEach((p) => (p.remetentes || []).forEach((r) => {
+    if (r && r.email) byo.push({ apiKey: p.apiKey || null, email: r.email, nome: r.nome || '', remetenteId: r.id, providerId: p.id, source: 'byo' })
+  }))
+  const todos = [...domainSenders, ...byo]
+  if (todos.length) {
+    if (remetenteId) { const hit = todos.find((x) => x.remetenteId === remetenteId); if (hit) return montar(hit) }
+    return montar(todos[0])
   }
   const cfg = await getEmailConfigForUser(userId)
   if (cfg?.fromEmail) return { apiKey: cfg.apiKey || null, fromEmail: cfg.fromEmail, fromName: cfg.fromName || '', from: montarRemetente(cfg), providerId: null, remetenteId: null }
@@ -292,6 +363,7 @@ exports.sendTestEmail = onCall({ region: 'us-central1' }, async (request) => {
 exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertTenantAtivo(uid)
   const { templateId, to, nome, produto, leadId, remetenteId } = request.data || {}
   if (!templateId) throw new HttpsError('invalid-argument', 'Escolha um template.')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || '').trim())) throw new HttpsError('invalid-argument', 'E-mail inválido.')
@@ -315,7 +387,7 @@ exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) =
     const r = await sendEmailViaResend({
       apiKey: cfg.apiKey, from, to: lead.email, subject, html,
       headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` },
-      tags: leadId ? [{ name: 'leadId', value: leadId }] : undefined,
+      tags: leadId ? [{ name: 'uid', value: uid }, { name: 'leadId', value: leadId }] : [{ name: 'uid', value: uid }],
     })
     if (r?.id && leadId) await registrarEmailSend(uid, r.id, { leadId })
     if (leadId) {
@@ -349,7 +421,7 @@ async function enviarLoteEmail(uid, ctx, recipients) {
       html: htmlBase + ctx.footer,
       text: htmlToText(htmlBase),
       headers: { 'List-Unsubscribe': `<mailto:${ctx.unsub}?subject=Unsubscribe>` },
-      tags: [{ name: 'disparoId', value: ctx.disparoId }, { name: 'tipo', value: 'disparo' }],
+      tags: [{ name: 'uid', value: uid }, { name: 'disparoId', value: ctx.disparoId }, { name: 'tipo', value: 'disparo' }],
     }
   })
   let enviados = 0
@@ -385,6 +457,7 @@ async function enviarLoteEmail(uid, ctx, recipients) {
 exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
 
   const data = request.data || {}
   const templateId = data.templateId
@@ -411,6 +484,15 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
     .slice(0, 20000)
     .map((r) => ({ email: String(r.email).trim(), nome: r.nome || '', produto: r.produto || '' }))
   if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum e-mail válido na lista.')
+
+  // Cota mensal do plano
+  const lim = limitesDoTenant(tenant)
+  if (lim.emailsMes > 0) {
+    const jaEnviados = await emailsEnviadosNoMes(uid)
+    if (jaEnviados + validos.length > lim.emailsMes) {
+      throw new HttpsError('resource-exhausted', `Limite do plano atingido: ${lim.emailsMes} e-mails/mês (já enviou ${jaEnviados}). Faça upgrade do plano.`)
+    }
+  }
 
   const lotes = []
   for (let i = 0; i < validos.length; i += loteSize) lotes.push(validos.slice(i, i + loteSize))
@@ -513,12 +595,62 @@ exports.processarLotesEmail = onSchedule(
 )
 
 /**
- * Recebe eventos do Resend (aberturas, cliques, entregas, bounces).
- * O usuário configura o webhook no Resend apontando para esta URL com ?userId=SEU_UID.
+ * Verifica a assinatura Svix do webhook do Resend.
+ * `secret` = o "Signing secret" do webhook no Resend (formato whsec_BASE64).
+ * Retorna true se a assinatura confere e o timestamp está dentro da tolerância.
+ */
+function verifySvixSignature(secret, headers, rawBody) {
+  try {
+    if (!secret || rawBody == null) return false
+    const svixId = headers['svix-id'] || headers['webhook-id']
+    const svixTs = headers['svix-timestamp'] || headers['webhook-timestamp']
+    const svixSig = headers['svix-signature'] || headers['webhook-signature']
+    if (!svixId || !svixTs || !svixSig) return false
+    // Anti-replay: rejeita eventos com mais de 5 min de diferença
+    const ts = Number(svixTs)
+    if (Number.isFinite(ts)) {
+      const nowSec = Math.floor(Date.now() / 1000)
+      if (Math.abs(nowSec - ts) > 300) return false
+    }
+    const key = String(secret).startsWith('whsec_') ? String(secret).slice(6) : String(secret)
+    const secretBytes = Buffer.from(key, 'base64')
+    const signedContent = `${svixId}.${svixTs}.${rawBody}`
+    const expected = crypto.createHmac('sha256', secretBytes).update(signedContent).digest('base64')
+    // O header traz uma lista separada por espaço, cada item "v1,<assinatura>"
+    const sigs = String(svixSig).split(' ').map((p) => p.split(',')[1]).filter(Boolean)
+    return sigs.some((s) => {
+      try {
+        const a = Buffer.from(s), b = Buffer.from(expected)
+        return a.length === b.length && crypto.timingSafeEqual(a, b)
+      } catch { return false }
+    })
+  } catch { return false }
+}
+
+/** Signing secret do webhook do Resend (env var ou config/resend). Vazio = verificação desligada. */
+async function getResendWebhookSecret() {
+  if (process.env.RESEND_WEBHOOK_SECRET) return process.env.RESEND_WEBHOOK_SECRET
+  try {
+    const snap = await db.doc('config/resend').get()
+    return snap.exists ? (snap.data().webhookSecret || '') : ''
+  } catch { return '' }
+}
+
+/**
+ * Recebe eventos do Resend (aberturas, cliques, entregas, bounces, reclamações).
+ * Atribuição do tenant: ?userId=UID na URL OU a tag `uid` no e-mail enviado.
+ * Segurança: se houver um signing secret configurado (RESEND_WEBHOOK_SECRET ou config/resend),
+ * a assinatura Svix é validada e eventos forjados são rejeitados (401).
  */
 exports.resendWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
-  const { userId } = req.query
-  if (!userId) { res.status(400).json({ error: 'userId obrigatório na query' }); return }
+  // Validação de assinatura (opt-in: só ativa se um secret estiver configurado)
+  const secret = await getResendWebhookSecret()
+  if (secret) {
+    const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : (typeof req.rawBody === 'string' ? req.rawBody : '')
+    if (!verifySvixSignature(secret, req.headers || {}, raw)) {
+      res.status(401).json({ error: 'assinatura inválida' }); return
+    }
+  }
 
   const body = parseRequestBody(req)
   const type = String(body.type || body.event || '')
@@ -530,6 +662,15 @@ exports.resendWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
   const link = d.click?.link || d.link || null
   const evento = type.replace('email.', '')
   const emailId = d.email_id || d.id || null
+
+  // Tenant: a tag `uid` (vai certinha em cada e-mail) tem prioridade sobre o ?userId= fixo da URL,
+  // pra um webhook único da conta compartilhada atribuir cada evento ao cliente correto.
+  const userId = tagMap.uid || req.query.userId || null
+  if (!userId) { res.status(400).json({ error: 'tenant não identificado (tag uid ou ?userId=)' }); return }
+
+  // Motivo do bounce/reclamação (o Resend manda em data.bounce / data.reason)
+  const motivo = d.bounce?.message || d.bounce?.reason || d.reason || null
+  const bounceTipo = d.bounce?.type || d.bounce?.subType || null
 
   try {
     // O Resend nem sempre reenvia as tags no webhook — recuperamos o contexto pelo email_id
@@ -547,6 +688,8 @@ exports.resendWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
       tipo: evento,
       email: emailTo,
       link: link || null,
+      motivo: motivo || null,
+      bounceTipo: bounceTipo || null,
       disparoId,
       leadId,
       funnelId,
@@ -566,6 +709,280 @@ exports.resendWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
   }
 
   res.status(200).json({ ok: true })
+})
+
+// ───────────────────────── Domínios de e-mail (Fase A · Resend) ─────────────────────────
+
+/** Chamada à API do Resend usando a key COMPARTILHADA da plataforma. */
+async function resendSharedApi(method, path, body) {
+  const key = await getSharedResendKey()
+  if (!key) throw new HttpsError('failed-precondition', 'O envio por domínio ainda não foi ativado pela plataforma. Fale com o suporte.')
+  const res = await fetch(`https://api.resend.com${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  let data = {}
+  try { data = await res.json() } catch (_) {}
+  if (!res.ok) throw new HttpsError('internal', data?.message || data?.error?.message || data?.error || `Resend respondeu ${res.status}`)
+  return data
+}
+
+/** Normaliza a lista de registros DNS que o Resend devolve. */
+function mapDnsRecords(records) {
+  return (Array.isArray(records) ? records : []).map((r) => ({
+    tipo: r.type || r.record || '',
+    nome: r.name || '',
+    valor: r.value || '',
+    prioridade: r.priority != null ? r.priority : null,
+    ttl: r.ttl || 'Auto',
+    status: r.status || '',
+  }))
+}
+
+const DOMINIO_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/
+
+/** Cria um domínio na conta compartilhada e guarda os registros DNS pro tenant. */
+exports.emailAddDomain = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  const nome = String(request.data?.name || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  if (!DOMINIO_RE.test(nome)) throw new HttpsError('invalid-argument', 'Informe um domínio válido (ex.: mail.sualoja.com).')
+
+  // Trava de quantidade (plano) — admin não tem limite
+  const ehAdmin = request.auth?.token?.email === ADMIN_EMAIL
+  if (!ehAdmin) {
+    const lim = limitesDoTenant(tenant)
+    const atuais = (await db.collection(`users/${uid}/emailDomains`).count().get()).data().count
+    if (lim.dominios != null && atuais >= lim.dominios) {
+      throw new HttpsError('resource-exhausted', `Seu plano permite ${lim.dominios} domínio(s). Faça upgrade para adicionar mais.`)
+    }
+  }
+  // Já existe?
+  const dup = await db.collection(`users/${uid}/emailDomains`).where('name', '==', nome).limit(1).get()
+  if (!dup.empty) throw new HttpsError('already-exists', 'Esse domínio já foi adicionado.')
+
+  const region = request.data?.region || 'us-east-1'
+  const created = await resendSharedApi('POST', '/domains', { name: nome, region })
+  const doc = {
+    resendId: created.id,
+    name: nome,
+    region,
+    status: created.status || 'pending',
+    records: mapDnsRecords(created.records),
+    senders: [],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }
+  const ref = await db.collection(`users/${uid}/emailDomains`).add(doc)
+  return { id: ref.id, ...doc, createdAt: null, updatedAt: null }
+})
+
+/** Lista os domínios do tenant (com status e registros DNS). */
+exports.emailListDomains = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const snap = await db.collection(`users/${uid}/emailDomains`).orderBy('createdAt', 'asc').get()
+  const dominios = snap.docs.map((d) => {
+    const x = d.data()
+    return {
+      id: d.id, name: x.name, status: x.status || 'pending', region: x.region || 'us-east-1',
+      records: x.records || [], senders: x.senders || [],
+      resendId: x.resendId || null,
+      createdAt: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,
+    }
+  })
+  const configurado = !!(await getSharedResendKey())
+  return { dominios, configurado }
+})
+
+/** Dispara/atualiza a verificação de um domínio no Resend e salva o novo status. */
+exports.emailVerifyDomain = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = request.data?.id
+  if (!id) throw new HttpsError('invalid-argument', 'id do domínio obrigatório.')
+  const ref = db.doc(`users/${uid}/emailDomains/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Domínio não encontrado.')
+  const resendId = snap.data().resendId
+  // Pede verificação e relê o estado atualizado
+  try { await resendSharedApi('POST', `/domains/${resendId}/verify`, null) } catch (_) {}
+  const fresh = await resendSharedApi('GET', `/domains/${resendId}`, null)
+  const patch = {
+    status: fresh.status || snap.data().status,
+    records: mapDnsRecords(fresh.records),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }
+  await ref.set(patch, { merge: true })
+  return { id, status: patch.status, records: patch.records }
+})
+
+/** Remove um domínio (do Resend e do Firestore). */
+exports.emailDeleteDomain = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = request.data?.id
+  if (!id) throw new HttpsError('invalid-argument', 'id do domínio obrigatório.')
+  const ref = db.doc(`users/${uid}/emailDomains/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Domínio não encontrado.')
+  try { await resendSharedApi('DELETE', `/domains/${snap.data().resendId}`, null) } catch (_) {}
+  await ref.delete()
+  return { ok: true }
+})
+
+/** Salva os remetentes (nome + e-mail) de um domínio. Os e-mails precisam ser @domínio. */
+exports.emailSaveDomainSenders = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = request.data?.id
+  const senders = Array.isArray(request.data?.senders) ? request.data.senders : []
+  if (!id) throw new HttpsError('invalid-argument', 'id do domínio obrigatório.')
+  const ref = db.doc(`users/${uid}/emailDomains/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Domínio não encontrado.')
+  const dom = snap.data().name
+  const limpos = senders
+    .filter((r) => r && typeof r.email === 'string')
+    .map((r) => ({ id: String(r.id || '').slice(0, 40) || crypto.randomUUID(), email: String(r.email).trim().toLowerCase(), nome: String(r.nome || '').slice(0, 80) }))
+    .filter((r) => r.email.endsWith(`@${dom}`))
+  await ref.set({ senders: limpos, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+  return { id, senders: limpos }
+})
+
+// ───────────────────────── Onboarding via Kiwify (venda do plano do app) ─────────────────────────
+
+const KIWIFY_SENHA_PADRAO = '123456789'
+
+/** Config do onboarding: config/kiwify = { produtos: {<idOuNome>: 'padrao'|'pro'}, webhookToken, fromEmail, fromName, appUrl }. */
+async function getKiwifyOnboardConfig() {
+  try { const s = await db.doc('config/kiwify').get(); return s.exists ? s.data() : {} } catch { return {} }
+}
+
+/** Valida a assinatura da Kiwify: ?signature = HMAC-SHA1(rawBody, token). Sem token = verificação desligada. */
+function verifyKiwifySignature(token, signature, rawBody) {
+  if (!token) return true
+  if (!signature || rawBody == null) return false
+  try {
+    const expected = crypto.createHmac('sha1', token).update(rawBody).digest('hex')
+    const a = Buffer.from(String(signature)), b = Buffer.from(expected)
+    return a.length === b.length && crypto.timingSafeEqual(a, b)
+  } catch { return false }
+}
+
+/** Descobre o plano ('padrao'|'pro') do produto comprado, via config/kiwify.produtos (por id ou nome). */
+function planoDoProdutoKiwify(cfg, product) {
+  const map = cfg.produtos || {}
+  if (product.id && map[String(product.id)]) return map[String(product.id)]
+  if (product.nome && map[product.nome]) return map[product.nome]
+  const nome = (product.nome || '').toLowerCase()
+  if (nome.includes('inici')) return 'inicial'
+  if (nome.includes('pro')) return 'pro'
+  if (nome.includes('padr')) return 'padrao'
+  return null
+}
+
+/** Acha ou cria o usuário pelo e-mail. Retorna { uid, criado }. */
+async function garantirUsuarioKiwify(email, nome) {
+  try {
+    const u = await admin.auth().getUserByEmail(email)
+    return { uid: u.uid, criado: false }
+  } catch (_) {
+    const u = await admin.auth().createUser({ email, password: KIWIFY_SENHA_PADRAO, displayName: nome || undefined })
+    return { uid: u.uid, criado: true }
+  }
+}
+
+/** E-mail de boas-vindas com login e senha padrão (enviado pela conta Resend compartilhada). */
+async function enviarBoasVindasKiwify(cfg, email, nome, plano) {
+  const key = await getSharedResendKey()
+  const from = cfg.fromEmail ? (cfg.fromName ? `${cfg.fromName} <${cfg.fromEmail}>` : cfg.fromEmail) : null
+  if (!key || !from) { console.warn('Boas-vindas Kiwify: sem RESEND_SHARED_KEY ou config/kiwify.fromEmail — e-mail não enviado.'); return }
+  const url = cfg.appUrl || 'https://app.autsend.com.br/rmkt'
+  const nomePlano = plano === 'pro' ? 'Pro' : plano === 'inicial' ? 'Inicial' : 'Padrão'
+  const html =
+    '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#333">' +
+    `<h2 style="color:#5b5eeb">Bem-vindo(a) ao Autsend! 🚀</h2>` +
+    `<p>Sua conta do plano <strong>${nomePlano}</strong> está ativa. Use os dados abaixo para entrar:</p>` +
+    `<div style="background:#f4f4fb;border-radius:12px;padding:16px;margin:16px 0">` +
+    `<p style="margin:4px 0"><strong>Acesso:</strong> <a href="${url}">${url}</a></p>` +
+    `<p style="margin:4px 0"><strong>E-mail:</strong> ${email}</p>` +
+    `<p style="margin:4px 0"><strong>Senha:</strong> ${KIWIFY_SENHA_PADRAO}</p>` +
+    `</div>` +
+    `<p style="color:#666;font-size:13px">Por segurança, <strong>troque sua senha</strong> no primeiro acesso.</p>` +
+    '</div>'
+  try {
+    await sendEmailViaResend({ apiKey: key, from, to: email, subject: 'Seu acesso ao Autsend está pronto 🚀', html })
+  } catch (e) { console.error('Erro no e-mail de boas-vindas Kiwify:', e) }
+}
+
+/**
+ * Webhook de onboarding: recebe as vendas do PLANO do app na Kiwify.
+ * Compra aprovada/renovação → cria/ativa a conta e seta o plano.
+ * Reembolso/chargeback/cancelamento → volta pro Free (congela, não deleta nada).
+ * Config em config/kiwify. Assinatura opcional via ?signature (config/kiwify.webhookToken).
+ */
+exports.kiwifyOnboarding = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
+  const cfg = await getKiwifyOnboardConfig()
+  const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : (typeof req.rawBody === 'string' ? req.rawBody : '')
+  if (cfg.webhookToken && !verifyKiwifySignature(cfg.webhookToken, req.query.signature, raw)) {
+    res.status(401).json({ error: 'assinatura inválida' }); return
+  }
+
+  const body = parseRequestBody(req)
+  const evento = extractEvent(body)
+  const customer = extractCustomer(body)
+  const product = extractProduct(body)
+  const orderId = extractOrderId(body)
+  const email = (customer.email || '').toLowerCase().trim()
+
+  // Registra o produto recebido (pro admin mapear com 1 clique no painel)
+  if (product.id || product.nome) {
+    try {
+      await db.doc('config/kiwify').set({ produtosVistos: { [String(product.id || product.nome)]: product.nome || String(product.id) } }, { merge: true })
+    } catch (_) { /* ignore */ }
+  }
+
+  if (!email) { res.status(200).json({ ok: true, ignored: 'sem e-mail no payload' }); return }
+
+  const ativa = evento === 'order_status.purchase_approved' || evento === 'subscription_renewed'
+  const revoga = ['order_status.refund', 'order_status.chargeback', 'subscription_canceled', 'subscription_overdue'].includes(evento)
+
+  try {
+    if (ativa) {
+      const plano = planoDoProdutoKiwify(cfg, product)
+      if (!plano) {
+        console.warn('Kiwify onboarding: produto sem plano mapeado.', { id: product.id, nome: product.nome })
+        res.status(200).json({ ok: true, ignored: 'produto não mapeado', product }); return
+      }
+      const { uid, criado } = await garantirUsuarioKiwify(email, customer.nome)
+      await db.doc(`tenants/${uid}`).set({
+        plano, status: 'approved', email, nome: customer.nome || null, origem: 'kiwify',
+        kiwifyOrderId: orderId || null,
+        ...(criado ? { mustChangePassword: true } : {}),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true })
+      if (criado) await enviarBoasVindasKiwify(cfg, email, customer.nome, plano)
+      res.status(200).json({ ok: true, plano, criado, uid }); return
+    }
+
+    if (revoga) {
+      try {
+        const u = await admin.auth().getUserByEmail(email)
+        await db.doc(`tenants/${u.uid}`).set({ plano: 'free', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        res.status(200).json({ ok: true, revogado: true, uid: u.uid }); return
+      } catch (_) {
+        res.status(200).json({ ok: true, ignored: 'usuário não encontrado para revogar' }); return
+      }
+    }
+
+    res.status(200).json({ ok: true, ignored: evento })
+  } catch (err) {
+    console.error('Erro no onboarding Kiwify:', err)
+    res.status(200).json({ ok: false, error: err.message })
+  }
 })
 
 // ───────────────────────── Webhook Custom (qualquer plataforma) ─────────────────────────
@@ -782,7 +1199,7 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product, prod
         subject,
         html: html + footer,
         headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Descadastrar>` },
-        tags: [{ name: 'leadId', value: leadRef.id }, { name: 'tipo', value: 'automacao' }],
+        tags: [{ name: 'uid', value: userId }, { name: 'leadId', value: leadRef.id }, { name: 'tipo', value: 'automacao' }],
       })
       emailId = r?.id || null
     } catch (err) {
@@ -848,7 +1265,8 @@ async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteI
       `You received this email because you interacted with our store. <a href="mailto:${unsub}?subject=Unsubscribe" style="color:#999">Unsubscribe</a></div>`
     const html = replaceVariables(tpl.inlined || tpl.html || '', lead, product) + footer
     const subject = replaceVariables(tpl.subject || 'Novidade', lead, product)
-    const r = await sendEmailViaResend({ apiKey: cfg.apiKey, from, to: contato.email, subject, html, headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` }, tags })
+    const tagsComUid = [{ name: 'uid', value: userId }, ...(Array.isArray(tags) ? tags : [])]
+    const r = await sendEmailViaResend({ apiKey: cfg.apiKey, from, to: contato.email, subject, html, headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` }, tags: tagsComUid })
     const funnelId = (tags || []).find((t) => t && t.name === 'funnelId')?.value
     await registrarEmailSend(userId, r?.id, { funnelId })
     return true
@@ -1562,5 +1980,304 @@ exports.linkPreview = onCall({ region: 'us-central1', timeoutSeconds: 30, memory
     return { url, domain, title, description, image }
   } catch (err) {
     return { url, domain, title: '', description: '', image: '', error: String(err?.message || err) }
+  }
+})
+
+// ─────────────────────────────────────────────────────────────
+// ADMIN — torre de comando (só josedeveloperjs@gmail.com)
+// ─────────────────────────────────────────────────────────────
+
+/** Lista todos os clientes (usuários do app) + status/plano/métricas do tenant. */
+exports.adminListClientes = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' }, async (request) => {
+  assertAdmin(request)
+  const users = []
+  let pageToken
+  do {
+    const res = await admin.auth().listUsers(1000, pageToken)
+    for (const u of res.users) {
+      users.push({
+        uid: u.uid,
+        email: u.email || '',
+        nome: u.displayName || '',
+        criadoEm: u.metadata?.creationTime || null,
+        ultimoLogin: u.metadata?.lastSignInTime || null,
+        disabled: !!u.disabled,
+      })
+    }
+    pageToken = res.pageToken
+  } while (pageToken)
+
+  const gSnap = await db.doc('config/global').get()
+  const enviosPausados = gSnap.exists ? gSnap.data().enviosPausados === true : false
+
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
+  const inicioMesMs = inicioMes.getTime()
+
+  const clientes = []
+  for (const c of users) {
+    if (c.email && c.email.toLowerCase() === ADMIN_EMAIL) continue // não lista você mesmo
+    const tSnap = await db.doc(`tenants/${c.uid}`).get()
+    const t = tSnap.exists ? tSnap.data() : {}
+
+    // Métricas REAIS calculadas dos dados do cliente
+    let enviadosTotal = 0, consumoMes = 0
+    try {
+      const ds = await db.collection(`users/${c.uid}/emailDisparos`).get()
+      ds.forEach((d) => {
+        const x = d.data(); const env = Number(x.enviados) || 0
+        enviadosTotal += env
+        const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0)
+        if (cm >= inicioMesMs) consumoMes += env
+      })
+    } catch (_) {}
+    let complained = 0, bounced = 0, leadsCount = 0
+    try { complained = (await db.collection(`users/${c.uid}/emailEvents`).where('tipo', '==', 'complained').count().get()).data().count } catch (_) {}
+    try { bounced = (await db.collection(`users/${c.uid}/emailEvents`).where('tipo', '==', 'bounced').count().get()).data().count } catch (_) {}
+    try { leadsCount = (await db.collection(`users/${c.uid}/leads`).count().get()).data().count } catch (_) {}
+
+    clientes.push({
+      ...c,
+      status: t.status || 'approved',
+      plano: t.plano || '',
+      cotaMensal: t.cotaMensal || 0,
+      consumoMes,
+      enviadosTotal,
+      leadsCount,
+      complained,
+      bounced,
+      complaintRate: enviadosTotal > 0 ? (complained / enviadosTotal) * 100 : 0,
+      bounceRate: enviadosTotal > 0 ? (bounced / enviadosTotal) * 100 : 0,
+      notas: t.notas || '',
+    })
+  }
+  return { clientes, enviosPausados }
+})
+
+/** Detalhe de um cliente: últimos disparos de e-mail + contagem de leads. */
+exports.adminGetClienteDetalhe = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  const tSnap = await db.doc(`tenants/${uid}`).get()
+  const tenant = tSnap.exists ? tSnap.data() : {}
+
+  let disparos = []
+  try {
+    const ds = await db.collection(`users/${uid}/emailDisparos`).orderBy('createdAt', 'desc').limit(8).get()
+    disparos = ds.docs.map((d) => {
+      const x = d.data()
+      return {
+        nome: x.nomeDisparo || x.nome || '—',
+        total: x.total || 0,
+        enviados: x.enviados || 0,
+        status: x.status || '',
+        aberturas: x.aberturas || 0,
+        cliques: x.cliques || 0,
+        createdAt: x.createdAt ? (x.createdAt.toMillis ? x.createdAt.toMillis() : x.createdAt) : null,
+      }
+    })
+  } catch (_) {}
+
+  let leadsCount = 0
+  try { const lc = await db.collection(`users/${uid}/leads`).count().get(); leadsCount = lc.data().count } catch (_) {}
+
+  // Reclamações e bounces recentes (com motivo) — evidência real da saúde de envio.
+  // Ordena por data (índice de campo único, sem índice composto) e filtra em memória.
+  let reclamacoes = []
+  try {
+    const rs = await db.collection(`users/${uid}/emailEvents`).orderBy('createdAt', 'desc').limit(300).get()
+    reclamacoes = rs.docs
+      .map((d) => d.data())
+      .filter((x) => x.tipo === 'complained' || x.tipo === 'bounced')
+      .slice(0, 20)
+      .map((x) => ({
+        tipo: x.tipo,
+        email: x.email || '—',
+        motivo: x.motivo || null,
+        bounceTipo: x.bounceTipo || null,
+        createdAt: x.createdAt ? (x.createdAt.toMillis ? x.createdAt.toMillis() : x.createdAt) : null,
+      }))
+  } catch (_) {}
+
+  return { tenant, disparos, leadsCount, reclamacoes }
+})
+
+/** Atualiza status/plano/cota/notas de um cliente (aprovar/pausar/banir). */
+exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  const p = request.data?.patch || {}
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() }
+  if (p.status && STATUS_VALIDOS.includes(p.status)) patch.status = p.status
+  if (p.plano && ['free', 'inicial', 'padrao', 'pro'].includes(p.plano)) patch.plano = p.plano
+  if (p.notas != null) patch.notas = String(p.notas).slice(0, 4000)
+  if (p.overrides && typeof p.overrides === 'object') {
+    const ov = {}
+    if (p.overrides.limites && typeof p.overrides.limites === 'object') {
+      ov.limites = {}
+      for (const k of ['trackers', 'instancias', 'emailsMes', 'dominios']) {
+        if (p.overrides.limites[k] != null) ov.limites[k] = Math.max(0, Number(p.overrides.limites[k]) || 0)
+      }
+    }
+    if (p.overrides.features && typeof p.overrides.features === 'object') {
+      ov.features = {}
+      for (const k of Object.keys(p.overrides.features)) ov.features[k] = !!p.overrides.features[k]
+    }
+    patch.overrides = ov
+  }
+  if (patch.status === 'approved') patch.aprovadoEm = admin.firestore.FieldValue.serverTimestamp()
+  await db.doc(`tenants/${uid}`).set(patch, { merge: true })
+  return { ok: true }
+})
+
+/** Kill switch global: pausa/religa TODOS os envios. */
+exports.adminSetKillSwitch = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const pausar = request.data?.pausar === true
+  await db.doc('config/global').set({ enviosPausados: pausar, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+  return { ok: true, enviosPausados: pausar }
+})
+
+/** Lê a config do onboarding Kiwify (+ produtos já vistos pelos webhooks, pra facilitar o mapeamento). */
+exports.adminGetKiwifyConfig = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const snap = await db.doc('config/kiwify').get()
+  const cfg = snap.exists ? snap.data() : {}
+  return {
+    produtos: cfg.produtos || {},
+    produtosVistos: cfg.produtosVistos || {},
+    fromEmail: cfg.fromEmail || '',
+    fromName: cfg.fromName || '',
+    appUrl: cfg.appUrl || '',
+    webhookToken: cfg.webhookToken || '',
+  }
+})
+
+/** Salva a config do onboarding Kiwify. */
+exports.adminSetKiwifyConfig = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const d = request.data || {}
+  const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() }
+  if (d.produtos && typeof d.produtos === 'object') {
+    const map = {}
+    for (const [k, v] of Object.entries(d.produtos)) {
+      const key = String(k).trim()
+      if (key && ['inicial', 'padrao', 'pro'].includes(v)) map[key] = v
+    }
+    patch.produtos = map
+  }
+  if (d.fromEmail != null) patch.fromEmail = String(d.fromEmail).trim()
+  if (d.fromName != null) patch.fromName = String(d.fromName).trim().slice(0, 80)
+  if (d.appUrl != null) patch.appUrl = String(d.appUrl).trim()
+  if (d.webhookToken != null) patch.webhookToken = String(d.webhookToken).trim()
+  await db.doc('config/kiwify').set(patch, { merge: true })
+  return { ok: true }
+})
+
+// ─────────────────────────────────────────────────────────────
+// 2FA do admin (TOTP / Google Authenticator) — leve, sem Identity Platform
+// ─────────────────────────────────────────────────────────────
+const B32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+function base32Decode(str) {
+  let bits = ''; const out = []
+  str = String(str || '').replace(/=+$/, '').toUpperCase().replace(/[^A-Z2-7]/g, '')
+  for (const c of str) { const v = B32_ALPHABET.indexOf(c); if (v < 0) continue; bits += v.toString(2).padStart(5, '0') }
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.substr(i, 8), 2))
+  return Buffer.from(out)
+}
+function totpAt(secretB32, offset = 0) {
+  const key = base32Decode(secretB32)
+  let counter = Math.floor(Date.now() / 1000 / 30) + offset
+  const buf = Buffer.alloc(8)
+  for (let i = 7; i >= 0; i--) { buf[i] = counter & 0xff; counter = Math.floor(counter / 256) }
+  const h = crypto.createHmac('sha1', key).update(buf).digest()
+  const o = h[h.length - 1] & 0xf
+  const code = ((h[o] & 0x7f) << 24) | ((h[o + 1] & 0xff) << 16) | ((h[o + 2] & 0xff) << 8) | (h[o + 3] & 0xff)
+  return (code % 1000000).toString().padStart(6, '0')
+}
+function totpValido(secret, code) {
+  code = String(code || '').replace(/\D/g, '')
+  if (code.length !== 6 || !secret) return false
+  return [-1, 0, 1].some((off) => totpAt(secret, off) === code)
+}
+function randomBase32(len = 32) {
+  const bytes = crypto.randomBytes(len)
+  let out = ''
+  for (let i = 0; i < len; i++) out += B32_ALPHABET[bytes[i] % 32]
+  return out
+}
+
+exports.admin2faStatus = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const s = await db.doc('config/adminSecurity').get()
+  return { enrolled: !!(s.exists && s.data().enrolled) }
+})
+
+exports.admin2faSetup = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const secret = randomBase32(32)
+  await db.doc('config/adminSecurity').set({ pendingSecret: secret, enrolled: false }, { merge: true })
+  const email = request.auth?.token?.email || 'admin'
+  const otpauth = `otpauth://totp/Autsend:${encodeURIComponent(email)}?secret=${secret}&issuer=Autsend&period=30&digits=6`
+  return { secret, otpauth }
+})
+
+exports.admin2faConfirm = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const s = await db.doc('config/adminSecurity').get()
+  const sec = s.exists && s.data().pendingSecret
+  if (!sec) throw new HttpsError('failed-precondition', 'Gere a chave primeiro.')
+  if (!totpValido(sec, request.data?.code)) throw new HttpsError('invalid-argument', 'Código inválido. Confira o horário do celular.')
+  await db.doc('config/adminSecurity').set({ secret: sec, enrolled: true, pendingSecret: admin.firestore.FieldValue.delete() }, { merge: true })
+  return { ok: true }
+})
+
+exports.admin2faVerify = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const s = await db.doc('config/adminSecurity').get()
+  if (!(s.exists && s.data().enrolled)) return { ok: true, enrolled: false }
+  if (!totpValido(s.data().secret, request.data?.code)) throw new HttpsError('permission-denied', 'Código inválido.')
+  return { ok: true, enrolled: true }
+})
+
+exports.admin2faDisable = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const s = await db.doc('config/adminSecurity').get()
+  if (s.exists && s.data().enrolled && !totpValido(s.data().secret, request.data?.code)) {
+    throw new HttpsError('permission-denied', 'Código inválido.')
+  }
+  await db.doc('config/adminSecurity').set({ enrolled: false, secret: admin.firestore.FieldValue.delete() }, { merge: true })
+  return { ok: true }
+})
+
+// ─────────────────────────────────────────────────────────────
+// Planos + impersonação
+// ─────────────────────────────────────────────────────────────
+
+/** Plano/limites/status do próprio usuário logado (pra o front travar features). */
+exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const s = await db.doc(`tenants/${uid}`).get()
+  const t = s.exists ? s.data() : {}
+  const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  // Sem plano = Free (o admin define Padrão/Pro). Nada é deletado; o excedente fica congelado.
+  const plano = t.plano || 'free'
+  return { plano, status: t.status || 'approved', overrides: t.overrides || null, mustChangePassword: !!t.mustChangePassword, isAdmin: isAdm }
+})
+
+/** Admin gera um token pra ENTRAR COMO o cliente (impersonação segura, sem senha). */
+exports.adminImpersonar = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  try {
+    const token = await admin.auth().createCustomToken(uid, { impersonatedBy: ADMIN_EMAIL })
+    return { token }
+  } catch (err) {
+    console.error('adminImpersonar/createCustomToken falhou:', err)
+    // Causa mais comum: a service account das functions não tem a role "Service Account Token Creator".
+    throw new HttpsError('internal', `Falha ao gerar token: ${err.message}. Provável falta da role 'Service Account Token Creator' na service account das functions.`)
   }
 })

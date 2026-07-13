@@ -7,10 +7,14 @@ import { getProductGroups, saveProductGroup, deleteProductGroup, getProducts, ge
 import { LOJAS, lojaByKey } from '../../lib/lojas'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
+import MelhorarPlano from '../../components/MelhorarPlano'
+import { usePlano } from '../../lib/PlanoContext'
 import { Package, Plus, Trash2, Loader2, Check, ChevronDown, Pencil, X, Search } from 'lucide-react'
 
 export default function EmailProdutos() {
   const [user] = useAuthState(auth)
+  const { limiteDe } = usePlano()
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [grupos, setGrupos] = useState([])
   const [lojaPopup, setLojaPopup] = useState(null)
@@ -90,6 +94,13 @@ export default function EmailProdutos() {
   const criarGrupo = async () => {
     const nome = novoNome.trim()
     if (!nome) { toast.error('Dê um nome ao grupo.'); return }
+    const limite = limiteDe('gruposProduto')
+    if (grupos.length >= limite) {
+      toast.error(`Seu plano permite ${limite} grupo${limite === 1 ? '' : 's'} de produtos. Faça upgrade pra criar mais.`)
+      setShowCriar(false)
+      setUpgradeOpen(true)
+      return
+    }
     setCriando(true)
     try {
       await saveProductGroup(user.uid, null, { nome, produtos: [] })
@@ -100,8 +111,19 @@ export default function EmailProdutos() {
     } catch (err) { toast.error(err.message || 'Erro ao criar') } finally { setCriando(false) }
   }
 
+  const atingiuLimiteProdutos = (grupo) => {
+    const limite = limiteDe('produtosPorGrupo')
+    if ((grupo.produtos || []).length >= limite) {
+      toast.error(`Seu plano permite ${limite} produto${limite === 1 ? '' : 's'} por grupo. Faça upgrade pra adicionar mais.`)
+      setUpgradeOpen(true)
+      return true
+    }
+    return false
+  }
+
   const toggleProduto = async (grupo, nome) => {
     const jaTem = (grupo.produtos || []).includes(nome)
+    if (!jaTem && atingiuLimiteProdutos(grupo)) return
     const produtos = jaTem ? grupo.produtos.filter((p) => p !== nome) : [...(grupo.produtos || []), nome]
     setGrupos((prev) => prev.map((g) => (g.id === grupo.id ? { ...g, produtos } : g)))
     try {
@@ -113,6 +135,7 @@ export default function EmailProdutos() {
     const nome = (addInput[grupo.id] || '').trim()
     if (!nome) return
     if ((grupo.produtos || []).includes(nome)) { toast('Esse produto já está no grupo.', { icon: 'ℹ️' }); return }
+    if (atingiuLimiteProdutos(grupo)) return
     const produtos = [...(grupo.produtos || []), nome]
     setGrupos((prev) => prev.map((g) => (g.id === grupo.id ? { ...g, produtos } : g)))
     setNomesDisponiveis((prev) => (prev.includes(nome) ? prev : [...prev, nome].sort()))
@@ -170,6 +193,7 @@ export default function EmailProdutos() {
         <button onClick={() => { setNovoNome(''); setShowCriar(true) }} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Criar grupo</button>
       }
     >
+      <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
       <div className="space-y-3">
         {nomesDisponiveis.length === 0 && (
           <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
