@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { Check, ArrowRight, Star, LogIn, ChevronDown } from 'lucide-react'
+import { Check, ArrowRight, LogIn, ChevronDown } from 'lucide-react'
 import autsendLogo from '../assets/autsendlogo.png'
 import gmailIcon from '../assets/iconshome/gmailicon.png'
 import whatsappIcon from '../assets/iconshome/whtsappicon.png'
@@ -13,8 +13,6 @@ import mock3 from '../assets/carrosell/mockup-celular-3.png'
 import mock4 from '../assets/carrosell/mockup-celular-4.png'
 import mock5 from '../assets/carrosell/mockup-celular-5.png'
 import mock6 from '../assets/carrosell/mockup-ceular-6.png'
-import joseFoto from '../assets/propa/jose.png'
-import codenxtLogo from '../assets/codenxt.png'
 import garantia from '../assets/garantia.png'
 import astrosend from '../assets/astrosend/astrosend.png'
 import astroFoguete from '../assets/astrosend/astro-foguete.png'
@@ -101,11 +99,6 @@ const PLANOS_LP = [
   { key: 'pro', preco: 'R$197', tag: 'Máximo', destaque: false, features: ['20 trackers', 'WhatsApp ilimitado · 4 instâncias', '10.000 e-mails/mês · 2 domínios', 'Limites maiores e prioridade'] },
 ]
 
-const DEPOIMENTOS = [
-  { nome: 'Seu cliente aqui', papel: 'Infoprodutor', texto: 'Espaço para um depoimento real de quem usa o Autsend. Edite este texto quando tiver.' },
-  { nome: 'Seu cliente aqui', papel: 'Afiliado', texto: 'Outro depoimento de resultado — recuperação de vendas, conversão, faturamento.' },
-  { nome: 'Seu cliente aqui', papel: 'Agência', texto: 'Prova social de uma agência ou operação maior usando a plataforma no dia a dia.' },
-]
 
 const FAQS = [
   { q: 'O que é o Autsend?', a: 'Uma plataforma de remarketing automático por WhatsApp e E-mail. Você captura os leads das suas vendas e dispara a mensagem certa na hora certa — recuperando vendas no automático.' },
@@ -249,13 +242,6 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ── Carrossel de mockups ── */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-          <motion.h2 variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="text-2xl sm:text-4xl font-extrabold text-stone-800 text-center text-balance mb-3">Conheça algumas das nossas funções</motion.h2>
-          <motion.p variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={1} className="text-stone-500 text-center max-w-xl mx-auto mb-8 sm:mb-10">Tudo o que você precisa pra capturar, converter e recuperar vendas — num painel só, direto do seu celular ou computador.</motion.p>
-          <MockupCarousel />
-        </section>
-
         {/* ── Demo do funil (interativo) ── */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
           <motion.h2 variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="text-2xl sm:text-4xl font-extrabold text-stone-800 text-center text-balance mb-3">Experimente a real estratégia do Autsend</motion.h2>
@@ -269,41 +255,11 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ── Depoimentos ── */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-          <motion.h2 variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="text-2xl sm:text-4xl font-extrabold text-stone-800 text-center text-balance">Quem usa, recomenda</motion.h2>
-          <div className="mt-10 grid sm:grid-cols-3 gap-4">
-            {DEPOIMENTOS.map((d, i) => (
-              <motion.div key={i} variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.3 }} custom={i}
-                className="rounded-2xl p-5 bg-white/50 backdrop-blur-xl border border-white/50 shadow-[0_10px_30px_-12px_rgba(74,70,222,0.12)]">
-                <div className="flex gap-0.5 mb-3">{Array.from({ length: 5 }).map((_, s) => <Star key={s} className="w-4 h-4 fill-amber-400 text-amber-400" />)}</div>
-                <p className="text-sm text-stone-600 leading-relaxed mb-4">“{d.texto}”</p>
-                <div className="flex items-center gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-violet-600 text-white text-sm font-bold">{d.nome.charAt(0)}</span>
-                  <span className="min-w-0"><span className="block text-sm font-semibold text-stone-800 truncate">{d.nome}</span><span className="block text-[11px] text-stone-400">{d.papel}</span></span>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* ── Quem está por trás ── */}
-        <section className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-          <motion.h2 variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="text-2xl sm:text-4xl font-extrabold text-stone-800 text-center text-balance mb-10">Quem está por trás</motion.h2>
-          <div className="flex flex-col lg:flex-row-reverse items-center gap-8 lg:gap-12">
-            <Float className="relative w-full max-w-[240px] sm:max-w-xs lg:max-w-sm shrink-0" y={12} dur={5}>
-              <div aria-hidden className="absolute -bottom-4 right-0 w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-gradient-to-br from-primary-500/45 to-pink-500/35 blur-3xl" />
-              <img src={joseFoto} alt="" className="relative w-full h-auto object-contain drop-shadow-[0_30px_45px_rgba(30,27,75,0.35)]" />
-            </Float>
-            <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="flex-1 text-center lg:text-left">
-              <img src={codenxtLogo} alt="CODENXT" className="h-9 sm:h-11 w-auto object-contain mx-auto lg:ml-auto lg:mr-0" />
-              <p className="mt-5 text-stone-500 leading-relaxed italic">
-                Desenvolvido e administrado pela equipe da{' '}
-                <a href="https://codenxt.online" target="_blank" rel="noopener noreferrer" className="not-italic font-semibold text-primary-600 hover:text-primary-700 underline decoration-primary-300 underline-offset-2">CODENXT</a>
-                {' '}— um time de desenvolvedores especialistas em <strong className="not-italic font-semibold text-stone-700">Direct Response</strong> e <strong className="not-italic font-semibold text-stone-700">E-commerce global</strong>. Mestres em DR e Dropshipping, construímos ferramentas de quem realmente vende. Aqui você não está sozinho — está ao lado dos melhores.
-              </p>
-            </motion.div>
-          </div>
+        {/* ── Carrossel de mockups ── */}
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+          <motion.h2 variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="text-2xl sm:text-4xl font-extrabold text-stone-800 text-center text-balance mb-3">Conheça algumas das nossas funções</motion.h2>
+          <motion.p variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} custom={1} className="text-stone-500 text-center max-w-xl mx-auto mb-8 sm:mb-10">Tudo o que você precisa pra capturar, converter e recuperar vendas — num painel só, direto do seu celular ou computador.</motion.p>
+          <MockupCarousel />
         </section>
 
         {/* ── Planos ── */}
