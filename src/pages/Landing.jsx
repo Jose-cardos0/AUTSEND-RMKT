@@ -290,13 +290,13 @@ export default function Landing() {
         {/* ── Quem está por trás ── */}
         <section className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
           <motion.h2 variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="text-2xl sm:text-4xl font-extrabold text-stone-800 text-center text-balance mb-10">Quem está por trás</motion.h2>
-          <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
+          <div className="flex flex-col lg:flex-row-reverse items-center gap-8 lg:gap-12">
             <Float className="relative w-full max-w-[240px] sm:max-w-xs lg:max-w-sm shrink-0" y={12} dur={5}>
               <div aria-hidden className="absolute -bottom-4 right-0 w-40 h-40 sm:w-48 sm:h-48 rounded-full bg-gradient-to-br from-primary-500/45 to-pink-500/35 blur-3xl" />
               <img src={joseFoto} alt="" className="relative w-full h-auto object-contain drop-shadow-[0_30px_45px_rgba(30,27,75,0.35)]" />
             </Float>
             <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="flex-1 text-center lg:text-left">
-              <img src={codenxtLogo} alt="CODENXT" className="h-9 sm:h-11 w-auto object-contain mx-auto lg:mx-0" />
+              <img src={codenxtLogo} alt="CODENXT" className="h-9 sm:h-11 w-auto object-contain mx-auto lg:ml-auto lg:mr-0" />
               <p className="mt-5 text-stone-500 leading-relaxed italic">
                 Desenvolvido e administrado pela equipe da{' '}
                 <a href="https://codenxt.online" target="_blank" rel="noopener noreferrer" className="not-italic font-semibold text-primary-600 hover:text-primary-700 underline decoration-primary-300 underline-offset-2">CODENXT</a>
@@ -308,7 +308,7 @@ export default function Landing() {
 
         {/* ── Planos ── */}
         <section id="planos" className="relative max-w-6xl mx-auto px-4 mt-16 sm:px-6 py-12 sm:py-16 scroll-mt-20">
-          <div aria-hidden className="hidden lg:block absolute left-[-7%] top-[26%] -translate-y-1/2 w-[480px] xl:w-[600px] -z-10 pointer-events-none">
+          <div aria-hidden className="hidden lg:block absolute left-[-3%] top-[26%] -translate-y-1/2 w-[260px] xl:w-[320px] -z-10 pointer-events-none">
             <Float y={16} dur={6}><img src={astroFoguete} alt="" className="w-full max-w-none select-none" style={{ transform: 'scaleX(-1)' }} /></Float>
           </div>
           <div aria-hidden className="lg:hidden absolute right-[-8%] top-[-5%] w-52 sm:w-72 -z-10 pointer-events-none">
