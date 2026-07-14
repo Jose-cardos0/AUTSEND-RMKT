@@ -1490,6 +1490,45 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product, prod
 async function dispararAcoes(userId, leadRef, evento, customer, product, produtos) {
   await tryAutoSend(userId, leadRef, evento, customer, product, produtos)
   await tryAutoSendEmail(userId, leadRef, evento, customer, product, produtos)
+  await tryAutoSendSMS(userId, leadRef, evento, customer, product, produtos)
+}
+
+/**
+ * Envia o SMS automático configurado para o evento (Automações de SMS — só internacional).
+ * Ignora leads do Brasil (+55) e inválidos. Não altera o status do lead (canal secundário) — só grava smsLogs.
+ */
+async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produtos) {
+  try {
+    if (!customer.telefone) return
+    const norm = normalizarE164Internacional(customer.telefone)
+    if (!norm.ok) return // ignora Brasil (+55) e números inválidos
+    const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
+    const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const grupo = acharGrupo(grupos, produtos, product)
+    let auto = null
+    if (grupo) {
+      const gSnap = await db.doc(`users/${userId}/smsAutomations/${grupo.id}__${evento}`).get()
+      if (gSnap.exists) { const d = gSnap.data(); if (d.ativo === true && d.mensagem) auto = d }
+    }
+    if (!auto) {
+      const globalSnap = await db.doc(`users/${userId}/smsAutomations/${evento}`).get()
+      if (globalSnap.exists) { const d = globalSnap.data(); if (d.ativo === true && d.mensagem && !d.grupoId && !d.produto) auto = d }
+    }
+    if (!auto) return
+    const cfg = await getTelnyxConfig()
+    if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) return
+    const texto = replaceVariables(auto.mensagem || '', { ...customer, telefone: norm.e164 }, product)
+    let ok = true
+    let erroMsg = null
+    try { await enviarSMSTelnyx(cfg, norm.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
+    await db.collection('users').doc(userId).collection('smsLogs').add({
+      leadId: leadRef.id, evento, produto: product.nome || '', telefone: norm.e164, nome: customer.nome || '',
+      status: ok ? 'enviado' : 'erro', erroMsg, mensagem: texto,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+  } catch (err) {
+    console.error('Erro no auto-send de SMS:', err)
+  }
 }
 
 // ───────────────────────── Funil de e-mail: helpers ─────────────────────────
@@ -1529,7 +1568,7 @@ async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteI
 async function inscreverNoFunil(userId, funnelId, funnel, contato, canal = 'email') {
   const inicio = nodeInicio(funnel)
   const primeiro = inicio ? proximoNode(funnel, inicio.id) : null
-  const idKey = canal === 'whatsapp' ? (contato?.telefone || '') : (contato?.email || '')
+  const idKey = (canal === 'whatsapp' || canal === 'sms') ? (contato?.telefone || '') : (contato?.email || '')
   if (!primeiro || !idKey) return false
   await db.collection('users').doc(userId).collection('funnelRuns').add({
     funnelId,
@@ -1567,6 +1606,20 @@ async function enviarMensagemFunil(userId, mensagem, contato) {
     const res = await fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     return res.ok
   } catch (err) { console.error('enviarMensagemFunil', err); return false }
+}
+
+/** Envia um SMS (Telnyx) de um nó de funil. Só internacional — ignora BR (+55). */
+async function enviarMensagemFunilSMS(userId, mensagem, contato) {
+  try {
+    if (!contato?.telefone || !mensagem) return false
+    const norm = normalizarE164Internacional(contato.telefone)
+    if (!norm.ok) return false
+    const cfg = await getTelnyxConfig()
+    if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) return false
+    const texto = replaceVariables(mensagem, { nome: contato.nome || '', telefone: norm.e164, email: contato.email || '' }, { nome: contato.produto || '' })
+    await enviarSMSTelnyx(cfg, norm.e164, texto)
+    return true
+  } catch (err) { console.error('enviarMensagemFunilSMS', err); return false }
 }
 
 /** Condição do funil de WhatsApp: o contato fez uma compra aprovada depois de entrar? (por e-mail ou telefone) */
@@ -1964,7 +2017,7 @@ exports.enrollFunnel = onCall({ region: 'us-central1', timeoutSeconds: 120 }, as
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const { funnelId, recipients, canal } = request.data || {}
   if (!funnelId) throw new HttpsError('invalid-argument', 'Escolha um funil.')
-  const col = canal === 'whatsapp' ? 'whatsappFunnels' : 'emailFunnels'
+  const col = canal === 'whatsapp' ? 'whatsappFunnels' : canal === 'sms' ? 'smsFunnels' : 'emailFunnels'
   const fs = await db.doc(`users/${uid}/${col}/${funnelId}`).get()
   if (!fs.exists) throw new HttpsError('not-found', 'Funil não encontrado.')
   const funnel = fs.data()
@@ -1977,6 +2030,17 @@ exports.enrollFunnel = onCall({ region: 'us-central1', timeoutSeconds: 120 }, as
     const validos = lista.filter((r) => r && String(r.telefone || '').replace(/\D/g, '').length >= 8).slice(0, 2000)
     for (const r of validos) {
       await inscreverNoFunil(uid, funnelId, funnel, { telefone: String(r.telefone).replace(/\D/g, ''), nome: r.nome || '' }, 'whatsapp')
+      n++
+    }
+  } else if (canal === 'sms') {
+    // SMS: só números internacionais (E.164). Ignora BR (+55) e inválidos.
+    const validos = []
+    for (const r of lista.slice(0, 2000)) {
+      const norm = normalizarE164Internacional(r?.telefone || r?.numero || '')
+      if (norm.ok) validos.push({ telefone: norm.e164, nome: r.nome || '' })
+    }
+    for (const r of validos) {
+      await inscreverNoFunil(uid, funnelId, funnel, r, 'sms')
       n++
     }
   } else {
@@ -2009,7 +2073,7 @@ exports.processarFunis = onSchedule(
 )
 
 async function processarFunnelRun(userId, runRef, run, cache) {
-  const funnelCol = run.canal === 'whatsapp' ? 'whatsappFunnels' : 'emailFunnels'
+  const funnelCol = run.canal === 'whatsapp' ? 'whatsappFunnels' : run.canal === 'sms' ? 'smsFunnels' : 'emailFunnels'
   const key = `${userId}/${funnelCol}/${run.funnelId}`
   if (!(key in cache)) {
     const fs = await db.doc(`users/${userId}/${funnelCol}/${run.funnelId}`).get()
@@ -2033,6 +2097,17 @@ async function processarFunnelRun(userId, runRef, run, cache) {
           try {
             await db.collection('users').doc(userId).collection('funnelSends').add({
               funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'whatsapp',
+              contato: run.contato || {}, status: ok ? 'enviado' : 'erro',
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+          } catch (_) {}
+        }
+      } else if (run.canal === 'sms') {
+        if (node.data?.mensagem) {
+          const ok = await enviarMensagemFunilSMS(userId, node.data.mensagem, run.contato)
+          try {
+            await db.collection('users').doc(userId).collection('funnelSends').add({
+              funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'sms',
               contato: run.contato || {}, status: ok ? 'enviado' : 'erro',
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             })
@@ -2072,7 +2147,7 @@ async function processarFunnelRun(userId, runRef, run, cache) {
     if (node.type === 'condicao') {
       const desde = run.enteredAt?.toMillis ? run.enteredAt.toMillis() : 0
       let ocorreu = false
-      if (run.canal === 'whatsapp') {
+      if (run.canal === 'whatsapp' || run.canal === 'sms') {
         ocorreu = await comprouDesde(userId, run.contato, desde)
       } else {
         const tipo = node.data?.evento || 'opened'

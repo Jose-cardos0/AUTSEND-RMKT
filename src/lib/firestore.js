@@ -629,6 +629,40 @@ export async function deleteWhatsappFunnel(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'whatsappFunnels', id))
 }
 
+// ── Funil de SMS (Telnyx / internacional) ──
+
+export async function getSmsFunnels(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'smsFunnels'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
+}
+
+export async function saveSmsFunnel(uid, id, data) {
+  if (id) {
+    await setDoc(doc(db, 'users', uid, 'smsFunnels', id), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(collection(db, 'users', uid, 'smsFunnels'), removeUndefined({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+  return ref.id
+}
+
+export async function deleteSmsFunnel(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'smsFunnels', id))
+}
+
+// ── Automações de SMS (por grupo de produto × evento) ──
+
+export async function getSmsAutomations(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'smsAutomations'))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
+export async function saveSmsAutomationGrupo(uid, grupoId, evento, data) {
+  const ref = doc(db, 'users', uid, 'smsAutomations', `${grupoId}__${evento}`)
+  await setDoc(ref, removeUndefined({ grupoId, evento, ...data, updatedAt: serverTimestamp() }), { merge: true })
+}
+
 /** Registros de envio do funil (um por e-mail enviado por um nó "Enviar"). */
 export async function getFunnelSends(uid) {
   const snap = await getDocs(collection(db, 'users', uid, 'funnelSends'))
