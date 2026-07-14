@@ -23,6 +23,7 @@ import EmailProdutos from './pages/email/EmailProdutos'
 import EmailDisparos from './pages/email/EmailDisparos'
 import EmailMetricas from './pages/email/EmailMetricas'
 import EmailEmBreve from './pages/email/EmailEmBreve'
+import SmsDisparos from './pages/sms/SmsDisparos'
 import PageLoader from './components/PageLoader'
 import { ConfirmProvider } from './components/ConfirmDialog'
 import { PlanoProvider, usePlano } from './lib/PlanoContext'
@@ -135,6 +136,7 @@ export default function App() {
           <Route path="email/automacoes" element={<EmailAutomacoes />} />
           <Route path="email/disparos" element={<EmailDisparos />} />
           <Route path="email/metricas" element={<EmailMetricas />} />
+          <Route path="sms/disparos" element={<SmsDisparos />} />
           <Route
             path="email/funil"
             element={

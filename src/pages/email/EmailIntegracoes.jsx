@@ -48,6 +48,7 @@ export default function EmailIntegracoes() {
   const [providers, setProviders] = useState([])
   // Domínios (Fase A · conta compartilhada)
   const [dominios, setDominios] = useState([])
+  const [carregandoDom, setCarregandoDom] = useState(true)
   const [domConfigurado, setDomConfigurado] = useState(true)
   const [novoDom, setNovoDom] = useState('')
   const [criandoDom, setCriandoDom] = useState(false)
@@ -104,7 +105,8 @@ export default function EmailIntegracoes() {
 
   // ───── Domínios ─────
   const carregarDominios = async () => {
-    try { const r = await listDomains(); setDominios(r.dominios || []); setDomConfigurado(!!r.configurado) } catch (_) { /* ignore */ }
+    setCarregandoDom(true)
+    try { const r = await listDomains(); setDominios(r.dominios || []); setDomConfigurado(!!r.configurado) } catch (_) { /* ignore */ } finally { setCarregandoDom(false) }
   }
   useEffect(() => { if (user?.uid) carregarDominios() }, [user?.uid])
   // Free não usa domínios: força a aba API's e esconde a de Domínios.
@@ -318,7 +320,12 @@ export default function EmailIntegracoes() {
             </div>
           )}
 
-          {dominios.length === 0 ? (
+          {carregandoDom ? (
+            <div className="flex flex-col items-center justify-center py-10 text-stone-400 gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+              <p className="text-sm">Carregando seus domínios…</p>
+            </div>
+          ) : dominios.length === 0 ? (
             <div className="text-center py-6">
               <p className="text-sm text-stone-500 mb-3">Nenhum domínio conectado ainda.</p>
               <button onClick={() => { setNovoDom(''); setShowAddDom(true) }} disabled={!domConfigurado} className="btn-primary min-h-[44px] mx-auto disabled:opacity-50"><Plus className="w-4 h-4" /> Adicionar domínio</button>

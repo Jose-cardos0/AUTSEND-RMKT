@@ -61,7 +61,7 @@ export default function Admin() {
   const [instExp, setInstExp] = useState('') // instância expandida
   const [hoverTpl, setHoverTpl] = useState(null) // template de e-mail em hover (preview)
   const [hoverRect, setHoverRect] = useState(null)
-  const [form, setForm] = useState({ plano: 'free', notas: '', limites: { trackers: 0, instancias: 0, emailsMes: 0, dominios: 0 } })
+  const [form, setForm] = useState({ plano: 'free', notas: '', limites: { trackers: 0, instancias: 0, emailsMes: 0, smsMes: 0, dominios: 0 } })
   const [salvando, setSalvando] = useState(false)
   const [impersonando, setImpersonando] = useState(false)
   const [togglingKill, setTogglingKill] = useState(false)
@@ -458,7 +458,7 @@ export default function Admin() {
                       <div>
                         <label className="block text-xs font-medium text-stone-600 mb-1.5">Limites</label>
                         <div className="grid grid-cols-2 gap-2">
-                          {['emailsMes', 'instancias', 'trackers', 'dominios'].map((k) => (
+                          {['emailsMes', 'smsMes', 'instancias', 'trackers', 'dominios'].map((k) => (
                             <div key={k}>
                               <span className="block text-[11px] text-stone-500 mb-0.5">{LIMITE_LABELS[k]}</span>
                               <input type="number" min={0} value={form.limites[k]} onChange={(e) => setForm((f) => ({ ...f, limites: { ...f.limites, [k]: e.target.value } }))} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 tabular-nums" />

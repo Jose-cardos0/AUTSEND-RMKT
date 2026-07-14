@@ -38,10 +38,10 @@ async function assertTenantAtivo(uid) {
 
 // Limites por plano (espelho do src/lib/plans.js)
 const PLAN_LIMITS = {
-  free: { trackers: 1, instancias: 0, emailsMes: 50, dominios: 0 },
-  inicial: { trackers: 2, instancias: 1, emailsMes: 500, dominios: 0 },
-  padrao: { trackers: 10, instancias: 2, emailsMes: 3000, dominios: 1 },
-  pro: { trackers: 20, instancias: 4, emailsMes: 10000, dominios: 2 },
+  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0 },
+  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 300, dominios: 0 },
+  padrao: { trackers: 10, instancias: 2, emailsMes: 3000, smsMes: 1000, dominios: 1 },
+  pro: { trackers: 20, instancias: 4, emailsMes: 10000, smsMes: 2000, dominios: 2 },
 }
 function limitesDoTenant(t) {
   const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
@@ -595,6 +595,237 @@ exports.processarLotesEmail = onSchedule(
     return null
   },
 )
+
+// ───────────────────────── SMS (Telnyx — internacional/EUA) ─────────────────────────
+// Regra de negócio: SMS é só internacional (fora do BR). No Brasil o canal é o WhatsApp.
+// Ver memória do projeto: sms-telnyx-eua.
+
+/** Config compartilhada da Telnyx (env ou config/telnyx). Fica só no servidor. */
+async function getTelnyxConfig() {
+  const envKey = process.env.TELNYX_API_KEY
+  const envFrom = process.env.TELNYX_FROM
+  const envProfile = process.env.TELNYX_MESSAGING_PROFILE_ID
+  if (envKey && (envFrom || envProfile)) return { apiKey: envKey, from: envFrom || '', profileId: envProfile || '' }
+  try {
+    const s = await db.doc('config/telnyx').get()
+    if (s.exists) { const d = s.data(); return { apiKey: d.apiKey || envKey || '', from: d.from || envFrom || '', profileId: d.profileId || envProfile || '' } }
+  } catch (_) {}
+  return { apiKey: envKey || '', from: envFrom || '', profileId: envProfile || '' }
+}
+
+/** Normaliza pra E.164 internacional. Rejeita números do Brasil (+55) — SMS só fora do BR. */
+function normalizarE164Internacional(raw) {
+  let s = String(raw || '').trim()
+  const temMais = s.startsWith('+')
+  let d = s.replace(/\D/g, '')
+  if (!d) return { ok: false, motivo: 'vazio' }
+  // Se veio com + já é E.164; senão assume que já vem com DDI (código do país) na frente.
+  // Número dos EUA/Canadá costuma vir com 10 dígitos (sem o 1) — prefixa 1.
+  if (!temMais && d.length === 10) d = '1' + d
+  if (d.startsWith('55')) return { ok: false, motivo: 'brasil' } // SMS não atende BR
+  if (d.length < 8 || d.length > 15) return { ok: false, motivo: 'tamanho' }
+  return { ok: true, e164: '+' + d }
+}
+
+/** Remove acentos (mantém GSM-7 / 160 chars e evita virar UCS-2 de 70). */
+function semAcentos(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+/** SMS já enviados no mês corrente (pra cota do plano). */
+async function smsEnviadosNoMes(uid) {
+  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
+  let total = 0
+  try {
+    const ds = await db.collection(`users/${uid}/smsDisparos`).get()
+    ds.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicio.getTime()) total += Number(x.enviados) || 0 })
+  } catch (_) {}
+  return total
+}
+
+/** Envia 1 SMS via API da Telnyx. Retorna { ok, id } ou lança. */
+async function enviarSMSTelnyx(cfg, to, text) {
+  const body = { to, text: semAcentos(text).slice(0, 480) }
+  if (cfg.profileId) body.messaging_profile_id = cfg.profileId
+  if (cfg.from) body.from = cfg.from
+  const res = await fetch('https://api.telnyx.com/v2/messages', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const msg = data?.errors?.[0]?.detail || data?.errors?.[0]?.title || `HTTP ${res.status}`
+    throw new Error(msg)
+  }
+  return { ok: true, id: data?.data?.id || null }
+}
+
+/** Envia um lote de SMS (sequencial, respeitando ~1 msg/s de TPS das faixas de entrada). */
+async function enviarLoteSMS(uid, ctx, recipients) {
+  let enviados = 0
+  let erros = 0
+  for (const r of (recipients || [])) {
+    const norm = normalizarE164Internacional(r.telefone || r.numero || '')
+    if (!norm.ok) { erros++; continue }
+    const lead = { nome: r.nome || '', telefone: norm.e164, email: r.email || '' }
+    const product = { nome: r.produto || '' }
+    const texto = replaceVariables(ctx.mensagem, lead, product)
+    try {
+      const out = await enviarSMSTelnyx(ctx.cfg, norm.e164, texto)
+      enviados++
+      try {
+        if (out.id) await db.doc(`users/${uid}/smsMensagens/${out.id}`).set({
+          disparoId: ctx.disparoId, to: norm.e164, status: 'enviado', createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true })
+      } catch (_) {}
+    } catch (err) {
+      erros++
+      console.error('enviarSMSTelnyx erro', err?.message || err)
+    }
+  }
+  return { enviados, erros }
+}
+
+/** Disparo de SMS em massa: 1º lote na hora, resto enfileirado (throttle por TPS). */
+exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+
+  const data = request.data || {}
+  const mensagem = String(data.mensagem || '').trim()
+  const recipients = Array.isArray(data.recipients) ? data.recipients : []
+  if (!mensagem) throw new HttpsError('invalid-argument', 'Escreva a mensagem do SMS.')
+  if (recipients.length === 0) throw new HttpsError('invalid-argument', 'Nenhum destinatário na lista.')
+
+  const cfg = await getTelnyxConfig()
+  if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) throw new HttpsError('failed-precondition', 'O envio de SMS ainda não foi ativado pela plataforma.')
+
+  // Só números internacionais (fora do BR) entram.
+  const validos = []
+  let ignoradosBR = 0
+  for (const r of recipients.slice(0, 20000)) {
+    const norm = normalizarE164Internacional(r?.telefone || r?.numero || '')
+    if (norm.ok) validos.push({ telefone: norm.e164, nome: r.nome || '', produto: r.produto || '', email: r.email || '' })
+    else if (norm.motivo === 'brasil') ignoradosBR++
+  }
+  if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum número internacional válido na lista. SMS não atende números do Brasil (+55).')
+
+  // Cota mensal do plano (admin é ilimitado)
+  const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  const lim = limitesDoTenant(tenant)
+  if (!ehAdmin) {
+  if (!lim.smsMes || lim.smsMes <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano.')
+  const jaEnviados = await smsEnviadosNoMes(uid)
+  if (jaEnviados + validos.length > lim.smsMes) {
+    throw new HttpsError('resource-exhausted', `Limite do plano atingido: ${lim.smsMes} SMS/mês (já enviou ${jaEnviados}). Faça upgrade do plano.`)
+  }
+  }
+
+  const loteSize = Math.max(1, Math.min(200, Number(data.loteSize) || 40))
+  const intervaloMin = Math.max(1, Math.min(240, Number(data.intervaloMin) || 1))
+  const lotes = []
+  for (let i = 0; i < validos.length; i += loteSize) lotes.push(validos.slice(i, i + loteSize))
+
+  const dispRef = await db.collection('users').doc(uid).collection('smsDisparos').add({
+    nomeDisparo: String(data.nomeDisparo || 'Disparo SMS'),
+    mensagem,
+    total: validos.length,
+    ignoradosBR,
+    enviados: 0,
+    erros: 0,
+    loteSize,
+    intervaloMin,
+    totalLotes: lotes.length,
+    status: 'enviando',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+
+  const ctx = { cfg, mensagem, disparoId: dispRef.id }
+  const r0 = await enviarLoteSMS(uid, ctx, lotes[0] || [])
+
+  const intervaloMs = intervaloMin * 60000
+  for (let i = 1; i < lotes.length; i++) {
+    await dispRef.collection('smsLotes').add({
+      disparoId: dispRef.id,
+      recipients: lotes[i],
+      sendAfter: admin.firestore.Timestamp.fromMillis(Date.now() + i * intervaloMs),
+      status: 'pendente',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+  }
+
+  const soUmLote = lotes.length <= 1
+  await dispRef.update({
+    enviados: r0.enviados,
+    erros: r0.erros,
+    status: soUmLote ? (r0.erros === 0 ? 'enviado' : (r0.enviados === 0 ? 'erro' : 'parcial')) : 'enviando',
+  })
+
+  return { ok: true, total: validos.length, ignoradosBR, disparoId: dispRef.id, lotes: lotes.length, enviados: r0.enviados }
+})
+
+/** A cada 1 min: processa os lotes de SMS que já venceram. */
+exports.processarLotesSMS = onSchedule(
+  { schedule: 'every 1 minutes', timeZone: 'America/Sao_Paulo', region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' },
+  async () => {
+    const now = admin.firestore.Timestamp.now()
+    const snap = await db.collectionGroup('smsLotes').where('status', '==', 'pendente').where('sendAfter', '<=', now).limit(20).get()
+    if (snap.empty) return null
+    let cfg = null
+    for (const loteDoc of snap.docs) {
+      const lote = loteDoc.data()
+      const parts = loteDoc.ref.path.split('/') // users/{uid}/smsDisparos/{dispId}/smsLotes/{loteId}
+      const uid = parts[1]
+      const dispId = parts[3]
+      try {
+        if (!cfg) cfg = await getTelnyxConfig()
+        if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) { await loteDoc.ref.update({ status: 'erro' }); continue }
+        const dSnap = await db.doc(`users/${uid}/smsDisparos/${dispId}`).get()
+        const dd = dSnap.exists ? dSnap.data() : {}
+        const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId }
+        const r = await enviarLoteSMS(uid, ctx, lote.recipients || [])
+        await loteDoc.ref.update({ status: r.erros === 0 ? 'enviado' : 'erro' })
+        await db.doc(`users/${uid}/smsDisparos/${dispId}`).set({
+          enviados: admin.firestore.FieldValue.increment(r.enviados),
+          erros: admin.firestore.FieldValue.increment(r.erros),
+        }, { merge: true })
+        const restantes = await db.collection(`users/${uid}/smsDisparos/${dispId}/smsLotes`).where('status', '==', 'pendente').limit(1).get()
+        if (restantes.empty) {
+          const dSnap2 = await db.doc(`users/${uid}/smsDisparos/${dispId}`).get()
+          const d2 = dSnap2.exists ? dSnap2.data() : {}
+          const status = (d2.erros || 0) === 0 ? 'enviado' : ((d2.enviados || 0) === 0 ? 'erro' : 'parcial')
+          await db.doc(`users/${uid}/smsDisparos/${dispId}`).set({ status }, { merge: true })
+        }
+      } catch (err) {
+        console.error('processarLotesSMS', err)
+      }
+    }
+    return null
+  },
+)
+
+/** Webhook de status da Telnyx (entregue/falhou) — atualiza smsMensagens pra métricas. */
+exports.telnyxWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
+  try {
+    const ev = req.body?.data || {}
+    const payload = ev.payload || {}
+    const id = payload.id || null
+    const tipo = ev.event_type || '' // message.sent | message.finalized | ...
+    const status = payload.to?.[0]?.status || payload.status || ''
+    const uid = req.query.userId || null
+    if (id && uid) {
+      await db.doc(`users/${uid}/smsMensagens/${id}`).set({
+        status: status || tipo, evento: tipo, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true })
+    }
+    res.status(200).send('ok')
+  } catch (err) {
+    console.error('telnyxWebhook', err)
+    res.status(200).send('ok')
+  }
+})
 
 /**
  * Verifica a assinatura Svix do webhook do Resend.
@@ -2198,7 +2429,7 @@ exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) =
     const ov = {}
     if (p.overrides.limites && typeof p.overrides.limites === 'object') {
       ov.limites = {}
-      for (const k of ['trackers', 'instancias', 'emailsMes', 'dominios']) {
+      for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios']) {
         if (p.overrides.limites[k] != null) ov.limites[k] = Math.max(0, Number(p.overrides.limites[k]) || 0)
       }
     }

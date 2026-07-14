@@ -548,6 +548,23 @@ export async function deleteEmailDisparo(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'emailDisparos', id))
 }
 
+// ── Disparos de SMS (Telnyx / internacional) ──
+
+export async function getSmsDisparos(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'smsDisparos'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+export async function deleteSmsDisparo(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'smsDisparos', id))
+}
+
 // ── Eventos de E-mail (aberturas, cliques, entregas — vindos do Resend) ──
 
 export async function getEmailEvents(uid) {

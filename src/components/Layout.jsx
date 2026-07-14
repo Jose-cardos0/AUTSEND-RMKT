@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { isAdmin } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
@@ -54,6 +54,14 @@ const navGroups = [
       { to: '/email/disparos', label: 'Disparos', icon: Send },
       { to: '/email/funil', label: 'Funil', icon: GitBranch },
       { to: '/email/metricas', label: 'Métricas', icon: BarChart3 },
+    ],
+  },
+  {
+    key: 'sms',
+    label: 'SMS (EUA)',
+    icon: Smartphone,
+    items: [
+      { to: '/sms/disparos', label: 'Disparos', icon: Send },
     ],
   },
 ]
