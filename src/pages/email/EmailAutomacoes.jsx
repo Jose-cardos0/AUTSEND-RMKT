@@ -170,7 +170,7 @@ export default function EmailAutomacoes() {
       <div className="flex flex-col lg:flex-row gap-6">
       {/* Seletor de grupos — coluna lateral direita fixa (sticky), estilo do WhatsApp */}
       {grupos.length > 0 && (
-        <aside className="lg:w-56 xl:w-60 shrink-0 order-1 lg:order-2">
+        <aside className="lg:w-56 xl:w-60 shrink-0 order-1 lg:order-1">
           <div className="lg:sticky lg:top-24 space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="flex items-center gap-2 text-xs font-bold text-stone-500 uppercase tracking-widest">
@@ -206,7 +206,7 @@ export default function EmailAutomacoes() {
       )}
 
       {/* Conteúdo principal (esquerda) */}
-      <div className="flex-1 min-w-0 order-2 lg:order-1 space-y-4 sm:space-y-5">
+      <div className="flex-1 min-w-0 order-2 lg:order-2 space-y-4 sm:space-y-5">
       {templates.length === 0 && (
         <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
@@ -225,7 +225,14 @@ export default function EmailAutomacoes() {
       )}
 
       {grupoId && (
-        <Secao title="Eventos" icon={Zap} open={eventosAbertos} onToggle={() => setEventosAbertos((v) => !v)} noPad>
+        <Secao title={(() => { const gs = grupos.find((g) => g.id === grupoId); return (
+          <span className="flex items-center gap-2 min-w-0">
+            {gs?.imagem
+              ? <img src={gs.imagem} alt={gs.nome} title={gs.nome} className="h-7 w-7 rounded-lg object-contain shrink-0" />
+              : <Zap className="w-5 h-5 text-primary-600 shrink-0" />}
+            Automação
+          </span>
+        ) })()} open={eventosAbertos} onToggle={() => setEventosAbertos((v) => !v)} noPad>
         <div className="divide-y divide-surface-100 border-t border-surface-100">
           {KIWIFY_EVENTS.map((ev) => {
             const auto = automations[ev.id] || { ativo: false, templateId: '' }

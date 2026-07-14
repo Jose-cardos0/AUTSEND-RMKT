@@ -11,7 +11,7 @@ import PageLoader from '../../components/PageLoader'
 import NichoPicker from '../../components/NichoPicker'
 import ChavesPicker from '../../components/ChavesPicker'
 import MelhorarPlano from '../../components/MelhorarPlano'
-import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, MessageSquare, ChevronLeft, ChevronRight, ChevronDown, Globe } from 'lucide-react'
+import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, MessageSquare, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import excelImg from '../../assets/excel.png'
 
 /** Normaliza pra E.164 internacional (espelho do backend). Rejeita BR (+55). */
@@ -58,10 +58,12 @@ export default function SmsDisparos() {
   const [historico, setHistorico] = useState([])
   const [mensagem, setMensagem] = useState('')
   const [nomeDisparo, setNomeDisparo] = useState('')
+  const [showNomeModal, setShowNomeModal] = useState(false)
   const [lista, setLista] = useState('')
   const [enviando, setEnviando] = useState(false)
-  const [loteSize, setLoteSize] = useState(40)
-  const [intervaloMin, setIntervaloMin] = useState(1)
+  // Ritmo de envio fixo (config do admin — ultra segurança, não exposto ao usuário).
+  const loteSize = 50
+  const intervaloMin = 5
   const [pHist, setPHist] = useState(1)
   const [expanded, setExpanded] = useState(null)
   const [histOpen, setHistOpen] = useState(false)
@@ -79,7 +81,6 @@ export default function SmsDisparos() {
 
   // Consumo estimado (SMS ≈ 160 chars por segmento)
   const segmentos = Math.max(1, Math.ceil((mensagem.length || 1) / 160))
-  const custoSms = validos.length * segmentos
 
   const handleUploadExcel = (e) => {
     const file = e.target?.files?.[0]
@@ -112,9 +113,16 @@ export default function SmsDisparos() {
     XLSX.writeFile(wb, 'lista_sms_exemplo.xlsx')
   }
 
+  const iniciarEnvio = () => {
+    if (!mensagem.trim()) { toast.error('Escreva a mensagem do SMS.'); return }
+    if (validos.length === 0) { toast.error('Adicione ao menos um número internacional válido.'); return }
+    setShowNomeModal(true)
+  }
+
   const handleEnviar = async () => {
     if (!mensagem.trim()) { toast.error('Escreva a mensagem do SMS.'); return }
     if (validos.length === 0) { toast.error('Adicione ao menos um número internacional válido.'); return }
+    setShowNomeModal(false)
     setEnviando(true)
     try {
       const sendBulk = httpsCallable(functions, 'sendBulkSMS')
@@ -127,7 +135,7 @@ export default function SmsDisparos() {
       })
       const { enviados, total, lotes, ignoradosBR } = res.data || {}
       if (lotes > 1) {
-        toast.success(`Iniciado: ${enviados}/${total} no 1º lote. O resto sai em lotes de ${loteSize} a cada ${intervaloMin} min.`)
+        toast.success(`Iniciado: ${enviados}/${total} no 1º lote. O resto sai em segundo plano.`)
       } else {
         toast.success(`SMS enviado: ${enviados}/${total}.`)
       }
@@ -163,12 +171,11 @@ export default function SmsDisparos() {
   const totalPagHist = Math.max(1, Math.ceil(historico.length / HIST_POR_PAGINA))
   const pagHistAtual = Math.min(pHist, totalPagHist)
   const historicoPagina = historico.slice((pagHistAtual - 1) * HIST_POR_PAGINA, pagHistAtual * HIST_POR_PAGINA)
-  const estLotes = validos.length > 0 ? Math.ceil(validos.length / Math.max(1, loteSize)) : 0
 
   return (
     <PageShell
       compact
-      badge="SMS · Disparos (EUA)"
+      badge="SMS · Disparos"
       title="Disparos de SMS"
       right={
         <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
@@ -188,6 +195,27 @@ export default function SmsDisparos() {
       }
     >
       <div className="space-y-4 sm:space-y-5">
+      {showNomeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setShowNomeModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-[95vw] sm:max-w-md w-full p-4 sm:p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base sm:text-lg font-semibold text-stone-800">Nome do disparo</h3>
+            <input
+              type="text"
+              value={nomeDisparo}
+              onChange={(e) => setNomeDisparo(e.target.value)}
+              placeholder="Ex: Black Friday US"
+              className="w-full px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-base"
+              autoFocus
+            />
+            <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
+              <button type="button" onClick={() => setShowNomeModal(false)} className="btn-secondary min-h-[44px] touch-manipulation">Voltar</button>
+              <button type="button" onClick={handleEnviar} disabled={enviando} className="btn-primary min-h-[44px] touch-manipulation">
+                {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Iniciar envio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {!podeSms && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
@@ -195,11 +223,6 @@ export default function SmsDisparos() {
           <MelhorarPlano label="Ver planos" className="shrink-0" />
         </div>
       )}
-      <div className="flex items-start gap-3 p-4 rounded-xl bg-sky-50 border border-sky-200 text-sky-800 text-sm">
-        <Globe className="w-5 h-5 shrink-0 mt-0.5" />
-        <span>O SMS atende <strong>somente números internacionais</strong> (EUA e outros países). Números do Brasil (+55) são ignorados — no BR use o WhatsApp. Inclua sempre o <strong>DDI</strong> (ex.: <code className="font-mono">+1</code> pros EUA).</span>
-      </div>
-
       <div className="flex flex-col lg:flex-row gap-3 items-stretch">
         {/* Config do disparo */}
         <aside className="flex flex-col shrink-0 lg:w-[min(480px,42vw)] lg:min-w-[320px] lg:max-w-lg">
@@ -208,8 +231,8 @@ export default function SmsDisparos() {
               <MessageSquare className="w-5 h-5 shrink-0 text-primary-600" />
               Mensagem
             </h3>
-            <div className="space-y-3">
-            <div>
+            <div className="flex flex-col flex-1 min-h-0 gap-3">
+            <div className="flex flex-col flex-1 min-h-0">
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-medium text-stone-600">Texto do SMS</label>
                 <ChavesPicker onPick={(chave) => setMensagem((m) => m + chave)} />
@@ -217,40 +240,17 @@ export default function SmsDisparos() {
               <textarea
                 value={mensagem}
                 onChange={(e) => setMensagem(e.target.value)}
-                rows={4}
                 placeholder={'Ex.: Autsend: sua oferta expira hoje! {nome_cliente}, garanta: https://...'}
-                className="w-full px-3 py-2.5 rounded-xl border border-surface-200 text-sm resize-y"
+                className="w-full flex-1 min-h-[120px] px-3 py-2.5 rounded-xl border border-surface-200 text-sm resize-none"
               />
-              <p className="text-[11px] text-stone-400 mt-1">
+              <p className="text-[11px] text-stone-400 mt-1 shrink-0">
                 {mensagem.length} caractere(s) · <span className={segmentos > 1 ? 'text-amber-600 font-medium' : ''}>{segmentos} segmento(s) por SMS</span>. Acentos são removidos automaticamente. Coloque o nome da sua marca no texto.
               </p>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Nome do disparo</label>
-              <input
-                value={nomeDisparo}
-                onChange={(e) => setNomeDisparo(e.target.value)}
-                placeholder="Ex: Black Friday US"
-                className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Lote (por vez)</label>
-                <input type="number" min={1} value={loteSize} onChange={(e) => setLoteSize(Math.max(1, Number(e.target.value) || 1))} className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Intervalo (min)</label>
-                <input type="number" min={1} value={intervaloMin} onChange={(e) => setIntervaloMin(Math.max(1, Number(e.target.value) || 1))} className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
-              </div>
-            </div>
-            <p className="text-[11px] text-stone-400">
-              Envia {loteSize} por vez, a cada {intervaloMin} min{validos.length > 0 ? ` · ~${estLotes} lote(s)` : ''}. Ritmo espaçado respeita o limite das operadoras (TPS).
-            </p>
             <button
-              onClick={handleEnviar}
+              onClick={iniciarEnvio}
               disabled={enviando || !podeSms || !mensagem.trim() || validos.length === 0}
-              className="btn-primary w-full min-h-[48px] touch-manipulation"
+              className="btn-primary w-full min-h-[48px] touch-manipulation shrink-0"
             >
               {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               {enviando ? 'Enviando...' : `Enviar para ${validos.length} número(s)`}

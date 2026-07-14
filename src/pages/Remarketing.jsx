@@ -246,7 +246,7 @@ export default function Remarketing() {
   return (
     <PageShell
       fill
-      badge="Lista & envio"
+      badge="WhatsApp · Remarketing"
       title="Remarketing"
       right={
         <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">

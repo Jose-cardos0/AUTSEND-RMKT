@@ -8,14 +8,27 @@ import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi
 import MessageEditor from '../components/MessageEditor'
 import TemplatePicker from '../components/TemplatePicker'
 import NichoPicker from '../components/NichoPicker'
-import { Send, Loader2, AlertCircle, Users, Download, Upload, Clock, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
-import PageShell from '../components/PageShell'
+import { Send, Loader2, AlertCircle, Users, Download, Upload, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
+import PageShell, { Panel } from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import excelImg from '../assets/excel.png'
 
 const MINUTOS_POR_MENSAGEM = 5
 const ITEMS_POR_PAGINA_TIMELINE = 5
 const STORAGE_KEY = (uid) => `enviarMensagem_historico_${uid}`
+
+const WA_STATUS = {
+  enviando: 'bg-blue-100 text-blue-700',
+  finalizado: 'bg-green-100 text-green-700',
+  cancelado: 'bg-red-100 text-red-700',
+  erro: 'bg-red-100 text-red-700',
+}
+const WA_STATUS_LABEL = { enviando: 'Enviando', finalizado: 'Finalizado', cancelado: 'Cancelado', erro: 'Erro' }
+const formatDate = (ts) => {
+  if (!ts) return '-'
+  const d = ts.toDate ? ts.toDate() : ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
 
 function loadHistoricoLocal(uid) {
   if (!uid) return []
@@ -36,6 +49,7 @@ export default function EnviarMensagem() {
   const [instanciaId, setInstanciaId] = useState('')
   const [instOpen, setInstOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
+  const [expandedWa, setExpandedWa] = useState(null)
   const [lista, setLista] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [enviadosCount, setEnviadosCount] = useState(0)
@@ -222,6 +236,7 @@ export default function EnviarMensagem() {
     const novoItem = {
       disparoId,
       nomeDisparo: nome,
+      mensagem,
       total,
       enviadosCount: 0,
       status: 'enviando',
@@ -231,6 +246,7 @@ export default function EnviarMensagem() {
     setHistorico((prev) => [novoItem, ...prev])
     setDisparo(user.uid, disparoId, {
       nomeDisparo: nome,
+      mensagem,
       total,
       enviadosCount: 0,
       status: 'enviando',
@@ -259,8 +275,8 @@ export default function EnviarMensagem() {
       setEnviadosCount(total)
       clearTimeout(timeoutId)
       atualizarItemHistorico(disparoId, { enviadosCount: total })
-      setMsg({ type: 'success', text: `Enviado. Demorará ${tempoMin} min.` })
-      toast.success(`Disparo "${nome}": ${total} contato(s). Tempo estimado: ${tempoMin} min.`)
+      setMsg({ type: 'success', text: 'Disparo iniciado.' })
+      toast.success(`Disparo "${nome}" iniciado: ${total} contato(s).`)
     } catch (err) {
       clearTimeout(timeoutId)
       atualizarItemHistorico(disparoId, { status: 'erro', enviadosCount: enviados })
@@ -284,7 +300,6 @@ export default function EnviarMensagem() {
     return Math.max(0, item.total - jaEnviadasPeloN8n)
   }
   const totalContatos = contatos.length
-  const tempoEstimadoMin = totalContatos * MINUTOS_POR_MENSAGEM
 
   const totalPaginasTimeline = Math.max(1, Math.ceil(historico.length / ITEMS_POR_PAGINA_TIMELINE))
   const paginaAtual = Math.min(paginaTimeline, totalPaginasTimeline)
@@ -314,17 +329,13 @@ export default function EnviarMensagem() {
   return (
     <PageShell
       compact
-      badge="WhatsApp"
+      badge="WhatsApp · Disparos"
       title="Disparos em massa"
       right={
-        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full max-w-[200px] sm:max-w-none">
           <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
             <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Contatos</p>
             <p className="text-lg font-bold text-stone-800 tabular-nums">{totalContatos}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 text-center shadow-sm shadow-emerald-500/10">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">~min</p>
-            <p className="text-lg font-bold text-emerald-700 tabular-nums">{tempoEstimadoMin}</p>
           </div>
           <div className="rounded-2xl border border-primary-200/90 bg-gradient-to-br from-primary-50 to-white px-3 py-2.5 text-center shadow-sm shadow-primary-500/10">
             <p className="text-[10px] font-bold uppercase tracking-wider text-primary-600">Envios</p>
@@ -425,7 +436,6 @@ export default function EnviarMensagem() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setShowNomeDisparoModal(false)}>
           <div className="bg-white rounded-2xl shadow-xl max-w-[95vw] sm:max-w-md w-full p-4 sm:p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base sm:text-lg font-semibold text-stone-800">Nome do disparo</h3>
-            <p className="text-xs sm:text-sm text-stone-500">Dê um nome para identificar este envio (ex: Campanha Black Friday).</p>
             <input
               type="text"
               value={nomeDisparoInput}
@@ -463,11 +473,6 @@ export default function EnviarMensagem() {
                 fillHeight
                 className="flex-1 min-h-[200px]"
               />
-              {totalContatos > 0 && (
-                <p className="mt-3 text-sm text-stone-600 shrink-0">
-                  ~<strong>{tempoEstimadoMin} min</strong> · {totalContatos} contato(s)
-                </p>
-              )}
               <button
                 onClick={iniciarEnvio}
                 disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia}
@@ -509,124 +514,58 @@ export default function EnviarMensagem() {
       </div>
 
       {historico.length > 0 && (
-        <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden w-full shadow-sm">
-          <button type="button" onClick={() => setTimelineOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 px-5 py-4 sm:px-6 transition">
-            <span className="text-base font-semibold text-stone-800 flex items-center gap-2">
-              <History className="w-5 h-5 shrink-0 text-primary-600" />
-              Linha do tempo
-              <span className="text-xs font-normal text-stone-400">({historico.length})</span>
-            </span>
-            <ChevronDown className={`w-5 h-5 text-stone-400 shrink-0 transition-transform ${timelineOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {timelineOpen && (
-          <div className="px-5 pb-5 sm:px-6 sm:pb-6">
-          <ul className="space-y-4">
+        <Panel title="Histórico de disparos" icon={History} noPadding collapsible open={timelineOpen} onToggle={() => setTimelineOpen((v) => !v)}>
+          <div className="divide-y divide-surface-100">
             {historicoPagina.map((item) => {
+              const aberto = expandedWa === item.disparoId
               const remaining = getRemainingMin(item.endTime)
-              const isAtual = disparoAtual?.id === item.disparoId
-              const emEnvio = item.status === 'enviando' && remaining > 0
-              const finalizado = item.status === 'finalizado' || (item.status === 'enviando' && remaining <= 0)
               const restantes = getRestantes(item)
+              const emEnvio = item.status === 'enviando' && remaining > 0
+              const statusView = item.status === 'enviando' && remaining <= 0 ? 'finalizado' : item.status
+              const enviadosMostrar = emEnvio ? (item.total - restantes) : item.enviadosCount
               return (
-                <li
-                  key={item.disparoId}
-                  className={`p-4 sm:p-4 rounded-xl border text-sm ${emEnvio ? 'bg-primary-50/50 border-primary-200' : item.status === 'cancelado' || item.status === 'erro' ? 'bg-red-50/50 border-red-200' : 'bg-surface-50 border-surface-200'} ${isAtual ? 'ring-2 ring-primary-300/60' : ''}`}
-                >
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3 sm:gap-4">
-                    <div>
-                      <span className="font-medium text-stone-800">{item.nomeDisparo}</span>
-                      <span className="text-sm text-stone-500 ml-2">
-                        {emEnvio ? (
-                          <>{restantes}/{item.total} restantes · 1 a cada {MINUTOS_POR_MENSAGEM} min</>
-                        ) : (
-                          <>{item.enviadosCount}/{item.total} enviados</>
-                        )}
+                <div key={item.disparoId}>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-4">
+                    <button onClick={() => setExpandedWa(aberto ? null : item.disparoId)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                      <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${aberto ? 'rotate-180' : ''}`} />
+                      <div className="min-w-0">
+                        <p className="font-medium text-stone-800 text-sm truncate">{item.nomeDisparo}</p>
+                        <p className="text-xs text-stone-500">{formatDate(item.createdAt)}</p>
+                      </div>
+                    </button>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-stone-600">{enviadosMostrar}/{item.total} enviados</span>
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${WA_STATUS[statusView] || 'bg-stone-100 text-stone-600'}`}>
+                        {WA_STATUS_LABEL[statusView] || statusView}
                       </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {emEnvio && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                          Enviando
-                        </span>
-                      )}
-                      {finalizado && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Finalizado
-                        </span>
-                      )}
-                      {item.status === 'cancelado' && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          Cancelado
-                        </span>
-                      )}
-                      {item.status === 'erro' && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          Erro
-                        </span>
-                      )}
-                      {item.status !== 'cancelado' && item.status !== 'erro' && (
-                        <span className="inline-flex items-center gap-1 text-sm text-stone-600">
-                          <Clock className="w-4 h-4" />
-                          {remaining > 0 ? `Tempo restante: ${remaining} min` : 'Concluído'}
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleExcluirDisparo(item.disparoId, item.nomeDisparo)}
-                        className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation"
-                        title="Excluir da linha do tempo"
-                      >
+                      <button onClick={() => handleExcluirDisparo(item.disparoId, item.nomeDisparo)} className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-                  {emEnvio && (
-                    <div className="mt-3 flex gap-0.5">
-                      {Array.from({ length: item.total }).map((_, i) => {
-                        const enviadosNaBarra = item.total - restantes
-                        return (
-                          <div
-                            key={i}
-                            className={`h-1.5 flex-1 rounded-sm min-w-[4px] ${i < enviadosNaBarra ? 'bg-green-500' : 'bg-surface-200'}`}
-                          />
-                        )
-                      })}
+                  {aberto && (
+                    <div className="px-4 pb-4">
+                      <div className="text-xs text-stone-500 p-3 bg-surface-50 rounded-xl space-y-1">
+                        <p className="text-stone-700 font-medium">Mensagem enviada:</p>
+                        <p className="whitespace-pre-wrap break-words">{item.mensagem || '—'}</p>
+                        {emEnvio && <p className="text-primary-600">Enviando 1 a cada {MINUTOS_POR_MENSAGEM} min · ~{remaining} min restantes</p>}
+                      </div>
                     </div>
                   )}
-                </li>
+                </div>
               )
             })}
-          </ul>
+          </div>
           {totalPaginasTimeline > 1 && (
-            <div className="mt-6 pt-4 border-t border-surface-200 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-between gap-3">
-              <p className="text-xs sm:text-sm text-stone-600 order-2 sm:order-1 text-center sm:text-left">
-                Página {paginaAtual} de {totalPaginasTimeline} · {historico.length} envio(s)
-              </p>
-              <div className="flex items-center gap-2 order-1 sm:order-2 justify-center sm:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setPaginaTimeline((p) => Math.max(1, p - 1))}
-                  disabled={paginaAtual <= 1}
-                  className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Anterior
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaginaTimeline((p) => Math.min(totalPaginasTimeline, p + 1))}
-                  disabled={paginaAtual >= totalPaginasTimeline}
-                  className="flex items-center gap-1 px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 bg-white text-sm font-medium text-stone-700 hover:bg-surface-50 disabled:opacity-50 disabled:pointer-events-none touch-manipulation flex-1 sm:flex-initial"
-                >
-                  Próxima
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+            <div className="px-4 py-3 border-t border-surface-100 flex items-center justify-between gap-3">
+              <p className="text-xs text-stone-600">Página {paginaAtual} de {totalPaginasTimeline} · {historico.length} campanha(s)</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPaginaTimeline((p) => Math.max(1, p - 1))} disabled={paginaAtual <= 1} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
+                <button onClick={() => setPaginaTimeline((p) => Math.min(totalPaginasTimeline, p + 1))} disabled={paginaAtual >= totalPaginasTimeline} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
               </div>
             </div>
           )}
-          </div>
-          )}
-        </div>
+        </Panel>
       )}
       </div>
     </PageShell>

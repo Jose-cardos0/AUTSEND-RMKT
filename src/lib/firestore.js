@@ -663,6 +663,23 @@ export async function saveSmsAutomationGrupo(uid, grupoId, evento, data) {
   await setDoc(ref, removeUndefined({ grupoId, evento, ...data, updatedAt: serverTimestamp() }), { merge: true })
 }
 
+export async function getSmsLogs(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'smsLogs'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+/** Mensagens de SMS enviadas em disparos em massa (users/{uid}/smsMensagens). Usado nas métricas. */
+export async function getSmsMensagens(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'smsMensagens'))
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }))
+}
+
 /** Registros de envio do funil (um por e-mail enviado por um nó "Enviar"). */
 export async function getFunnelSends(uid) {
   const snap = await getDocs(collection(db, 'users', uid, 'funnelSends'))

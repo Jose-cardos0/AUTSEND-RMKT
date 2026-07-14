@@ -59,16 +59,16 @@ export const FEATURE_LABELS = {
   bancoLeads: 'Banco de Leads', produtos: 'Produtos', checkouts: 'Checkouts', templates: 'Templates',
   waIntegracoes: 'WA · Integrações', waAutomacoes: 'WA · Automações', waRemarketing: 'WA · Remarketing', waGrupos: 'WA · Grupos', waDisparos: 'WA · Disparos', waFunil: 'WA · Funil', waMetricas: 'WA · Métricas',
   emailIntegracoes: 'E-mail · Integrações', emailConstrutor: 'E-mail · Construtor', emailAutomacoes: 'E-mail · Automações', emailDisparos: 'E-mail · Disparos', emailFunil: 'E-mail · Funil', emailMetricas: 'E-mail · Métricas',
-  smsDisparos: 'SMS · Disparos (EUA)',
+  smsDisparos: 'SMS · Disparos',
 }
-export const LIMITE_LABELS = { trackers: 'Trackers', instancias: 'Instâncias WhatsApp', emailsMes: 'E-mails/mês', smsMes: 'SMS/mês (EUA)', dominios: 'Domínios de e-mail' }
+export const LIMITE_LABELS = { trackers: 'Trackers', instancias: 'Instâncias WhatsApp', emailsMes: 'E-mails/mês', smsMes: 'SMS/mês', dominios: 'Domínios de e-mail' }
 
 // Rota → feature que a libera (usado pra esconder no menu / bloquear página).
 export const ROTA_FEATURE = {
   '/banco-leads': 'bancoLeads', '/produtos': 'produtos', '/checkouts': 'checkouts', '/templates': 'templates',
   '/integracoes': 'waIntegracoes', '/automacoes': 'waAutomacoes', '/remarketing': 'waRemarketing', '/remarketing-grupos': 'waGrupos', '/enviar-mensagem': 'waDisparos', '/funil': 'waFunil', '/metricas': 'waMetricas',
   '/email/integracoes': 'emailIntegracoes', '/email/construtor': 'emailConstrutor', '/email/automacoes': 'emailAutomacoes', '/email/disparos': 'emailDisparos', '/email/funil': 'emailFunil', '/email/metricas': 'emailMetricas',
-  '/sms/disparos': 'smsDisparos', '/sms/funil': 'smsDisparos', '/sms/automacoes': 'smsDisparos',
+  '/sms/disparos': 'smsDisparos', '/sms/funil': 'smsDisparos', '/sms/automacoes': 'smsDisparos', '/sms/remarketing': 'smsDisparos', '/sms/metricas': 'smsDisparos',
 }
 
 /** Limites + features efetivos do tenant (plano + overrides do admin). */

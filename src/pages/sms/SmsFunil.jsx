@@ -15,7 +15,7 @@ import Select from '../../components/Select'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MessageEditor from '../../components/MessageEditor'
 import CollapsibleSearch from '../../components/CollapsibleSearch'
-import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag, MessageSquare, Globe } from 'lucide-react'
+import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag, MessageSquare } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
 const formatDate = (ts) => {
@@ -301,7 +301,7 @@ export default function SmsFunil() {
 
   return (
     <PageShell
-      badge="SMS · Funil (EUA)"
+      badge="SMS · Funil"
       title="Funil de SMS"
       right={
         <div className="flex flex-wrap gap-2 items-center">
@@ -318,10 +318,6 @@ export default function SmsFunil() {
       }
     >
       <div className="space-y-3">
-      <div className="flex items-start gap-2 p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-800 text-xs">
-        <Globe className="w-4 h-4 shrink-0 mt-0.5" />
-        <span>Funil de SMS <strong>internacional</strong>. Leads do Brasil (+55) são ignorados — no BR use o Funil de WhatsApp. Números precisam do <strong>DDI</strong> (ex.: <code className="font-mono">+1</code>).</span>
-      </div>
       <div className="shrink-0 app-panel rounded-2xl p-3 flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:items-center">
         <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do funil" className="w-full sm:w-56 px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
         <label className="flex items-center gap-2 text-sm text-stone-600">
@@ -395,6 +391,7 @@ export default function SmsFunil() {
                   onChange={(v) => updateNodeData(selectedNode.id, { mensagem: v })}
                   placeholder={'Autsend: hey {nome_cliente}, your offer for {nome_produto} expires today! Reply STOP to opt out.'}
                   variables={TEMPLATE_VARIABLES}
+                  showCheckout
                   rows={5}
                 />
                 <p className="text-[11px] text-stone-400 mt-1">
@@ -433,7 +430,7 @@ export default function SmsFunil() {
       {/* Relatório de envios do funil */}
       <div className="app-panel rounded-2xl overflow-hidden">
         <div className="px-4 sm:px-5 py-3 border-b border-surface-100 flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-sm font-semibold text-stone-800 min-w-0"><Send className="w-4 h-4 text-primary-600 shrink-0" /> <span className="truncate">Relatório de envios{selectedId ? '' : ' — salve/escolha um funil'}</span></span>
+          <span className="flex items-center gap-2 text-sm font-semibold text-stone-800 min-w-0"><Send className="w-4 h-4 text-primary-600 shrink-0" /> <span className="truncate">Relatório de envios</span></span>
           <div className="flex items-center gap-2 shrink-0">
             <CollapsibleSearch value={buscaSends} onChange={setBuscaSends} placeholder="Contato, telefone ou produto" />
             <button onClick={carregarSends} className="text-xs text-primary-600 hover:underline flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Atualizar</button>

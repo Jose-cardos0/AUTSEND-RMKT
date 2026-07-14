@@ -391,7 +391,7 @@ export default function Integracoes() {
 
   return (
     <PageShell
-      badge="Conexões"
+      badge="WhatsApp · Conexões"
       title="Integrações"
     >
       <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />

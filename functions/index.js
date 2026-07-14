@@ -766,6 +766,39 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   return { ok: true, total: validos.length, ignoradosBR, disparoId: dispRef.id, lotes: lotes.length, enviados: r0.enviados }
 })
 
+/** Reenvia um SMS individual pra um lead (usado no relatório de Automações de SMS). Loga em smsLogs. */
+exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  const data = request.data || {}
+  const mensagem = String(data.mensagem || '').trim()
+  if (!mensagem) throw new HttpsError('invalid-argument', 'Nenhuma automação de SMS configurada para este evento.')
+  const norm = normalizarE164Internacional(data.telefone)
+  if (!norm.ok) throw new HttpsError('invalid-argument', norm.motivo === 'brasil' ? 'SMS não atende números do Brasil (+55).' : 'Número inválido.')
+  const cfg = await getTelnyxConfig()
+  if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) throw new HttpsError('failed-precondition', 'O envio de SMS ainda não foi ativado pela plataforma.')
+
+  const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  if (!ehAdmin) {
+    const lim = limitesDoTenant(tenant)
+    if (!lim.smsMes || lim.smsMes <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano.')
+  }
+
+  const customer = { nome: data.nome || '', telefone: norm.e164, email: data.email || '' }
+  const product = { nome: data.produto || '' }
+  const texto = replaceVariables(mensagem, customer, product)
+  let ok = true
+  let erroMsg = null
+  try { await enviarSMSTelnyx(cfg, norm.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
+  await db.collection('users').doc(uid).collection('smsLogs').add({
+    leadId: data.leadId || null, evento: data.evento || '', produto: product.nome, telefone: norm.e164, nome: customer.nome,
+    status: ok ? 'enviado' : 'erro', erroMsg, mensagem: texto, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  if (!ok) throw new HttpsError('internal', erroMsg || 'Falha ao enviar SMS.')
+  return { ok: true }
+})
+
 /** A cada 1 min: processa os lotes de SMS que já venceram. */
 exports.processarLotesSMS = onSchedule(
   { schedule: 'every 1 minutes', timeZone: 'America/Sao_Paulo', region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' },

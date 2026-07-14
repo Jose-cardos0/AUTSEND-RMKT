@@ -40,32 +40,12 @@ export default function PageShell({ title, subtitle, badge, right, children, cla
       >
         <div className="min-w-0 flex-1">
           {badge && (
-            <span
-              className={clsx(
-                'inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary-50 to-violet-50 text-primary-700 font-semibold uppercase tracking-widest border border-primary-200/70',
-                tight ? 'text-[10px] px-2 py-0.5 mb-0.5' : 'text-[11px] px-3 py-1.5 mb-3 shadow-sm'
-              )}
-            >
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary-50 to-violet-50 text-primary-700 font-semibold uppercase tracking-widest border border-primary-200/70 text-[11px] px-3 py-1.5 shadow-sm">
               {badge}
             </span>
           )}
-          <h1
-            className={clsx(
-              'font-bold tracking-tight page-title-gradient',
-              tight ? 'text-lg sm:text-xl' : 'text-2xl sm:text-3xl'
-            )}
-          >
-            {title}
-          </h1>
           {subtitle && (
-            <p
-              className={clsx(
-                'text-stone-600 leading-snug',
-                tight
-                  ? 'text-[11px] sm:text-xs mt-0.5 line-clamp-2 max-w-4xl'
-                  : 'mt-2 text-sm sm:text-base max-w-2xl leading-relaxed'
-              )}
-            >
+            <p className="text-stone-600 leading-snug text-[11px] sm:text-xs mt-1.5 line-clamp-2 max-w-4xl">
               {subtitle}
             </p>
           )}

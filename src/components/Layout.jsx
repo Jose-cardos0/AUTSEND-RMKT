@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { isAdmin } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
@@ -10,6 +10,8 @@ import { ROTA_FEATURE } from '../lib/plans'
 import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
 import sendlyLogo from '../assets/autsendlogo.png'
+import euaflag from '../assets/euaflag.png'
+import brlflag from '../assets/brlflag.png'
 import WhatsAppIcon from './WhatsAppIcon'
 import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
@@ -58,18 +60,30 @@ const navGroups = [
   },
   {
     key: 'sms',
-    label: 'SMS (EUA)',
+    label: 'SMS',
     icon: Smartphone,
-    items: [
-      { to: '/sms/automacoes', label: 'Automações', icon: Zap },
-      { to: '/sms/disparos', label: 'Disparos', icon: Send },
-      { to: '/sms/funil', label: 'Funil', icon: GitBranch },
+    items: [],
+    subgroups: [
+      {
+        key: 'sms-eua',
+        label: 'EUA',
+        img: euaflag,
+        items: [
+          { to: '/sms/automacoes', label: 'Automações', icon: Zap },
+          { to: '/sms/remarketing', label: 'Remarketing', icon: MessageCircle },
+          { to: '/sms/disparos', label: 'Disparos', icon: Send },
+          { to: '/sms/funil', label: 'Funil', icon: GitBranch },
+          { to: '/sms/metricas', label: 'Métricas', icon: BarChart3 },
+        ],
+      },
+      { key: 'sms-br', label: 'BR', img: brlflag, soon: true, items: [] },
     ],
   },
 ]
 
+const allGroupItems = (group) => [...(group.items || []), ...(group.subgroups || []).flatMap((sg) => sg.items || [])]
 const isGroupActive = (group, pathname) =>
-  group.items.some((it) => pathname === it.to || pathname.startsWith(it.to + '/'))
+  allGroupItems(group).some((it) => pathname === it.to || pathname.startsWith(it.to + '/'))
 
 // Item usado no menu mobile (drawer).
 function ItemLink({ to, label, icon: Icon, soon, onNavigate }) {
@@ -94,6 +108,71 @@ function ItemLink({ to, label, icon: Icon, soon, onNavigate }) {
         </span>
       )}
     </NavLink>
+  )
+}
+
+// Subitem (NavLink) da sidebar desktop.
+function SubItemLink({ item }) {
+  const SubIcon = item.icon
+  return (
+    <NavLink
+      to={item.to}
+      className={({ isActive }) =>
+        clsx(
+          'relative flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] transition-all duration-200',
+          isActive
+            ? 'text-white font-semibold bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm shadow-primary-600/25'
+            : 'text-stone-500 font-medium hover:text-primary-700 hover:bg-primary-50/70'
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span className={clsx('absolute -left-[13px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full transition-colors', isActive ? 'bg-primary-600' : 'bg-transparent')} />
+          <SubIcon className="w-4 h-4 shrink-0 opacity-90" />
+          <span className="flex-1">{item.label}</span>
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+// Subgrupo aninhado (ex.: EUA colapsável, BR congelado) — desktop e mobile.
+function NestedSubGroup({ sg, mobile, onNavigate }) {
+  const location = useLocation()
+  const active = (sg.items || []).some((it) => location.pathname === it.to || location.pathname.startsWith(it.to + '/'))
+  const [open, setOpen] = useState(active)
+  useEffect(() => { if (active) setOpen(true) }, [active])
+
+  if (sg.soon) {
+    return (
+      <div className="flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] font-medium text-stone-400 cursor-not-allowed select-none" title="Em breve">
+        {sg.img && <img src={sg.img} alt="" className="h-4 w-auto rounded-[3px] object-contain shrink-0 opacity-50" />}
+        <span className="flex-1">{sg.label}</span>
+        <Clock className="w-3.5 h-3.5 shrink-0" />
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] font-semibold text-stone-600 hover:bg-surface-100/70 transition-colors" aria-expanded={open}>
+        {sg.img && <img src={sg.img} alt="" className="h-4 w-auto rounded-[3px] object-contain shrink-0" />}
+        <span className="flex-1 text-left">{sg.label}</span>
+        <ChevronDown className={clsx('w-3.5 h-3.5 text-stone-400 shrink-0 transition-transform', open && 'rotate-180')} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
+            <div className="ml-3 pl-3 flex flex-col gap-0.5 mt-0.5 mb-1">
+              {(sg.items || []).map((item) => (
+                mobile ? <ItemLink key={item.to} {...item} onNavigate={onNavigate} /> : <SubItemLink key={item.to} item={item} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -138,41 +217,9 @@ function SidebarGroup({ group, open, onToggle }) {
             className="overflow-hidden"
           >
             <div className="ml-[1.4rem] mt-0.5 mb-1 pl-3 border-l border-surface-200 flex flex-col gap-0.5">
-              {group.items.map((item) => {
-                const SubIcon = item.icon
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) =>
-                      clsx(
-                        'relative flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] transition-all duration-200',
-                        isActive
-                          ? 'text-white font-semibold bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm shadow-primary-600/25'
-                          : 'text-stone-500 font-medium hover:text-primary-700 hover:bg-primary-50/70'
-                      )
-                    }
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <span
-                          className={clsx(
-                            'absolute -left-[13px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full transition-colors',
-                            isActive ? 'bg-primary-600' : 'bg-transparent'
-                          )}
-                        />
-                        <SubIcon className="w-4 h-4 shrink-0 opacity-90" />
-                        <span className="flex-1">{item.label}</span>
-                        {item.soon && (
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-amber-600 bg-amber-100/80 px-1.5 py-0.5 rounded-full shrink-0">
-                            Em breve
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </NavLink>
-                )
-              })}
+              {group.subgroups
+                ? group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} />)
+                : group.items.map((item) => <SubItemLink key={item.to} item={item} />)}
             </div>
           </motion.div>
         )}
@@ -214,9 +261,14 @@ export default function Layout() {
   const { temFeature } = usePlano()
   const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroup] : navGroups
   // Esconde do menu o que o plano não libera
+  const podeItem = (it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }
   const groups = baseGroups
-    .map((g) => ({ ...g, items: g.items.filter((it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }) }))
-    .filter((g) => g.items.length > 0)
+    .map((g) => ({
+      ...g,
+      items: (g.items || []).filter(podeItem),
+      subgroups: g.subgroups ? g.subgroups.map((sg) => ({ ...sg, items: (sg.items || []).filter(podeItem) })) : undefined,
+    }))
+    .filter((g) => g.items.length > 0 || (g.subgroups || []).some((sg) => sg.soon || sg.items.length > 0))
   // Rota bloqueada pelo plano (acesso direto por URL)
   const rotaBloqueada = (() => {
     const k = Object.keys(ROTA_FEATURE).find((k) => location.pathname === k || location.pathname.startsWith(k + '/'))
@@ -229,7 +281,7 @@ export default function Layout() {
     return g ? { [g.key]: true } : {}
   })
   // O construtor de e-mail, o funil e o remarketing usam mais largura (lista/editor lado a lado)
-  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || location.pathname.startsWith('/sms/funil') || location.pathname.startsWith('/sms/automacoes')
+  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || location.pathname.startsWith('/sms/funil') || location.pathname.startsWith('/sms/automacoes') || location.pathname.startsWith('/sms/remarketing') || location.pathname.startsWith('/sms/metricas')
 
   // Ao navegar, garante que o grupo da rota atual esteja aberto.
   useEffect(() => {
@@ -238,6 +290,14 @@ export default function Layout() {
   }, [location.pathname])
 
   const toggleGroup = (key) => setOpenGroups((s) => ({ ...s, [key]: !s[key] }))
+
+  // Esconder/expandir a sidebar no desktop (persistido).
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    try { return localStorage.getItem('autsend:sidebarHidden') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('autsend:sidebarHidden', sidebarHidden ? '1' : '0') } catch (_) {}
+  }, [sidebarHidden])
 
   const handleLogout = async () => {
     setMenuOpen(false)
@@ -254,7 +314,7 @@ export default function Layout() {
     >
     <div className="app-viewport bg-transparent md:flex-row">
       {/* SIDEBAR — desktop */}
-      <aside className="hidden md:flex md:flex-col w-[15.5rem] shrink-0 border-r border-surface-200/70 bg-white/70 backdrop-blur-xl">
+      <aside className={clsx('md:flex-col w-[15.5rem] shrink-0 border-r border-surface-200/70 bg-white/70 backdrop-blur-xl', sidebarHidden ? 'hidden' : 'hidden md:flex')}>
         <div className="h-[4.25rem] shrink-0 flex items-center justify-center px-4 border-b border-surface-200/60">
           <img src={sendlyLogo} alt="Autsend" className="h-11 w-auto" />
         </div>
@@ -272,15 +332,38 @@ export default function Layout() {
 
         <div className="shrink-0 border-t border-surface-200/60 p-2.5 space-y-1.5">
           <MelhorarPlano className="w-full" />
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-stone-500 hover:text-red-600 hover:bg-red-50/80 transition-all text-[13px] font-semibold border border-transparent hover:border-red-100"
-          >
-            <LogOut className="w-4 h-4" />
-            Sair
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleLogout}
+              className="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-stone-500 hover:text-red-600 hover:bg-red-50/80 transition-all text-[13px] font-semibold border border-transparent hover:border-red-100"
+            >
+              <LogOut className="w-4 h-4" />
+              Sair
+            </button>
+            <button
+              onClick={() => setSidebarHidden(true)}
+              title="Esconder menu"
+              aria-label="Esconder menu"
+              className="shrink-0 p-2.5 rounded-xl text-stone-500 hover:text-primary-600 hover:bg-primary-50 border border-transparent hover:border-primary-100 transition-all"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </aside>
+
+      {/* Botão flutuante para reabrir a sidebar (desktop) */}
+      {sidebarHidden && (
+        <button
+          onClick={() => setSidebarHidden(false)}
+          title="Expandir menu"
+          aria-label="Expandir menu"
+          className="hidden md:flex fixed left-0 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-2 px-1.5 py-3 rounded-r-xl bg-white/90 backdrop-blur-xl border border-l-0 border-surface-200 shadow-md text-stone-600 hover:text-primary-600 hover:bg-white opacity-50 hover:opacity-100 transition-all"
+        >
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-[10px] font-bold uppercase tracking-widest [writing-mode:vertical-rl] rotate-180">Menu</span>
+        </button>
+      )}
 
       {/* COLUNA PRINCIPAL */}
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
@@ -326,11 +409,17 @@ export default function Layout() {
                         <ChevronDown className={clsx('w-4 h-4 shrink-0 transition-transform', open && 'rotate-180')} />
                       </button>
                       {open && (
-                        <div className="flex flex-col gap-1 px-2 pb-2 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3">
-                          {group.items.map((item) => (
-                            <ItemLink key={item.to} {...item} onNavigate={closeMenu} />
-                          ))}
-                        </div>
+                        group.subgroups ? (
+                          <div className="flex flex-col gap-1 px-2 pb-2">
+                            {group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} mobile onNavigate={closeMenu} />)}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1 px-2 pb-2 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3">
+                            {group.items.map((item) => (
+                              <ItemLink key={item.to} {...item} onNavigate={closeMenu} />
+                            ))}
+                          </div>
+                        )
                       )}
                     </div>
                   )
@@ -358,7 +447,7 @@ export default function Layout() {
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className={clsx(
                 'w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col flex-1 min-h-0',
-                location.pathname.startsWith('/admin') ? 'lg:max-w-[95%]' : location.pathname.startsWith('/banco-leads') ? 'lg:max-w-[80%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
+                location.pathname.startsWith('/admin') ? 'lg:max-w-[95%]' : location.pathname.startsWith('/banco-leads') ? 'lg:max-w-[95%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
               )}
             >
               {rotaBloqueada ? <UpgradeScreen /> : outlet}

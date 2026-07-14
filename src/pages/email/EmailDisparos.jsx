@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx'
 import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, getEmailConfig, getEmailDisparos, deleteEmailDisparo, getEmailEvents, getEmailProviders } from '../../lib/firestore'
 import { listDomains } from '../../lib/emailDomains'
+import ChavesPicker from '../../components/ChavesPicker'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
@@ -52,10 +53,12 @@ export default function EmailDisparos() {
   const [templateId, setTemplateId] = useState('')
   const [subject, setSubject] = useState('')
   const [nomeDisparo, setNomeDisparo] = useState('')
+  const [showNomeModal, setShowNomeModal] = useState(false)
   const [lista, setLista] = useState('')
   const [enviando, setEnviando] = useState(false)
-  const [loteSize, setLoteSize] = useState(30)
-  const [intervaloMin, setIntervaloMin] = useState(5)
+  // Ritmo de envio fixo (config do admin — não exposto ao usuário).
+  const loteSize = 30
+  const intervaloMin = 5
   const [pHist, setPHist] = useState(1)
   const [events, setEvents] = useState([])
   const [expanded, setExpanded] = useState(null)
@@ -116,10 +119,18 @@ export default function EmailDisparos() {
     XLSX.writeFile(wb, 'lista_email_exemplo.xlsx')
   }
 
+  const iniciarEnvio = () => {
+    if (!configOk) { toast.error('Configure o Resend em Integrações de E-mail.'); return }
+    if (!templateId) { toast.error('Escolha um template.'); return }
+    if (contatos.length === 0) { toast.error('Adicione ao menos um e-mail válido.'); return }
+    setShowNomeModal(true)
+  }
+
   const handleEnviar = async () => {
     if (!configOk) { toast.error('Configure o Resend em Integrações de E-mail.'); return }
     if (!templateId) { toast.error('Escolha um template.'); return }
     if (contatos.length === 0) { toast.error('Adicione ao menos um e-mail válido.'); return }
+    setShowNomeModal(false)
     setEnviando(true)
     try {
       const sendBulk = httpsCallable(functions, 'sendBulkEmail')
@@ -195,6 +206,27 @@ export default function EmailDisparos() {
       }
     >
       <div className="space-y-4 sm:space-y-5">
+      {showNomeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50" onClick={() => setShowNomeModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-[95vw] sm:max-w-md w-full p-4 sm:p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base sm:text-lg font-semibold text-stone-800">Nome do disparo</h3>
+            <input
+              type="text"
+              value={nomeDisparo}
+              onChange={(e) => setNomeDisparo(e.target.value)}
+              placeholder="Ex: Campanha Black Friday"
+              className="w-full px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-base"
+              autoFocus
+            />
+            <div className="flex flex-col-reverse sm:flex-row gap-2 justify-end">
+              <button type="button" onClick={() => setShowNomeModal(false)} className="btn-secondary min-h-[44px] touch-manipulation">Voltar</button>
+              <button type="button" onClick={handleEnviar} disabled={enviando} className="btn-primary min-h-[44px] touch-manipulation">
+                {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Iniciar envio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {!configOk && (
         <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
@@ -229,7 +261,10 @@ export default function EmailDisparos() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Assunto</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-stone-600">Assunto</label>
+                <ChavesPicker onPick={(chave) => setSubject((s) => s + chave)} />
+              </div>
               <textarea
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
@@ -239,33 +274,11 @@ export default function EmailDisparos() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Nome do disparo</label>
-              <input
-                value={nomeDisparo}
-                onChange={(e) => setNomeDisparo(e.target.value)}
-                placeholder="Ex: Campanha Black Friday"
-                className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm"
-              />
-            </div>
-            <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Remetente</label>
               <RemetentePicker providers={providers} value={remetenteId} onChange={setRemetenteId} />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Lote (por vez)</label>
-                <input type="number" min={1} value={loteSize} onChange={(e) => setLoteSize(Math.max(1, Number(e.target.value) || 1))} className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Intervalo (min)</label>
-                <input type="number" min={0} value={intervaloMin} onChange={(e) => setIntervaloMin(Math.max(0, Number(e.target.value) || 0))} className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
-              </div>
-            </div>
-            <p className="text-[11px] text-stone-400">
-              Envia {loteSize} por vez, a cada {intervaloMin} min{contatos.length > 0 ? ` · ~${Math.ceil(contatos.length / Math.max(1, loteSize))} lote(s)` : ''}. Ritmo menor protege a reputação (domínio novo).
-            </p>
             <button
-              onClick={handleEnviar}
+              onClick={iniciarEnvio}
               disabled={enviando || !configOk || !templateId || contatos.length === 0}
               className="btn-primary w-full min-h-[48px] touch-manipulation"
             >

@@ -443,7 +443,7 @@ export default function Automacoes() {
   return (
     <PageShell
       className="!space-y-0 pb-12 sm:pb-14"
-      badge="Dashboard"
+      badge="WhatsApp · Automações"
       title="Automações"
       right={
         <button onClick={reload} className="btn-secondary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation">
@@ -519,8 +519,10 @@ export default function Automacoes() {
       {grupoId && (
         <div className="app-panel rounded-2xl overflow-hidden">
           <button type="button" onClick={() => setAutoMsgAberto((v) => !v)} className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3.5 hover:bg-surface-50 transition">
-            <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800">
-              <Zap className="w-5 h-5 text-primary-600 shrink-0" />
+            <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
+              {grupos.find((g) => g.id === grupoId)?.imagem
+                ? <img src={grupos.find((g) => g.id === grupoId).imagem} alt={grupoNome} title={grupoNome} className="h-7 w-7 rounded-lg object-contain shrink-0" />
+                : <Zap className="w-5 h-5 text-primary-600 shrink-0" />}
               Automação
             </span>
             <ChevronDown className={`w-5 h-5 text-stone-400 shrink-0 transition-transform ${autoMsgAberto ? 'rotate-180' : ''}`} />

@@ -267,7 +267,7 @@ export default function Admin() {
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" label="Carregando clientes…" />
 
   if (erro) return (
-    <PageShell badge="Admin" title="Torre de comando">
+    <PageShell badge="Admin · Torre de comando" title="Torre de comando">
       <div className="app-panel rounded-2xl p-8 text-center">
         <ShieldAlert className="w-10 h-10 text-rose-500 mx-auto mb-3" />
         <p className="text-sm text-stone-600 max-w-md mx-auto">{erro}</p>

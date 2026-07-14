@@ -26,6 +26,8 @@ import EmailEmBreve from './pages/email/EmailEmBreve'
 import SmsDisparos from './pages/sms/SmsDisparos'
 import SmsFunil from './pages/sms/SmsFunil'
 import SmsAutomacoes from './pages/sms/SmsAutomacoes'
+import SmsRemarketing from './pages/sms/SmsRemarketing'
+import SmsMetricas from './pages/sms/SmsMetricas'
 import PageLoader from './components/PageLoader'
 import { ConfirmProvider } from './components/ConfirmDialog'
 import { PlanoProvider, usePlano } from './lib/PlanoContext'
@@ -141,6 +143,8 @@ export default function App() {
           <Route path="sms/disparos" element={<SmsDisparos />} />
           <Route path="sms/funil" element={<SmsFunil />} />
           <Route path="sms/automacoes" element={<SmsAutomacoes />} />
+          <Route path="sms/remarketing" element={<SmsRemarketing />} />
+          <Route path="sms/metricas" element={<SmsMetricas />} />
           <Route
             path="email/funil"
             element={
