@@ -49,9 +49,9 @@ export const PLANOS = {
 
 export const PLANO_ORDEM = ['free', 'inicial', 'padrao', 'pro']
 export const PLANO_CHECKOUT = {
-  inicial: 'https://pay.kiwify.com.br/xlaOBfy',
-  padrao: 'https://pay.kiwify.com.br/SF5QQ9J',
-  pro: 'https://pay.kiwify.com.br/VQGS7Hu',
+  inicial: 'https://donate.stripe.com/3cI3cw1FZ2gu8mTfmQ6Zy00',
+  padrao: 'https://donate.stripe.com/4gMeVe84naN0fPldeI6Zy01',
+  pro: 'https://donate.stripe.com/fZu8wQ98r8ESgTp7Uo6Zy02',
 }
 
 // Rótulos das features (pro admin editar)

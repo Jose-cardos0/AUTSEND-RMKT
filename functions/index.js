@@ -1270,6 +1270,105 @@ exports.kiwifyOnboarding = onRequest({ region: 'us-central1', timeoutSeconds: 60
   }
 })
 
+// ───────────────────────── Stripe: checkout dos planos Autsend ─────────────────────────
+
+/** price_... → plano do app, via env (STRIPE_PRICE_INICIAL/PADRAO/PRO). */
+function planoDoPriceStripe(priceId) {
+  if (!priceId) return null
+  if (priceId === process.env.STRIPE_PRICE_INICIAL) return 'inicial'
+  if (priceId === process.env.STRIPE_PRICE_PADRAO) return 'padrao'
+  if (priceId === process.env.STRIPE_PRICE_PRO) return 'pro'
+  return null
+}
+
+/** Extrai CPF/CNPJ do checkout (tax id ou custom field) — usado no Termo. */
+function extrairDocumentoStripe(session) {
+  try {
+    const taxIds = session.customer_details?.tax_ids
+    if (Array.isArray(taxIds) && taxIds.length && taxIds[0]?.value) return taxIds[0].value
+    for (const f of (session.custom_fields || [])) {
+      const k = (f.key || '').toLowerCase()
+      if (k.includes('cpf') || k.includes('cnpj') || k.includes('documento') || k.includes('doc')) {
+        return f.text?.value || (f.numeric?.value != null ? String(f.numeric.value) : null)
+      }
+    }
+  } catch (_) {}
+  return null
+}
+
+/**
+ * Webhook do Stripe (substitui o kiwifyOnboarding no checkout DOS PLANOS).
+ * checkout.session.completed → cria/ativa a conta + seta o plano (+ captura nome/CPF-CNPJ).
+ * customer.subscription.deleted → volta pro Free (congela, não deleta nada).
+ * STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET no functions/.env.
+ */
+exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) { res.status(500).send('Stripe não configurado'); return }
+  const stripe = require('stripe')(secretKey)
+  const whSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+  let event
+  try {
+    if (whSecret) {
+      event = stripe.webhooks.constructEvent(req.rawBody, req.headers['stripe-signature'], whSecret)
+    } else {
+      event = typeof req.body === 'object' && req.body ? req.body : JSON.parse((req.rawBody || Buffer.from('{}')).toString('utf8'))
+      console.warn('stripeWebhook: STRIPE_WEBHOOK_SECRET vazio — evento NÃO verificado (configure após registrar o endpoint).')
+    }
+  } catch (err) {
+    console.error('stripeWebhook assinatura inválida:', err.message)
+    res.status(400).send(`Webhook Error: ${err.message}`); return
+  }
+
+  try {
+    const tipo = event.type
+
+    if (tipo === 'checkout.session.completed') {
+      const session = event.data.object
+      const email = (session.customer_details?.email || session.customer_email || '').toLowerCase().trim()
+      const nome = session.customer_details?.name || null
+      const documento = extrairDocumentoStripe(session)
+      const customerId = session.customer || null
+      const subscriptionId = session.subscription || null
+
+      let plano = null
+      try {
+        const itens = await stripe.checkout.sessions.listLineItems(session.id, { limit: 5 })
+        for (const it of (itens.data || [])) { const p = planoDoPriceStripe(it.price?.id); if (p) { plano = p; break } }
+      } catch (e) { console.error('stripe listLineItems', e) }
+
+      if (!email || !plano) { res.status(200).json({ ok: true, ignored: 'sem e-mail ou plano', email: !!email, plano }); return }
+
+      const { uid, criado } = await garantirUsuarioKiwify(email, nome)
+      await db.doc(`tenants/${uid}`).set({
+        plano, status: 'approved', email, nome: nome || null, origem: 'stripe',
+        stripeCustomerId: customerId, stripeSubscriptionId: subscriptionId,
+        ...(documento ? { documento } : {}),
+        ...(criado ? { mustChangePassword: true } : {}),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true })
+      if (criado) { const cfg = await getKiwifyOnboardConfig(); await enviarBoasVindasKiwify(cfg, email, nome, plano) }
+      res.status(200).json({ ok: true, plano, criado, uid }); return
+    }
+
+    if (tipo === 'customer.subscription.deleted') {
+      const customerId = event.data.object.customer
+      const snap = await db.collection('tenants').where('stripeCustomerId', '==', customerId).limit(1).get()
+      if (!snap.empty) {
+        await snap.docs[0].ref.set({ plano: 'free', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        res.status(200).json({ ok: true, revogado: true }); return
+      }
+      res.status(200).json({ ok: true, ignored: 'tenant não encontrado pra revogar' }); return
+    }
+
+    res.status(200).json({ ok: true, ignored: tipo })
+  } catch (err) {
+    console.error('stripeWebhook erro:', err)
+    res.status(200).json({ ok: false, error: err.message })
+  }
+})
+
 // ───────────────────────── Webhook Custom (qualquer plataforma) ─────────────────────────
 
 /** Lê um valor por caminho tipo "a.b.0.c" de um objeto/array. */
