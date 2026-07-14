@@ -348,7 +348,7 @@ export default function Layout() {
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className={clsx(
                 'w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col flex-1 min-h-0',
-                location.pathname.startsWith('/banco-leads') || location.pathname.startsWith('/admin') ? 'lg:max-w-[80%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
+                location.pathname.startsWith('/admin') ? 'lg:max-w-[95%]' : location.pathname.startsWith('/banco-leads') ? 'lg:max-w-[80%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
               )}
             >
               {rotaBloqueada ? <UpgradeScreen /> : outlet}

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'
+import toast from 'react-hot-toast'
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react'
 import WhatsAppIcon from '../components/WhatsAppIcon'
@@ -17,7 +18,26 @@ export default function Login() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [recuperando, setRecuperando] = useState(false)
   const navigate = useNavigate()
+
+  const handleRecuperar = async () => {
+    const em = email.trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+      setError('Digite seu e-mail no campo acima para recuperar a senha.')
+      return
+    }
+    setRecuperando(true)
+    setError('')
+    try {
+      await sendPasswordResetEmail(auth, em)
+      toast.success(`Enviamos um link de recuperação para ${em}. Confira a caixa de entrada (e o spam).`)
+    } catch (err) {
+      setError(err.code === 'auth/user-not-found' ? 'Não encontramos uma conta com esse e-mail.' : (err.message || 'Erro ao enviar a recuperação.'))
+    } finally {
+      setRecuperando(false)
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -96,19 +116,16 @@ export default function Login() {
           className="relative rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-10 bg-white/30 backdrop-blur-xl border border-white/40 shadow-[0_25px_50px_-12px_rgba(74,70,222,0.18),0_0_0_1px_rgba(255,255,255,0.3)_inset]"
         >
           <div className="absolute -inset-px rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary-400/20 via-transparent to-violet-400/15 -z-10 blur-sm" />
-          <div className="flex justify-center items-center mb-4 sm:mb-6 min-h-[3.5rem]">
-            {isSignUp ? (
-              <p className="text-xs text-primary-600/90 uppercase tracking-[0.2em] font-bold">Criar conta</p>
-            ) : (
-              <motion.img
-                src={sendlyLogo}
-                alt="Autsend"
-                className="h-12 sm:h-16 w-auto drop-shadow-sm"
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
-              />
-            )}
+          <div className="flex flex-col justify-center items-center gap-1.5 mb-4 sm:mb-6">
+            <motion.img
+              src={sendlyLogo}
+              alt="Autsend"
+              className="h-12 sm:h-16 w-auto drop-shadow-sm"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 260, damping: 20 }}
+            />
+            {isSignUp && <p className="text-[11px] text-primary-600/90 uppercase tracking-[0.2em] font-bold">Criar conta</p>}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
@@ -172,16 +189,37 @@ export default function Login() {
           </form>
 
           <div className="mt-5 sm:mt-6 pt-5 sm:pt-6 border-t border-surface-200/80">
-            <p className="text-center text-sm text-stone-500">
-              {isSignUp ? 'Já tem conta?' : 'Não tem conta?'}{' '}
-              <button
-                type="button"
-                onClick={() => { setIsSignUp(!isSignUp); setError('') }}
-                className="text-primary-600 font-semibold hover:text-primary-700 transition-colors"
-              >
-                {isSignUp ? 'Entrar' : 'Criar conta'}
-              </button>
-            </p>
+            {isSignUp ? (
+              <p className="text-center text-sm text-stone-500">
+                Já tem conta?{' '}
+                <button
+                  type="button"
+                  onClick={() => { setIsSignUp(false); setError('') }}
+                  className="text-primary-600 font-semibold hover:text-primary-700 transition-colors"
+                >
+                  Entrar
+                </button>
+              </p>
+            ) : (
+              <div className="flex items-center justify-center gap-3 text-sm">
+                <button
+                  type="button"
+                  onClick={handleRecuperar}
+                  disabled={recuperando}
+                  className="text-primary-600 font-semibold hover:text-primary-700 transition-colors disabled:opacity-60"
+                >
+                  {recuperando ? 'Enviando…' : 'Rec. Senha'}
+                </button>
+                <span className="text-surface-300">|</span>
+                <button
+                  type="button"
+                  onClick={() => { setIsSignUp(true); setError('') }}
+                  className="text-primary-600 font-semibold hover:text-primary-700 transition-colors"
+                >
+                  Cadastro
+                </button>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>

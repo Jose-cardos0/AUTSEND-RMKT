@@ -2036,7 +2036,7 @@ exports.adminListClientes = onCall({ region: 'us-central1', timeoutSeconds: 120,
 
   const clientes = []
   for (const c of users) {
-    if (c.email && c.email.toLowerCase() === ADMIN_EMAIL) continue // não lista você mesmo
+    const ehAdmin = !!(c.email && c.email.toLowerCase() === ADMIN_EMAIL) // sua conta: aparece, mas somente leitura
     const tSnap = await db.doc(`tenants/${c.uid}`).get()
     const t = tSnap.exists ? tSnap.data() : {}
 
@@ -2058,6 +2058,7 @@ exports.adminListClientes = onCall({ region: 'us-central1', timeoutSeconds: 120,
 
     clientes.push({
       ...c,
+      ehAdmin,
       status: t.status || 'approved',
       plano: t.plano || '',
       cotaMensal: t.cotaMensal || 0,
@@ -2175,6 +2176,7 @@ exports.adminSetInstanciaBloqueada = onCall({ region: 'us-central1' }, async (re
   assertAdmin(request)
   const { uid, instanceId, bloqueada } = request.data || {}
   if (!uid || !instanceId) throw new HttpsError('invalid-argument', 'uid e instanceId obrigatórios.')
+  if (uid === request.auth?.uid) throw new HttpsError('permission-denied', 'A conta admin não pode ser alterada.')
   await db.doc(`users/${uid}/instances/${instanceId}`).set(
     { bloqueadaPorAdmin: !!bloqueada, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }
   )
@@ -2187,6 +2189,7 @@ exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) =
   const uid = request.data?.uid
   const p = request.data?.patch || {}
   if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  if (uid === request.auth?.uid) throw new HttpsError('permission-denied', 'A conta admin não pode ser alterada.')
   const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() }
   if (p.status && STATUS_VALIDOS.includes(p.status)) patch.status = p.status
   if (p.plano && ['free', 'inicial', 'padrao', 'pro'].includes(p.plano)) patch.plano = p.plano
@@ -2351,6 +2354,7 @@ exports.adminImpersonar = onCall({ region: 'us-central1' }, async (request) => {
   assertAdmin(request)
   const uid = request.data?.uid
   if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  if (uid === request.auth?.uid) throw new HttpsError('permission-denied', 'Você já está logado como admin.')
   try {
     const token = await admin.auth().createCustomToken(uid, { impersonatedBy: ADMIN_EMAIL })
     return { token }

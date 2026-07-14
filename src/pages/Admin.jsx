@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminSetInstanciaBloqueada } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminSetInstanciaBloqueada, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
@@ -38,6 +38,9 @@ function StatCard({ icon: Icon, label, value, tint = 'stone' }) {
     </div>
   )
 }
+
+// Sua própria conta admin: aparece na lista, mas é somente leitura (não dá pra banir/mexer).
+const ehAdminCliente = (c) => (c?.email || '').toLowerCase() === (ADMIN_EMAIL || '').toLowerCase()
 
 export default function Admin() {
   const [user] = useAuthState(auth)
@@ -304,14 +307,14 @@ export default function Admin() {
 
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
       {/* Lateral esquerda */}
-      <aside className="lg:w-52 xl:w-56 shrink-0 lg:order-1">
+      <aside className="lg:w-40 xl:w-44 shrink-0 lg:order-1">
         <div className="lg:sticky lg:top-24 grid grid-cols-2 lg:grid-cols-1 gap-3">
           <StatCard icon={Users} label="Clientes" value={fmtNum(stats.total)} tint="stone" />
           <StatCard icon={ShieldCheck} label="Aprovados" value={fmtNum(stats.aprovados)} tint="emerald" />
         </div>
       </aside>
       {/* Lateral direita */}
-      <aside className="lg:w-52 xl:w-56 shrink-0 lg:order-3">
+      <aside className="lg:w-40 xl:w-44 shrink-0 lg:order-3">
         <div className="lg:sticky lg:top-24 grid grid-cols-2 lg:grid-cols-1 gap-3">
           <StatCard icon={Pause} label="Pausados / banidos" value={fmtNum(stats.travados)} tint="amber" />
           <StatCard icon={TrendingDown} label="Em risco" value={fmtNum(stats.risco)} tint="rose" />
@@ -370,11 +373,15 @@ export default function Admin() {
                     <td className="px-4 py-2.5 tabular-nums whitespace-nowrap"><span className={Number(c.complaintRate) >= 0.1 ? 'text-rose-600 font-semibold' : 'text-stone-500'}>{(Number(c.complaintRate) || 0).toFixed(2)}%</span></td>
                     <td className="px-4 py-2.5 text-xs text-stone-500 whitespace-nowrap">{fmtDate(c.ultimoLogin)}</td>
                     <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-0.5">
-                        {c.status !== 'approved' && <button onClick={() => aplicarStatus(c, 'approved', 'Aprovar')} className="p-1.5 rounded-lg text-stone-400 hover:bg-emerald-50 hover:text-emerald-600" title="Aprovar"><CheckCircle2 className="w-4 h-4" /></button>}
-                        {c.status !== 'paused' && c.status !== 'banned' && <button onClick={() => aplicarStatus(c, 'paused', 'Pausar')} className="p-1.5 rounded-lg text-stone-400 hover:bg-orange-50 hover:text-orange-600" title="Pausar"><Pause className="w-4 h-4" /></button>}
-                        {c.status !== 'banned' && <button onClick={() => aplicarStatus(c, 'banned', 'Banir')} className="p-1.5 rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600" title="Banir"><Ban className="w-4 h-4" /></button>}
-                      </div>
+                      {ehAdminCliente(c) ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary-600" title="Sua conta admin — somente leitura"><Lock className="w-3.5 h-3.5" /> Admin</span>
+                      ) : (
+                        <div className="flex items-center gap-0.5">
+                          {c.status !== 'approved' && <button onClick={() => aplicarStatus(c, 'approved', 'Aprovar')} className="p-1.5 rounded-lg text-stone-400 hover:bg-emerald-50 hover:text-emerald-600" title="Aprovar"><CheckCircle2 className="w-4 h-4" /></button>}
+                          {c.status !== 'paused' && c.status !== 'banned' && <button onClick={() => aplicarStatus(c, 'paused', 'Pausar')} className="p-1.5 rounded-lg text-stone-400 hover:bg-orange-50 hover:text-orange-600" title="Pausar"><Pause className="w-4 h-4" /></button>}
+                          {c.status !== 'banned' && <button onClick={() => aplicarStatus(c, 'banned', 'Banir')} className="p-1.5 rounded-lg text-stone-400 hover:bg-rose-50 hover:text-rose-600" title="Banir"><Ban className="w-4 h-4" /></button>}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -400,67 +407,73 @@ export default function Admin() {
       {/* Perfil do cliente */}
       {sel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setSel(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl lg:max-w-[80vw] max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start gap-3 p-5 border-b border-surface-100">
-              <div className="min-w-0 flex-1">
-                <h3 className="text-base font-semibold text-stone-800 truncate">{sel.nome || 'Sem nome'}</h3>
-                <p className="text-xs text-stone-500 truncate">{sel.email}</p>
-                <div className="flex items-center gap-2 mt-1.5"><StatusBadge status={sel.status} /> <Health c={sel} /></div>
-              </div>
+          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-[90vw] h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 p-4 sm:p-5 border-b border-surface-100">
+              <p className="text-sm font-medium text-stone-700 truncate flex-1 min-w-0">{sel.email}</p>
+              <div className="flex items-center gap-2 shrink-0"><StatusBadge status={sel.status} /> <Health c={sel} /></div>
               <button onClick={() => setSel(null)} className="p-1 text-stone-400 hover:text-stone-600 shrink-0"><X className="w-5 h-5" /></button>
             </div>
 
-            <div className="p-5 overflow-y-auto scroll-y-soft flex-1">
-              <div className="grid lg:grid-cols-2 gap-5">
+            <div className="p-4 sm:p-5 overflow-y-auto scroll-y-soft flex-1">
+              <div className="grid lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)] gap-5 lg:items-start">
                 {/* ─── Coluna esquerda: controles ─── */}
                 <div className="space-y-4">
-                  {/* Ações de status */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <button onClick={() => aplicarStatus(sel, 'approved', 'Aprovar')} disabled={sel.status === 'approved'} className="flex flex-col items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50/60 text-emerald-700 py-2.5 text-xs font-semibold disabled:opacity-40"><CheckCircle2 className="w-4 h-4" /> Aprovar</button>
-                    <button onClick={() => aplicarStatus(sel, 'paused', 'Pausar')} disabled={sel.status === 'paused'} className="flex flex-col items-center gap-1 rounded-xl border border-orange-200 bg-orange-50/60 text-orange-700 py-2.5 text-xs font-semibold disabled:opacity-40"><Pause className="w-4 h-4" /> Pausar</button>
-                    <button onClick={() => aplicarStatus(sel, 'banned', 'Banir')} disabled={sel.status === 'banned'} className="flex flex-col items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/60 text-rose-700 py-2.5 text-xs font-semibold disabled:opacity-40"><Ban className="w-4 h-4" /> Banir</button>
-                  </div>
-
-                  {/* Métricas */}
+                  {/* Métricas (sempre visível) */}
                   <div className="grid grid-cols-3 gap-2">
                     <div className="rounded-xl border border-surface-200 bg-surface-50/50 p-3 text-center"><p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Bounce</p><p className="text-sm font-bold text-stone-700 tabular-nums mt-0.5">{(Number(sel.bounceRate) || 0).toFixed(1)}%</p></div>
                     <div className="rounded-xl border border-surface-200 bg-surface-50/50 p-3 text-center"><p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Reclamação</p><p className={`text-sm font-bold tabular-nums mt-0.5 ${Number(sel.complaintRate) >= 0.1 ? 'text-rose-600' : 'text-stone-700'}`}>{(Number(sel.complaintRate) || 0).toFixed(2)}%</p></div>
                     <div className="rounded-xl border border-surface-200 bg-surface-50/50 p-3 text-center"><p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Leads</p><p className="text-sm font-bold text-stone-700 tabular-nums mt-0.5">{carregandoDet ? '…' : fmtNum(detalhe?.leadsCount)}</p></div>
                   </div>
 
-                  {/* Entrar como cliente */}
-                  <button onClick={() => impersonar(sel)} disabled={impersonando} className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50/60 text-primary-700 hover:bg-primary-100 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50">
-                    {impersonando ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />} Entrar como este cliente
-                  </button>
-
-                  {/* Plano */}
-                  <div>
-                    <label className="block text-xs font-medium text-stone-600 mb-1.5 flex items-center gap-1.5"><Crown className="w-3.5 h-3.5" /> Plano</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {PLANO_ORDEM.map((k) => (
-                        <button key={k} onClick={() => setForm((f) => ({ ...f, plano: k, limites: { ...PLANOS[k].limites } }))} className={`rounded-xl border-2 py-2 text-sm font-semibold transition ${form.plano === k ? 'border-primary-500 bg-primary-50/60 text-primary-700' : 'border-surface-200 text-stone-600 hover:border-primary-300'}`}>{PLANOS[k].nome}</button>
-                      ))}
+                  {ehAdminCliente(sel) ? (
+                    <div className="rounded-xl border border-primary-200 bg-primary-50/50 text-primary-700 text-xs px-3 py-3 flex items-start gap-2">
+                      <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>Sua conta admin — <strong>somente leitura</strong>. Você acompanha os dados (reclamações, disparos, templates…), mas não pode banir, pausar nem alterar nada dela.</span>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Ações de status */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <button onClick={() => aplicarStatus(sel, 'approved', 'Aprovar')} disabled={sel.status === 'approved'} className="flex flex-col items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50/60 text-emerald-700 py-2.5 text-xs font-semibold disabled:opacity-40"><CheckCircle2 className="w-4 h-4" /> Aprovar</button>
+                        <button onClick={() => aplicarStatus(sel, 'paused', 'Pausar')} disabled={sel.status === 'paused'} className="flex flex-col items-center gap-1 rounded-xl border border-orange-200 bg-orange-50/60 text-orange-700 py-2.5 text-xs font-semibold disabled:opacity-40"><Pause className="w-4 h-4" /> Pausar</button>
+                        <button onClick={() => aplicarStatus(sel, 'banned', 'Banir')} disabled={sel.status === 'banned'} className="flex flex-col items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/60 text-rose-700 py-2.5 text-xs font-semibold disabled:opacity-40"><Ban className="w-4 h-4" /> Banir</button>
+                      </div>
 
-                  {/* Limites (override) */}
-                  <div>
-                    <label className="block text-xs font-medium text-stone-600 mb-1.5">Limites</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {['emailsMes', 'instancias', 'trackers', 'dominios'].map((k) => (
-                        <div key={k}>
-                          <span className="block text-[11px] text-stone-500 mb-0.5">{LIMITE_LABELS[k]}</span>
-                          <input type="number" min={0} value={form.limites[k]} onChange={(e) => setForm((f) => ({ ...f, limites: { ...f.limites, [k]: e.target.value } }))} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 tabular-nums" />
+                      {/* Entrar como cliente */}
+                      <button onClick={() => impersonar(sel)} disabled={impersonando} className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50/60 text-primary-700 hover:bg-primary-100 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50">
+                        {impersonando ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />} Entrar como este cliente
+                      </button>
+
+                      {/* Plano */}
+                      <div>
+                        <label className="block text-xs font-medium text-stone-600 mb-1.5 flex items-center gap-1.5"><Crown className="w-3.5 h-3.5" /> Plano</label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {PLANO_ORDEM.map((k) => (
+                            <button key={k} onClick={() => setForm((f) => ({ ...f, plano: k, limites: { ...PLANOS[k].limites } }))} className={`rounded-xl border-2 py-2 text-sm font-semibold transition ${form.plano === k ? 'border-primary-500 bg-primary-50/60 text-primary-700' : 'border-surface-200 text-stone-600 hover:border-primary-300'}`}>{PLANOS[k].nome}</button>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
 
-                  <div><label className="block text-xs font-medium text-stone-600 mb-1">Nota interna</label><textarea value={form.notas} onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))} rows={2} placeholder="Anotações sobre o cliente…" className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 resize-y" /></div>
+                      {/* Limites (override) */}
+                      <div>
+                        <label className="block text-xs font-medium text-stone-600 mb-1.5">Limites</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {['emailsMes', 'instancias', 'trackers', 'dominios'].map((k) => (
+                            <div key={k}>
+                              <span className="block text-[11px] text-stone-500 mb-0.5">{LIMITE_LABELS[k]}</span>
+                              <input type="number" min={0} value={form.limites[k]} onChange={(e) => setForm((f) => ({ ...f, limites: { ...f.limites, [k]: e.target.value } }))} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 tabular-nums" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div><label className="block text-xs font-medium text-stone-600 mb-1">Nota interna</label><textarea value={form.notas} onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))} rows={2} placeholder="Anotações sobre o cliente…" className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 resize-y" /></div>
+                    </>
+                  )}
                 </div>
 
                 {/* ─── Coluna direita: relatórios com abas ─── */}
-                <div className="rounded-2xl border border-surface-200 bg-surface-50/40 p-3 flex flex-col">
+                <div className="rounded-2xl border border-surface-200 bg-surface-50/40 p-3 flex flex-col lg:min-h-[calc(90vh-9rem)]">
                   <div className="flex flex-wrap gap-0.5 rounded-xl bg-surface-100 p-0.5 self-start mb-3">
                     {[['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
                       <button key={k} onClick={() => { setDetTab(k); setDetPage(1) }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
@@ -489,9 +502,11 @@ export default function Admin() {
                                     <span className="block text-[11px] text-stone-400 truncate">{inst.numero || '—'} · {inst.conectado ? 'Conectado' : 'Offline'}{inst.bloqueada ? ' · DESATIVADA' : ''}</span>
                                   </span>
                                 </button>
-                                <button onClick={() => toggleInstancia(inst)} className={`shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ${inst.bloqueada ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'}`}>
-                                  {inst.bloqueada ? 'Reativar' : 'Desativar'}
-                                </button>
+                                {!ehAdminCliente(sel) && (
+                                  <button onClick={() => toggleInstancia(inst)} className={`shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ${inst.bloqueada ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'}`}>
+                                    {inst.bloqueada ? 'Reativar' : 'Desativar'}
+                                  </button>
+                                )}
                               </div>
                               {exp && (
                                 <div className="border-t border-surface-100 p-2.5 bg-surface-50/40">
@@ -602,7 +617,7 @@ export default function Admin() {
 
             <div className="p-4 border-t border-surface-100 flex justify-end gap-2">
               <button onClick={() => setSel(null)} className="btn-secondary text-sm min-h-[44px]">Fechar</button>
-              <button onClick={salvarPerfil} disabled={salvando} className="btn-primary text-sm min-h-[44px] touch-manipulation">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar</button>
+              {!ehAdminCliente(sel) && <button onClick={salvarPerfil} disabled={salvando} className="btn-primary text-sm min-h-[44px] touch-manipulation">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar</button>}
             </div>
           </div>
         </div>
