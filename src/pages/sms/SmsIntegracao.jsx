@@ -203,11 +203,14 @@ export default function SmsIntegracao() {
     }
   }
 
+  // Clicar num número: ele vira o PRINCIPAL global (define o número + ativa a conta dele).
   const escolherFrom = async (p, from) => {
     setAcaoId(p.id)
     try {
       await setFromProviderSMS(p.id, from)
+      await definirPrincipalSMS('provider', p.id)
       await carregar()
+      toast.success('Número principal atualizado.')
     } catch (err) {
       toast.error(err?.message || 'Erro ao escolher número.')
     } finally {
@@ -611,11 +614,6 @@ export default function SmsIntegracao() {
                         </span>
                       </button>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {!isPrincipal && (
-                          <button type="button" onClick={() => definirPrincipal('provider', p.id)} disabled={acaoId === p.id} className="p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-60" title="Usar esta conta nos envios" aria-label="Definir como principal">
-                            {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
-                          </button>
-                        )}
                         <button type="button" onClick={() => sincronizarProvider(p)} disabled={acaoId === p.id} className="p-2 rounded-lg border border-surface-200 bg-white text-stone-600 hover:bg-surface-100 transition-colors disabled:opacity-60" title="Atualizar números" aria-label="Atualizar números">
                           <RefreshCw className={`w-4 h-4 ${acaoId === p.id ? 'animate-spin' : ''}`} />
                         </button>
@@ -634,7 +632,8 @@ export default function SmsIntegracao() {
                         <p className="text-sm font-medium text-stone-700 mb-2">Selecione qual número usar como <strong>principal</strong> nos envios.</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                           {nums.map((num) => {
-                            const ativo = p.from === num
+                            // Só existe UM principal global: é a conta principal + o número dela em uso.
+                            const ativo = p.principal && p.from === num
                             return (
                               <div key={num} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${ativo ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-white'}`}>
                                 {ativo && (
