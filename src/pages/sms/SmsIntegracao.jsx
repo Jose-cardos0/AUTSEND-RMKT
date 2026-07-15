@@ -595,7 +595,7 @@ export default function SmsIntegracao() {
                 const nums = Array.isArray(p.numeros) && p.numeros.length ? p.numeros : (p.from ? [p.from] : [])
                 const aberta = contaAberta === p.id
                 return (
-                  <div key={p.id} className={`rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
+                  <div key={p.id} className="rounded-xl border-2 border-surface-200 bg-surface-50/60 transition">
                     {/* Cabeçalho da conta (dropdown) */}
                     <div className="relative flex items-center gap-2 p-3 sm:p-4">
                       {isPrincipal && (
