@@ -379,9 +379,6 @@ exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) =
   const tenantSTM = await assertTenantAtivo(uid)
   await assertTermosAceito(request, tenantSTM)
   const ehAdminSTM = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
-  if (!ehAdminSTM && emailPausadoPorRisco(tenantSTM)) {
-    throw new HttpsError('failed-precondition', 'Sua conta está em análise pelo setor de risco. Os envios estão temporariamente pausados.')
-  }
   const { templateId, to, nome, produto, leadId, remetenteId } = request.data || {}
   if (!templateId) throw new HttpsError('invalid-argument', 'Escolha um template.')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || '').trim())) throw new HttpsError('invalid-argument', 'E-mail inválido.')
@@ -389,6 +386,12 @@ exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) =
   const cfg = await resolverRemetente(uid, remetenteId || null)
   const from = cfg.from
   if (!cfg?.apiKey || !from) throw new HttpsError('failed-precondition', 'Configure o Resend nas Integrações de E-mail.')
+
+  // Pausa de risco só vale pra conta compartilhada (API própria do cliente = Resend dele).
+  const sharedKeySTM = await getSharedResendKey()
+  if (!ehAdminSTM && !!sharedKeySTM && cfg.apiKey === sharedKeySTM && emailPausadoPorRisco(tenantSTM)) {
+    throw new HttpsError('failed-precondition', 'Sua conta está em análise pelo setor de risco. Os envios estão temporariamente pausados.')
+  }
 
   const tplSnap = await db.doc(`users/${uid}/emailTemplates/${templateId}`).get()
   if (!tplSnap.exists) throw new HttpsError('not-found', 'Template não encontrado.')
@@ -478,9 +481,6 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
   const tenant = await assertTenantAtivo(uid)
   await assertTermosAceito(request, tenant)
   const ehAdminEmail = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
-  if (!ehAdminEmail && emailPausadoPorRisco(tenant)) {
-    throw new HttpsError('failed-precondition', 'Sua conta está em análise pelo setor de risco. Os envios estão temporariamente pausados.')
-  }
 
   const data = request.data || {}
   const templateId = data.templateId
@@ -491,6 +491,14 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
   const cfg = await resolverRemetente(uid, data.remetenteId || null)
   const from = cfg.from
   if (!cfg?.apiKey || !from) throw new HttpsError('failed-precondition', 'Configure o Resend nas Integrações de E-mail.')
+
+  // Só medimos cota/crédito e aplicamos a pausa de risco quando o envio usa a NOSSA conta Resend
+  // (domínio na key compartilhada). Se o cliente usa a API própria dele, é o Resend dele — sem nossos limites.
+  const sharedKey = await getSharedResendKey()
+  const usaContaCompartilhada = !!sharedKey && cfg.apiKey === sharedKey
+  if (usaContaCompartilhada && !ehAdminEmail && emailPausadoPorRisco(tenant)) {
+    throw new HttpsError('failed-precondition', 'Sua conta está em análise pelo setor de risco. Os envios estão temporariamente pausados.')
+  }
 
   const tplSnap = await db.doc(`users/${uid}/emailTemplates/${templateId}`).get()
   if (!tplSnap.exists) throw new HttpsError('not-found', 'Template não encontrado.')
@@ -508,10 +516,10 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
     .map((r) => ({ email: String(r.email).trim(), nome: r.nome || '', produto: r.produto || '' }))
   if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum e-mail válido na lista.')
 
-  // Crédito comprado é consumido primeiro; a cota mensal do plano só depois (admin é ilimitado).
+  // Crédito comprado é consumido primeiro; a cota mensal do plano só depois. Só vale pra conta compartilhada.
   const lim = limitesDoTenant(tenant)
   let creditoAConsumir = 0
-  if (!ehAdminEmail) {
+  if (usaContaCompartilhada && !ehAdminEmail) {
     const creditos = Number(tenant.emailCreditos) || 0
     const quotaUsada = await quotaEmailUsadaNoMes(uid)
     const restanteQuota = Math.max(0, (lim.emailsMes || 0) - quotaUsada)
@@ -541,6 +549,7 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
     intervaloMin,
     totalLotes: lotes.length,
     creditoConsumido: creditoAConsumir,
+    contaPropria: !usaContaCompartilhada, // envio pela API do próprio cliente → não conta na nossa cota
     status: 'enviando',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
@@ -1326,6 +1335,7 @@ async function quotaEmailUsadaNoMes(uid) {
     const ds = await db.collection(`users/${uid}/emailDisparos`).get()
     ds.forEach((d) => {
       const x = d.data()
+      if (x.contaPropria === true) return // envio pela API do próprio cliente não consome nossa cota
       const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0)
       if (cm >= inicio.getTime()) {
         const totalDisp = Number(x.total) || 0
@@ -2397,10 +2407,12 @@ function proximoNode(funnel, nodeId, handle) {
 async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteId) {
   try {
     if (!contato?.email || !templateId) return false
-    if (await emailPausadoUid(userId)) return false // conta pausada pelo setor de risco
     const cfg = await resolverRemetente(userId, remetenteId || null)
     const from = cfg.from
     if (!cfg?.apiKey || !from) return false
+    // Pausa de risco só bloqueia envios pela NOSSA conta compartilhada (não a API própria do cliente).
+    const sharedKeyFn = await getSharedResendKey()
+    if (!!sharedKeyFn && cfg.apiKey === sharedKeyFn && await emailPausadoUid(userId)) return false
     const tplSnap = await db.doc(`users/${userId}/emailTemplates/${templateId}`).get()
     if (!tplSnap.exists) return false
     const tpl = tplSnap.data()
