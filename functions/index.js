@@ -3069,6 +3069,14 @@ exports.customWebhook = onRequest(
           if (funnel.ativo !== true || !grupoOk(funnel)) continue
           await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome }, 'whatsapp')
         }
+        // Funis de SMS (canais EUA e API são funis independentes; funnel.smsCanal define a conta usada no envio).
+        const funisSmsSnap = await db.collection('users').doc(userId).collection('smsFunnels')
+          .where('gatilhoEvento', '==', evento).limit(20).get()
+        for (const fdoc of funisSmsSnap.docs) {
+          const funnel = fdoc.data()
+          if (funnel.ativo !== true || !grupoOk(funnel)) continue
+          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome }, 'sms')
+        }
       }
     } catch (err) { console.error('Erro ao inscrever em funil:', err) }
 
