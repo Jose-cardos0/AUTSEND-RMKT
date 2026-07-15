@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { auth } from './lib/firebase'
 import Layout from './components/Layout'
+import TermosDeUso from './components/TermosDeUso'
 import Login from './pages/Login'
 import Landing from './pages/Landing'
 import Integracoes from './pages/Integracoes'
@@ -51,9 +52,27 @@ function RootRoute() {
   if (!user) return <Landing />
   return (
     <PlanoProvider>
-      <Layout />
+      <GateApp />
     </PlanoProvider>
   )
+}
+
+/**
+ * Portão de entrada do app. Enquanto o plano não carrega do backend, mostra loader.
+ * Se o cliente ainda NÃO aceitou o Termo de Uso, renderiza SÓ o Termo — o Layout (app) nem
+ * entra no DOM, então não dá pra burlar apagando elemento no DevTools nem digitando rota.
+ */
+function GateApp() {
+  const { loading, isAdmin, termosAceito } = usePlano()
+  if (loading) {
+    return (
+      <ParticlesBackground className="flex px-4 sm:px-6 py-6 sm:py-8 bg-gradient-to-br from-surface-50 via-blue-50/50 to-violet-100/35">
+        <PageLoader label="Verificando sua conta…" />
+      </ParticlesBackground>
+    )
+  }
+  if (!isAdmin && termosAceito === false) return <TermosDeUso />
+  return <Layout />
 }
 
 function InicioRedirect() {

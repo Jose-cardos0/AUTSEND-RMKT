@@ -36,6 +36,17 @@ async function assertTenantAtivo(uid) {
   return tSnap.exists ? tSnap.data() : {}
 }
 
+/** Bloqueia envios se o cliente ainda não aceitou o Termo de Uso (admin passa). Reaproveita o tenant se já buscado. */
+async function assertTermosAceito(request, tenant) {
+  const email = (request.auth?.token?.email || '').toLowerCase()
+  if (email === ADMIN_EMAIL) return
+  let t = tenant
+  if (!t) { const s = await db.doc(`tenants/${request.auth?.uid}`).get(); t = s.exists ? s.data() : {} }
+  if (!(t && t.termos && t.termos.aceito === true)) {
+    throw new HttpsError('failed-precondition', 'Você precisa aceitar os Termos de Uso antes de enviar.')
+  }
+}
+
 // Limites por plano (espelho do src/lib/plans.js)
 const PLAN_LIMITS = {
   free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0 },
@@ -365,7 +376,7 @@ exports.sendTestEmail = onCall({ region: 'us-central1' }, async (request) => {
 exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
-  await assertTenantAtivo(uid)
+  await assertTermosAceito(request, await assertTenantAtivo(uid))
   const { templateId, to, nome, produto, leadId, remetenteId } = request.data || {}
   if (!templateId) throw new HttpsError('invalid-argument', 'Escolha um template.')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || '').trim())) throw new HttpsError('invalid-argument', 'E-mail inválido.')
@@ -460,6 +471,7 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
 
   const data = request.data || {}
   const templateId = data.templateId
@@ -692,6 +704,7 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
 
   const data = request.data || {}
   const mensagem = String(data.mensagem || '').trim()
@@ -771,6 +784,7 @@ exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
   const data = request.data || {}
   const mensagem = String(data.mensagem || '').trim()
   if (!mensagem) throw new HttpsError('invalid-argument', 'Nenhuma automação de SMS configurada para este evento.')
@@ -1190,20 +1204,20 @@ async function enviarBoasVindasKiwify(cfg, email, nome, plano) {
   const nomePlano = plano === 'pro' ? 'Pro' : plano === 'inicial' ? 'Inicial' : 'Padrão'
   const saud = nome ? `Olá, ${String(nome).trim().split(' ')[0]}!` : 'Bem-vindo(a)!'
   const html = `
-<div style="background:#eef0fb;padding:32px 12px;font-family:'Segoe UI',Arial,Helvetica,sans-serif">
+<div style="background:#eef0fb;padding:32px 12px;font-family:Roboto,Arial,Helvetica,sans-serif">
   <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:22px;overflow:hidden;box-shadow:0 10px 34px rgba(91,94,235,0.14)">
     <div style="padding:26px 24px 18px;text-align:center;border-bottom:1px solid #f0f0f6">
-      <img src="${logo}" alt="Autsend" height="36" style="height:36px;width:auto;display:inline-block" />
+      <img src="${logo}" alt="Autsend" height="72" style="height:72px;width:auto;display:inline-block" />
     </div>
-    <div style="padding:30px 30px 8px;color:#2b2b3a">
-      <h1 style="margin:0 0 6px;font-size:23px;font-weight:800;color:#1f2030">${saud} 🚀</h1>
+    <div style="padding:30px 30px 8px;color:#2b2b3a;font-family:Roboto,Arial,Helvetica,sans-serif">
+      <h1 style="margin:0 0 6px;font-size:23px;font-weight:800;color:#1f2030">${saud}</h1>
       <p style="margin:0 0 22px;font-size:15px;color:#5b5b6b;line-height:1.6">Sua conta do plano <strong style="color:#5b5eeb">${nomePlano}</strong> está ativa. É só entrar com os dados abaixo:</p>
       <div style="background:#f5f5fc;border:1px solid #ececf7;border-radius:16px;padding:18px 20px;margin:0 0 26px">
         <p style="margin:0 0 10px;font-size:14px;color:#2b2b3a"><span style="color:#9a9ab0;display:inline-block;width:56px">E-mail</span> <strong>${email}</strong></p>
         <p style="margin:0;font-size:14px;color:#2b2b3a"><span style="color:#9a9ab0;display:inline-block;width:56px">Senha</span> <strong style="letter-spacing:1px">${KIWIFY_SENHA_PADRAO}</strong></p>
       </div>
-      <a href="${url}" style="display:block;text-align:center;background:linear-gradient(135deg,#6d6ff5,#5b5eeb);background-color:#5b5eeb;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:16px;border-radius:14px;box-shadow:0 6px 16px rgba(91,94,235,0.35)">Acessar minha conta &rarr;</a>
-      <p style="margin:18px 0 0;font-size:13px;color:#9a9ab0;line-height:1.5;text-align:center">🔒 Por segurança, <strong style="color:#7a7a90">troque sua senha</strong> no primeiro acesso.</p>
+      <a href="${url}" style="display:block;text-align:center;background:linear-gradient(135deg,#6d6ff5,#5b5eeb);background-color:#5b5eeb;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.5px;padding:16px;border-radius:14px;box-shadow:0 6px 16px rgba(91,94,235,0.35)">IR PARA O APP</a>
+      <p style="margin:18px 0 0;font-size:13px;color:#9a9ab0;line-height:1.5;text-align:center">Por segurança, <strong style="color:#7a7a90">troque sua senha</strong> no primeiro acesso.</p>
     </div>
     <div style="padding:20px 24px 26px;text-align:center">
       <p style="margin:0;font-size:12px;color:#b3b3c4;line-height:1.5">Autsend — Remarketing automático por WhatsApp, E-mail e SMS<br/>Este e-mail foi enviado porque você adquiriu um plano.</p>
@@ -2159,6 +2173,7 @@ exports.customWebhook = onRequest(
 exports.enrollFunnel = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertTermosAceito(request)
   const { funnelId, recipients, canal } = request.data || {}
   if (!funnelId) throw new HttpsError('invalid-argument', 'Escolha um funil.')
   const col = canal === 'whatsapp' ? 'whatsappFunnels' : canal === 'sms' ? 'smsFunnels' : 'emailFunnels'

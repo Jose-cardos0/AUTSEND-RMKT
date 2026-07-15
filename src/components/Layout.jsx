@@ -15,7 +15,6 @@ import brlflag from '../assets/brlflag.png'
 import WhatsAppIcon from './WhatsAppIcon'
 import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
-import TermosDeUso from './TermosDeUso'
 import MelhorarPlano from './MelhorarPlano'
 
 // Navegação por canal. Cada grupo vira uma seção colapsável na sidebar (desktop) e no menu mobile.
@@ -259,7 +258,7 @@ export default function Layout() {
   const location = useLocation()
   const outlet = useOutlet()
   const [authUser] = useAuthState(auth)
-  const { temFeature, isAdmin: planoIsAdmin, termosAceito, loading: planoLoading } = usePlano()
+  const { temFeature } = usePlano()
   const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroup] : navGroups
   // Esconde do menu o que o plano não libera
   const podeItem = (it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }
@@ -313,7 +312,6 @@ export default function Layout() {
       variant="app"
       className="bg-gradient-to-br from-surface-50 via-blue-50/50 to-violet-100/35"
     >
-    {!planoLoading && !planoIsAdmin && termosAceito === false && <TermosDeUso />}
     <div className="app-viewport bg-transparent md:flex-row">
       {/* SIDEBAR — desktop */}
       <aside className={clsx('md:flex-col w-[15.5rem] shrink-0 border-r border-surface-200/70 bg-white/70 backdrop-blur-xl', sidebarHidden ? 'hidden' : 'hidden md:flex')}>
