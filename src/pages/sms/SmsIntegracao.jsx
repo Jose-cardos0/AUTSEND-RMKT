@@ -12,13 +12,16 @@ import {
   criarCheckoutNumeroSMS,
   listarNumerosSMS,
   sincronizarNumerosSMS,
-  setPrincipalNumeroSMS,
   cancelarNumeroSMS,
   excluirNumeroSMS,
+  listarProvidersSMS,
+  addProviderSMS,
+  deleteProviderSMS,
+  definirPrincipalSMS,
 } from '../../lib/smsNumeros'
 import {
   Phone, Star, Trash2, Loader2, X, Plus, Check, ShoppingCart,
-  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban,
+  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban, KeyRound, Globe,
 } from 'lucide-react'
 import euaflag from '../../assets/euaflag.png'
 import chipastron from '../../assets/chip/chipastron.png'
@@ -71,9 +74,14 @@ export default function SmsIntegracao() {
   const liberado = temFeature('smsDisparos')
 
   const [numeros, setNumeros] = useState([])
+  const [provedores, setProvedores] = useState([])
   const [loading, setLoading] = useState(true)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [secaoAberta, setSecaoAberta] = useState(true)
+  const [secaoApi, setSecaoApi] = useState(false)
+  const [novoApi, setNovoApi] = useState(false)
+  const [formApi, setFormApi] = useState({ apiKey: '', from: '', messagingProfileId: '', nome: '' })
+  const [salvandoApi, setSalvandoApi] = useState(false)
 
   const [popupOpen, setPopupOpen] = useState(false)
   const [disponiveis, setDisponiveis] = useState([])
@@ -86,10 +94,11 @@ export default function SmsIntegracao() {
 
   const carregar = async () => {
     try {
-      const r = await listarNumerosSMS()
-      setNumeros(r?.numeros || [])
+      const [rn, rp] = await Promise.all([listarNumerosSMS(), listarProvidersSMS().catch(() => ({ provedores: [] }))])
+      setNumeros(rn?.numeros || [])
+      setProvedores(rp?.provedores || [])
     } catch (_) {
-      setNumeros([])
+      setNumeros([]); setProvedores([])
     } finally {
       setLoading(false)
     }
@@ -160,14 +169,44 @@ export default function SmsIntegracao() {
     }
   }
 
-  const definirPrincipal = async (id) => {
+  const definirPrincipal = async (tipo, id) => {
     setAcaoId(id)
     try {
-      await setPrincipalNumeroSMS(id)
+      await definirPrincipalSMS(tipo, id)
       await carregar()
-      toast.success('Número principal atualizado.')
+      toast.success('Remetente principal atualizado.')
     } catch (err) {
       toast.error(err?.message || 'Erro ao definir principal.')
+    } finally {
+      setAcaoId(null)
+    }
+  }
+
+  const salvarApi = async () => {
+    if (!formApi.apiKey.trim() || !formApi.from.trim()) { toast.error('Informe a API key e o número de envio.'); return }
+    setSalvandoApi(true)
+    try {
+      await addProviderSMS(formApi)
+      setFormApi({ apiKey: '', from: '', messagingProfileId: '', nome: '' })
+      setNovoApi(false)
+      await carregar()
+      toast.success('Conta Telnyx conectada!')
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao conectar a conta Telnyx.')
+    } finally {
+      setSalvandoApi(false)
+    }
+  }
+
+  const excluirApi = async (p) => {
+    if (!(await confirm({ title: `Remover "${p.nome}"?`, message: 'A conexão com essa conta Telnyx será removida do app (a conta na Telnyx não é afetada).', confirmLabel: 'Remover' }))) return
+    setAcaoId(p.id)
+    try {
+      await deleteProviderSMS(p.id)
+      await carregar()
+      toast.success('Conta Telnyx removida.')
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao remover.')
     } finally {
       setAcaoId(null)
     }
@@ -464,7 +503,7 @@ export default function SmsIntegracao() {
                           {!isPrincipal && !comErro && !bloqueado && (
                             <button
                               type="button"
-                              onClick={() => definirPrincipal(n.id)}
+                              onClick={() => definirPrincipal('numero', n.id)}
                               disabled={acaoId === n.id}
                               className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation disabled:opacity-60"
                               title="Definir como principal"
@@ -489,6 +528,97 @@ export default function SmsIntegracao() {
                   )
                 })}
               </div>
+            </div>
+          )}
+        </Secao>
+
+        {/* Provedores (API's) — conta Telnyx PRÓPRIA do cliente (BYO) */}
+        <Secao
+          title="Provedores (API's)"
+          icon={KeyRound}
+          open={secaoApi}
+          onToggle={() => setSecaoApi((v) => !v)}
+          action={
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); if (!liberado) { setUpgradeOpen(true); return } setSecaoApi(true); setNovoApi(true) }}
+              className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Conectar Telnyx
+            </button>
+          }
+        >
+          <p className="text-sm text-stone-500 mb-3">
+            Use a <strong>sua própria conta Telnyx</strong> (API key + número). Os envios saem pela conta <strong>dela</strong> — com os números e limites <strong>dela</strong>, e sem consumir a cota do seu plano. Ideal pra volume alto ou números de outros países (BR, Alemanha…).
+          </p>
+
+          {novoApi && (
+            <div className="mb-4 p-4 rounded-xl border border-surface-200 bg-surface-50/60 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-stone-600 mb-1">Apelido</label>
+                  <input value={formApi.nome} onChange={(e) => setFormApi((f) => ({ ...f, nome: e.target.value }))} placeholder="Minha conta Telnyx" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-stone-600 mb-1">Número de envio (E.164)</label>
+                  <input value={formApi.from} onChange={(e) => setFormApi((f) => ({ ...f, from: e.target.value }))} placeholder="+5511999999999" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px] tabular-nums" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-stone-600 mb-1">API Key da Telnyx</label>
+                <input value={formApi.apiKey} onChange={(e) => setFormApi((f) => ({ ...f, apiKey: e.target.value }))} placeholder="KEY..." type="password" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
+                <p className="text-[11px] text-stone-400 mt-1">Fica guardada só na sua conta e é usada pelo servidor pra enviar. Pegue em Telnyx → API Keys.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-stone-600 mb-1">Messaging Profile ID <span className="text-stone-400">(opcional)</span></label>
+                <input value={formApi.messagingProfileId} onChange={(e) => setFormApi((f) => ({ ...f, messagingProfileId: e.target.value }))} placeholder="opcional" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={salvarApi} disabled={salvandoApi} className="btn-primary min-h-[42px] px-5 disabled:opacity-60">
+                  {salvandoApi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  {salvandoApi ? 'Validando…' : 'Conectar'}
+                </button>
+                <button onClick={() => { setNovoApi(false); setFormApi({ apiKey: '', from: '', messagingProfileId: '', nome: '' }) }} className="min-h-[42px] px-4 rounded-xl border border-surface-200 text-sm text-stone-600 hover:bg-surface-100">Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {provedores.length === 0 && !novoApi ? (
+            <div className="py-6 text-center">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
+              <p className="text-sm text-stone-500">Nenhuma conta Telnyx conectada. Clique em <strong>Conectar Telnyx</strong> pra usar a sua.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {provedores.map((p) => {
+                const isPrincipal = p.principal
+                return (
+                  <div key={p.id} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}>
+                    {isPrincipal && (
+                      <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
+                        <Star className="w-2.5 h-2.5" /> Principal
+                      </span>
+                    )}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-stone-800 truncate flex items-center gap-1.5"><Globe className="w-4 h-4 text-primary-600 shrink-0" /> {p.nome}</p>
+                        <p className="text-sm text-stone-500 mt-0.5 tabular-nums break-all">{p.from}</p>
+                        <p className="text-[11px] text-stone-400 mt-1">key {p.apiKeyMasked}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isPrincipal && (
+                          <button type="button" onClick={() => definirPrincipal('provider', p.id)} disabled={acaoId === p.id} className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation disabled:opacity-60" title="Definir como principal" aria-label="Definir como principal">
+                            {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => excluirApi(p)} disabled={acaoId === p.id} className="p-2.5 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation disabled:opacity-60" title="Remover" aria-label="Remover">
+                          {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </Secao>

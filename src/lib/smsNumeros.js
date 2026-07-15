@@ -45,3 +45,29 @@ export async function excluirNumeroSMS(id) {
   const r = await call('smsExcluirNumero')({ id })
   return r.data
 }
+
+// ── Provedores Telnyx próprios (BYO / API's) ──
+
+/** Lista os provedores Telnyx próprios do cliente. */
+export async function listarProvidersSMS() {
+  const r = await call('smsListProviders')()
+  return r.data // { provedores: [{ id, nome, from, principal, apiKeyMasked, ... }] }
+}
+
+/** Conecta uma conta Telnyx própria (valida a key). */
+export async function addProviderSMS({ apiKey, from, messagingProfileId, nome }) {
+  const r = await call('smsAddProvider')({ apiKey, from, messagingProfileId, nome })
+  return r.data
+}
+
+/** Remove um provedor Telnyx próprio. */
+export async function deleteProviderSMS(id) {
+  const r = await call('smsDeleteProvider')({ id })
+  return r.data
+}
+
+/** Define o principal GLOBAL entre número (nossa conta) e provedor (conta do cliente). tipo: 'numero' | 'provider'. */
+export async function definirPrincipalSMS(tipo, id) {
+  const r = await call('smsDefinirPrincipal')({ tipo, id })
+  return r.data
+}

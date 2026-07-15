@@ -667,6 +667,21 @@ async function getTelnyxNumeroCliente(uid) {
   } catch (_) { return null }
 }
 
+/**
+ * Provedor Telnyx PRÓPRIO do cliente (BYO — conta Telnyx dele). Retorna o principal ou null.
+ * Espelha o modelo de e-mail: se o cliente traz a própria conta, envia por ela (isola nossas contas).
+ */
+async function getTelnyxProviderCliente(uid) {
+  try {
+    const snap = await db.collection(`users/${uid}/smsProviders`).get()
+    if (snap.empty) return null
+    const provs = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.apiKey && p.from)
+    if (!provs.length) return null
+    const principal = provs.find((p) => p.principal) || provs[0]
+    return { apiKey: principal.apiKey, from: principal.from, messagingProfileId: principal.messagingProfileId || '' }
+  } catch (_) { return null }
+}
+
 /** true se o UID é a conta admin (pra background jobs que não têm request.auth). */
 async function ehUidAdmin(uid) {
   try { const u = await admin.auth().getUser(uid); return (u.email || '').toLowerCase() === ADMIN_EMAIL } catch (_) { return false }
@@ -677,12 +692,16 @@ async function ehUidAdmin(uid) {
  * Admin usa o número compartilhado da plataforma (TELNYX_FROM/PROFILE_ID). Retorna { cfg } ou { erro }.
  */
 async function resolverTelnyxEnvio(uid, ehAdmin) {
+  // 1) Conta Telnyx PRÓPRIA do cliente (BYO) tem prioridade — envia pela conta dele, isolando as nossas.
+  const prov = await getTelnyxProviderCliente(uid)
+  if (prov) return { cfg: { apiKey: prov.apiKey, from: prov.from, profileId: prov.messagingProfileId || '' }, propria: true }
+  // 2) Número comprado na NOSSA conta Telnyx (key compartilhada).
   const base = await getTelnyxConfig()
   if (!base.apiKey) return { erro: 'O envio de SMS ainda não foi ativado pela plataforma.' }
   const num = await getTelnyxNumeroCliente(uid)
-  if (num) return { cfg: { apiKey: base.apiKey, from: num.number, profileId: num.messagingProfileId || base.profileId || '' } }
-  if (ehAdmin && (base.from || base.profileId)) return { cfg: base }
-  return { erro: 'Você ainda não tem um número de SMS. Vá em SMS → Integração e compre um número para enviar.' }
+  if (num) return { cfg: { apiKey: base.apiKey, from: num.number, profileId: num.messagingProfileId || base.profileId || '' }, propria: false }
+  if (ehAdmin && (base.from || base.profileId)) return { cfg: base, propria: false }
+  return { erro: 'Você ainda não tem um número de SMS. Vá em SMS → Integração: compre um número ou conecte sua conta Telnyx.' }
 }
 
 /** Compra 1 número toll-free na Telnyx (conta da plataforma) e associa ao messaging profile. */
@@ -760,19 +779,24 @@ async function registrarResultadoNumero(uid, fromNumber, sucessos, bloqueios) {
   } catch (_) {}
 }
 
-/** Normaliza pra E.164 internacional. Rejeita números do Brasil (+55) — SMS só fora do BR. */
-function normalizarE164Internacional(raw) {
+/**
+ * Normaliza pra E.164. Por padrão rejeita BR (+55), porque a NOSSA conta Telnyx é internacional/EUA.
+ * Com { permitirBR: true } (conta própria do cliente — BYO), aceita qualquer país, inclusive BR.
+ */
+function normalizarE164(raw, opts) {
+  const permitirBR = !!(opts && opts.permitirBR)
   let s = String(raw || '').trim()
   const temMais = s.startsWith('+')
   let d = s.replace(/\D/g, '')
   if (!d) return { ok: false, motivo: 'vazio' }
-  // Se veio com + já é E.164; senão assume que já vem com DDI (código do país) na frente.
-  // Número dos EUA/Canadá costuma vir com 10 dígitos (sem o 1) — prefixa 1.
+  // Se veio com + já é E.164; senão assume DDI na frente. EUA/Canadá com 10 dígitos → prefixa 1.
   if (!temMais && d.length === 10) d = '1' + d
-  if (d.startsWith('55')) return { ok: false, motivo: 'brasil' } // SMS não atende BR
+  if (!permitirBR && d.startsWith('55')) return { ok: false, motivo: 'brasil' } // nossa conta não atende BR
   if (d.length < 8 || d.length > 15) return { ok: false, motivo: 'tamanho' }
   return { ok: true, e164: '+' + d }
 }
+/** Compat: internacional (rejeita BR). */
+function normalizarE164Internacional(raw) { return normalizarE164(raw, { permitirBR: false }) }
 
 /** Remove acentos (mantém GSM-7 / 160 chars e evita virar UCS-2 de 70). */
 function semAcentos(s) {
@@ -801,6 +825,7 @@ async function quotaSMSUsadaNoMes(uid) {
     const ds = await db.collection(`users/${uid}/smsDisparos`).get()
     ds.forEach((d) => {
       const x = d.data()
+      if (x.contaPropria === true) return // envio pela conta Telnyx do próprio cliente não consome nossa cota
       const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0)
       if (cm >= inicio.getTime()) {
         const totalDisp = Number(x.total) || 0
@@ -836,7 +861,7 @@ async function enviarLoteSMS(uid, ctx, recipients) {
   let erros = 0
   let bloqueios = 0
   for (const r of (recipients || [])) {
-    const norm = normalizarE164Internacional(r.telefone || r.numero || '')
+    const norm = normalizarE164(r.telefone || r.numero || '', { permitirBR: !!ctx.permitirBR })
     if (!norm.ok) { erros++; continue }
     const lead = { nome: r.nome || '', telefone: norm.e164, email: r.email || '' }
     const product = { nome: r.produto || '' }
@@ -877,21 +902,22 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin)
   if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
   const cfg = rEnvio.cfg
+  // Conta própria (BYO): envia pela conta Telnyx do cliente → aceita qualquer país (inclusive BR) e NÃO consome nossa cota.
+  const contaPropria = !!rEnvio.propria
 
-  // Só números internacionais (fora do BR) entram.
   const validos = []
   let ignoradosBR = 0
   for (const r of recipients.slice(0, 20000)) {
-    const norm = normalizarE164Internacional(r?.telefone || r?.numero || '')
+    const norm = normalizarE164(r?.telefone || r?.numero || '', { permitirBR: contaPropria })
     if (norm.ok) validos.push({ telefone: norm.e164, nome: r.nome || '', produto: r.produto || '', email: r.email || '' })
     else if (norm.motivo === 'brasil') ignoradosBR++
   }
-  if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum número internacional válido na lista. SMS não atende números do Brasil (+55).')
+  if (validos.length === 0) throw new HttpsError('invalid-argument', contaPropria ? 'Nenhum número válido na lista.' : 'Nenhum número internacional válido na lista. Sua conta compartilhada não atende números do Brasil (+55).')
 
-  // Crédito comprado é SEMPRE consumido primeiro; a cota mensal do plano só depois (admin é ilimitado).
+  // Crédito comprado é SEMPRE consumido primeiro; cota do plano só depois. Só vale pra NOSSA conta (não BYO / não admin).
   const lim = limitesDoTenant(tenant)
   let creditoAConsumir = 0
-  if (!ehAdmin) {
+  if (!ehAdmin && !contaPropria) {
     const creditos = Number(tenant.smsCreditos) || 0
     const quotaUsada = await quotaSMSUsadaNoMes(uid)
     const restanteQuota = Math.max(0, (lim.smsMes || 0) - quotaUsada)
@@ -920,6 +946,7 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
     intervaloMin,
     totalLotes: lotes.length,
     creditoConsumido: creditoAConsumir,
+    contaPropria, // envio pela conta Telnyx do próprio cliente (BYO) → não conta na nossa cota
     status: 'enviando',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
@@ -929,7 +956,7 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
     await db.doc(`tenants/${uid}`).set({ smsCreditos: admin.firestore.FieldValue.increment(-creditoAConsumir) }, { merge: true })
   }
 
-  const ctx = { cfg, mensagem, disparoId: dispRef.id }
+  const ctx = { cfg, mensagem, disparoId: dispRef.id, permitirBR: contaPropria }
   const r0 = await enviarLoteSMS(uid, ctx, lotes[0] || [])
 
   const intervaloMs = intervaloMin * 60000
@@ -962,15 +989,16 @@ exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   const data = request.data || {}
   const mensagem = String(data.mensagem || '').trim()
   if (!mensagem) throw new HttpsError('invalid-argument', 'Nenhuma automação de SMS configurada para este evento.')
-  const norm = normalizarE164Internacional(data.telefone)
-  if (!norm.ok) throw new HttpsError('invalid-argument', norm.motivo === 'brasil' ? 'SMS não atende números do Brasil (+55).' : 'Número inválido.')
   const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
   const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin)
   if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
   const cfg = rEnvio.cfg
-  if (!ehAdmin) {
+  const contaPropria = !!rEnvio.propria
+  const norm = normalizarE164(data.telefone, { permitirBR: contaPropria })
+  if (!norm.ok) throw new HttpsError('invalid-argument', norm.motivo === 'brasil' ? 'Sua conta compartilhada não atende números do Brasil (+55).' : 'Número inválido.')
+  if (!ehAdmin && !contaPropria) {
     const lim = limitesDoTenant(tenant)
-    if (!lim.smsMes || lim.smsMes <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano.')
+    if (!lim.smsMes || lim.smsMes <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano ou recarregue créditos.')
   }
 
   const customer = { nome: data.nome || '', telefone: norm.e164, email: data.email || '' }
@@ -1004,12 +1032,12 @@ exports.processarLotesSMS = onSchedule(
         if (!cfgCache[uid]) {
           const rEnvio = await resolverTelnyxEnvio(uid, await ehUidAdmin(uid))
           if (rEnvio.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
-          cfgCache[uid] = rEnvio.cfg
+          cfgCache[uid] = { cfg: rEnvio.cfg, permitirBR: !!rEnvio.propria }
         }
-        const cfg = cfgCache[uid]
+        const cfg = cfgCache[uid].cfg
         const dSnap = await db.doc(`users/${uid}/smsDisparos/${dispId}`).get()
         const dd = dSnap.exists ? dSnap.data() : {}
-        const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId }
+        const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId, permitirBR: cfgCache[uid].permitirBR }
         const r = await enviarLoteSMS(uid, ctx, lote.recipients || [])
         await loteDoc.ref.update({ status: r.erros === 0 ? 'enviado' : 'erro' })
         await db.doc(`users/${uid}/smsDisparos/${dispId}`).set({
@@ -1254,6 +1282,109 @@ exports.smsExcluirNumero = onCall({ region: 'us-central1', timeoutSeconds: 30 },
     const outros = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').limit(1).get()
     if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
   }
+  return { ok: true }
+})
+
+// ───────────────── SMS — Conta Telnyx PRÓPRIA do cliente (BYO / API's) ─────────────────
+
+/** Valida a API key da Telnyx (checa o saldo — 200 = key ok). */
+async function validarTelnyxKey(apiKey) {
+  try {
+    const r = await fetch('https://api.telnyx.com/v2/balance', { headers: { Authorization: `Bearer ${apiKey}` } })
+    return r.ok
+  } catch (_) { return false }
+}
+
+/** Adiciona um provedor Telnyx próprio (API key + número do cliente). Valida a key antes de salvar. */
+exports.smsAddProvider = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertTenantAtivo(uid)
+  const apiKey = String(request.data?.apiKey || '').trim()
+  const nome = String(request.data?.nome || '').trim() || 'Minha conta Telnyx'
+  const messagingProfileId = String(request.data?.messagingProfileId || '').trim()
+  const rawFrom = String(request.data?.from || '').trim()
+  if (!apiKey) throw new HttpsError('invalid-argument', 'Informe a API key da Telnyx.')
+  const normFrom = normalizarE164(rawFrom, { permitirBR: true })
+  if (!normFrom.ok) throw new HttpsError('invalid-argument', 'Informe um número de envio válido (E.164, ex.: +5511999999999).')
+  const ok = await validarTelnyxKey(apiKey)
+  if (!ok) throw new HttpsError('failed-precondition', 'API key da Telnyx inválida ou sem permissão. Confira em Telnyx → API Keys.')
+  const existentes = await db.collection(`users/${uid}/smsProviders`).get()
+  const ref = await db.collection(`users/${uid}/smsProviders`).add({
+    apiKey, from: normFrom.e164, messagingProfileId: messagingProfileId || null, nome,
+    principal: existentes.empty, // 1º provedor já vira principal
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  // Se virou principal, tira o principal dos NÚMEROS da nossa conta (principal é único global).
+  if (existentes.empty) {
+    const nums = await db.collection(`users/${uid}/smsNumeros`).get()
+    const batch = db.batch()
+    nums.forEach((d) => { if (d.data().principal) batch.set(d.ref, { principal: false }, { merge: true }) })
+    await batch.commit()
+  }
+  return { ok: true, id: ref.id }
+})
+
+/** Lista os provedores Telnyx próprios do cliente (mascara a key). */
+exports.smsListProviders = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const snap = await db.collection(`users/${uid}/smsProviders`).get()
+  const provedores = snap.docs.map((d) => {
+    const x = d.data()
+    const k = String(x.apiKey || '')
+    return {
+      id: d.id, nome: x.nome || 'Conta Telnyx', from: x.from || '',
+      messagingProfileId: x.messagingProfileId || null, principal: !!x.principal,
+      apiKeyMasked: k ? `${k.slice(0, 6)}…${k.slice(-4)}` : '',
+      criadoEm: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,
+    }
+  })
+  provedores.sort((a, b) => (Number(b.principal) - Number(a.principal)) || ((a.criadoEm || 0) - (b.criadoEm || 0)))
+  return { provedores }
+})
+
+/** Remove um provedor Telnyx próprio. */
+exports.smsDeleteProvider = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  if (!id) throw new HttpsError('invalid-argument', 'id obrigatório.')
+  const ref = db.doc(`users/${uid}/smsProviders/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Provedor não encontrado.')
+  const eraPrincipal = !!snap.data().principal
+  await ref.delete()
+  // Se era o principal, promove outro provedor; se não houver, promove um número nosso.
+  if (eraPrincipal) {
+    const outros = await db.collection(`users/${uid}/smsProviders`).limit(1).get()
+    if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
+    else {
+      const nums = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').limit(1).get()
+      if (!nums.empty) await nums.docs[0].ref.set({ principal: true }, { merge: true })
+    }
+  }
+  return { ok: true }
+})
+
+/** Define o principal GLOBAL entre número (nossa conta) e provedor (conta do cliente). tipo: 'numero' | 'provider'. */
+exports.smsDefinirPrincipal = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tipo = String(request.data?.tipo || '')
+  const id = String(request.data?.id || '')
+  if (!id || (tipo !== 'numero' && tipo !== 'provider')) throw new HttpsError('invalid-argument', 'tipo/id inválidos.')
+  const alvoRef = db.doc(`users/${uid}/sms${tipo === 'numero' ? 'Numeros' : 'Providers'}/${id}`)
+  const alvo = await alvoRef.get()
+  if (!alvo.exists) throw new HttpsError('not-found', 'Item não encontrado.')
+  const [nums, provs] = await Promise.all([
+    db.collection(`users/${uid}/smsNumeros`).get(),
+    db.collection(`users/${uid}/smsProviders`).get(),
+  ])
+  const batch = db.batch()
+  nums.forEach((d) => batch.set(d.ref, { principal: tipo === 'numero' && d.id === id }, { merge: true }))
+  provs.forEach((d) => batch.set(d.ref, { principal: tipo === 'provider' && d.id === id }, { merge: true }))
+  await batch.commit()
   return { ok: true }
 })
 
@@ -2363,8 +2494,6 @@ async function dispararAcoes(userId, leadRef, evento, customer, product, produto
 async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produtos) {
   try {
     if (!customer.telefone) return
-    const norm = normalizarE164Internacional(customer.telefone)
-    if (!norm.ok) return // ignora Brasil (+55) e números inválidos
     const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
     const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const grupo = acharGrupo(grupos, produtos, product)
@@ -2381,6 +2510,8 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
     const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId))
     if (rEnvio.erro) return
     const cfg = rEnvio.cfg
+    const norm = normalizarE164(customer.telefone, { permitirBR: !!rEnvio.propria })
+    if (!norm.ok) return // ignora inválidos (e BR se for nossa conta internacional)
     const texto = replaceVariables(auto.mensagem || '', { ...customer, telefone: norm.e164 }, product)
     let ok = true
     let erroMsg = null
@@ -2479,11 +2610,11 @@ async function enviarMensagemFunil(userId, mensagem, contato) {
 async function enviarMensagemFunilSMS(userId, mensagem, contato) {
   try {
     if (!contato?.telefone || !mensagem) return false
-    const norm = normalizarE164Internacional(contato.telefone)
-    if (!norm.ok) return false
     const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId))
     if (rEnvio.erro) return false
     const cfg = rEnvio.cfg
+    const norm = normalizarE164(contato.telefone, { permitirBR: !!rEnvio.propria })
+    if (!norm.ok) return false
     const texto = replaceVariables(mensagem, { nome: contato.nome || '', telefone: norm.e164, email: contato.email || '' }, { nome: contato.produto || '' })
     await enviarSMSTelnyx(cfg, norm.e164, texto)
     return true

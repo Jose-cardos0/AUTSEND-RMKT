@@ -62,14 +62,16 @@ const navGroups = [
     key: 'sms',
     label: 'SMS',
     icon: Smartphone,
-    items: [],
+    // Integração é GLOBAL (número nosso EUA ou conta Telnyx própria de qualquer país) → fica no nível do SMS.
+    items: [
+      { to: '/sms/integracao', label: 'Integração', icon: Link2 },
+    ],
     subgroups: [
       {
         key: 'sms-eua',
         label: 'EUA',
         img: euaflag,
         items: [
-          { to: '/sms/integracao', label: 'Integração', icon: Link2 },
           { to: '/sms/automacoes', label: 'Automações', icon: Zap },
           { to: '/sms/remarketing', label: 'Remarketing', icon: MessageCircle },
           { to: '/sms/disparos', label: 'Disparos', icon: Send },
