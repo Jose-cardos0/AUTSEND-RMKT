@@ -261,7 +261,7 @@ export default function SmsAutomacoes() {
   return (
     <PageShell
       className="!space-y-0 pb-12 sm:pb-14"
-      badge="SMS · Automações"
+      badge={`SMS · Automações · ${canal === 'api' ? "API's" : 'EUA'}`}
       right={
         <button onClick={reload} className="btn-secondary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation">
           <RefreshCw className="w-4 h-4" /> Atualizar

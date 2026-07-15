@@ -161,7 +161,7 @@ export default function SmsRemarketing() {
   return (
     <PageShell
       fill
-      badge="SMS · Remarketing"
+      badge={`SMS · Remarketing · ${canal === 'api' ? "API's" : 'EUA'}`}
       right={
         <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
           <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">

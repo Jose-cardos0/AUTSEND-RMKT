@@ -304,7 +304,7 @@ export default function SmsFunil() {
 
   return (
     <PageShell
-      badge="SMS · Funil"
+      badge={`SMS · Funil · ${canal === 'api' ? "API's" : 'EUA'}`}
       title="Funil de SMS"
       right={
         <div className="flex flex-wrap gap-2 items-center">

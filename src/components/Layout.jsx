@@ -11,7 +11,6 @@ import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
 import sendlyLogo from '../assets/autsendlogo.png'
 import euaflag from '../assets/euaflag.png'
-import brlflag from '../assets/brlflag.png'
 import WhatsAppIcon from './WhatsAppIcon'
 import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
@@ -322,7 +321,7 @@ export default function Layout() {
     return g ? { [g.key]: true } : {}
   })
   // O construtor de e-mail, o funil e o remarketing usam mais largura (lista/editor lado a lado)
-  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || location.pathname.startsWith('/sms/funil') || location.pathname.startsWith('/sms/automacoes') || location.pathname.startsWith('/sms/remarketing') || location.pathname.startsWith('/sms/metricas')
+  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || /\/sms\/(eua|api)?\/?(funil|automacoes|remarketing|metricas)/.test(location.pathname)
 
   // Ao navegar, garante que o grupo da rota atual esteja aberto.
   useEffect(() => {

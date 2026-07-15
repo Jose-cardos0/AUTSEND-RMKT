@@ -182,7 +182,7 @@ export default function SmsMetricas() {
 
   return (
     <PageShell
-      badge="SMS · Métricas"
+      badge={`SMS · Métricas · ${canal === 'api' ? "API's" : 'EUA'}`}
       right={
         <div className="flex flex-wrap gap-2 items-center">
           {grupos.length > 0 && (

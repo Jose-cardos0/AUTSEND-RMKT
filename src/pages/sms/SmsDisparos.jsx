@@ -180,7 +180,7 @@ export default function SmsDisparos() {
   return (
     <PageShell
       compact
-      badge="SMS · Disparos"
+      badge={`SMS · Disparos · ${canal === 'api' ? "API's" : 'EUA'}`}
       title="Disparos de SMS"
       right={
         <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">

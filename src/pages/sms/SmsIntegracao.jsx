@@ -81,6 +81,8 @@ export default function SmsIntegracao() {
   const [loading, setLoading] = useState(true)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [tab, setTab] = useState('numeros') // 'numeros' | 'apis'
+  const [numOpen, setNumOpen] = useState(false) // dropdown recolhido por padrão (como WhatsApp)
+  const [apiOpen, setApiOpen] = useState(false)
   const [novoApi, setNovoApi] = useState(false)
   const [formApi, setFormApi] = useState({ apiKey: '', messagingProfileId: '', nome: '' })
   const [salvandoApi, setSalvandoApi] = useState(false)
@@ -485,9 +487,7 @@ export default function SmsIntegracao() {
 
       <div className="space-y-3">
         {tab === 'numeros' && (
-        <div className="app-panel rounded-2xl p-4 sm:p-5 relative overflow-hidden">
-          <img src={chipastron} alt="" aria-hidden="true" className="pointer-events-none select-none absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 object-contain opacity-50 z-0" />
-          <div className="relative z-10">
+        <Secao title="Meus números" icon={Phone} bgImg={chipastron} open={numOpen} onToggle={() => setNumOpen((v) => !v)}>
           {numeros.length === 0 ? (
             <div className="py-8 text-center">
               <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-3">
@@ -576,19 +576,12 @@ export default function SmsIntegracao() {
               </div>
             </div>
           )}
-          </div>
-        </div>
+        </Secao>
         )}
 
         {/* Aba API's — conta Telnyx PRÓPRIA do cliente (BYO) */}
         {tab === 'apis' && (
-        <div className="app-panel rounded-2xl p-4 sm:p-5 relative overflow-hidden">
-          <Globe className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-primary-500 opacity-[0.06] z-0" />
-          <div className="relative z-10">
-          <p className="text-sm text-stone-500 mb-3">
-            Use a <strong>sua própria conta Telnyx</strong> (API key + número). Os envios saem pela conta <strong>dela</strong> — com os números e limites <strong>dela</strong>, e sem consumir a cota do seu plano. Ideal pra volume alto ou números de outros países (BR, Alemanha…).
-          </p>
-
+        <Secao title="Minhas contas Telnyx" icon={Globe} open={apiOpen} onToggle={() => setApiOpen((v) => !v)}>
           {novoApi && (
             <div className="mb-4 p-4 rounded-xl border border-surface-200 bg-surface-50/60 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -619,7 +612,7 @@ export default function SmsIntegracao() {
           {provedores.length === 0 && !novoApi ? (
             <div className="py-6 text-center">
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
-              <p className="text-sm text-stone-500">Nenhuma conta Telnyx conectada. Clique em <strong>Conectar Telnyx</strong> pra usar a sua.</p>
+              <p className="text-sm text-stone-500">Nenhuma conta Telnyx conectada.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -682,8 +675,7 @@ export default function SmsIntegracao() {
               })}
             </div>
           )}
-          </div>
-        </div>
+        </Secao>
         )}
       </div>
     </PageShell>
