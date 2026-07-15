@@ -103,7 +103,8 @@ export default function SmsMetricas() {
 
   const purchaseMap = useMemo(() => {
     const m = new Map()
-    for (const l of leads) { const p = normTel(l.telefone); if (!p || !l.valor || isEstorno(l.evento)) continue; if (!m.has(p)) m.set(p, { valor: l.valor, moeda: l.moeda }) }
+    // Só conta COMPRA APROVADA — não carrinho abandonado/lead (que também trazem valor).
+    for (const l of leads) { if (!isCompra(l.evento) || !l.valor) continue; const p = normTel(l.telefone); if (!p) continue; if (!m.has(p)) m.set(p, { valor: l.valor, moeda: l.moeda }) }
     return m
   }, [leads])
   const estornoMap = useMemo(() => {

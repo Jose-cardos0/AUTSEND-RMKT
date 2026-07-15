@@ -12,6 +12,7 @@ import { Send, Eye, MousePointerClick, Percent, RefreshCw, Link2, BarChart3, Mai
 // Eventos que representam devolução de dinheiro (descontam da receita).
 const ESTORNO_EVENTS = new Set(['order_status.chargeback', 'order_status.refund'])
 const isEstorno = (ev) => ESTORNO_EVENTS.has(canonicalEvento(ev))
+const isCompra = (ev) => canonicalEvento(ev) === 'order_status.purchase_approved'
 
 /** Interpreta o valor da compra: inteiro puro = centavos; senão tenta ler o número formatado. */
 function parseValorNum(valor) {
@@ -148,7 +149,8 @@ export default function EmailMetricas() {
     const m = new Map()
     for (const l of leads) {
       const email = (l.email || '').toLowerCase().trim()
-      if (!email || !l.valor || isEstorno(l.evento)) continue
+      // Só conta COMPRA APROVADA — não carrinho abandonado/lead (que também trazem valor).
+      if (!email || !l.valor || !isCompra(l.evento)) continue
       if (!m.has(email)) m.set(email, { valor: l.valor, moeda: l.moeda, evento: l.evento })
     }
     return m
@@ -196,6 +198,7 @@ export default function EmailMetricas() {
         if (n == null) continue
         if (l.moeda) moeda = l.moeda
         if (isEstorno(l.evento)) { estorno += n; estornoQtd++; continue }
+        if (!isCompra(l.evento)) continue // ignora carrinho abandonado / leads sem compra
         if (seen.has(email)) continue
         seen.add(email); bruto += n; compras++
       }
