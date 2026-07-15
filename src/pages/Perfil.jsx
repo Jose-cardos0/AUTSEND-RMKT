@@ -270,7 +270,7 @@ export default function Perfil() {
         </Panel>
 
         {/* Recarga de SMS */}
-        <Panel title="Recarregar créditos de SMS" icon={MessageSquare}>
+        <Panel title="Recarregar créditos de SMS (EUA)" icon={MessageSquare}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {PACOTES_CREDITO.map((p) => {
               const id = `sms:${p.key}`

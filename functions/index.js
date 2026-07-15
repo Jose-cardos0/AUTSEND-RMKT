@@ -691,17 +691,21 @@ async function ehUidAdmin(uid) {
  * Resolve a config de envio de SMS. Cada cliente envia do PRÓPRIO número (isolamento de reputação — Fase 2).
  * Admin usa o número compartilhado da plataforma (TELNYX_FROM/PROFILE_ID). Retorna { cfg } ou { erro }.
  */
-async function resolverTelnyxEnvio(uid, ehAdmin) {
-  // 1) Conta Telnyx PRÓPRIA do cliente (BYO) tem prioridade — envia pela conta dele, isolando as nossas.
-  const prov = await getTelnyxProviderCliente(uid)
-  if (prov) return { cfg: { apiKey: prov.apiKey, from: prov.from, profileId: prov.messagingProfileId || '' }, propria: true }
-  // 2) Número comprado na NOSSA conta Telnyx (key compartilhada).
+async function resolverTelnyxEnvio(uid, ehAdmin, forcar) {
+  // forcar: 'api' → só conta própria (BYO) · 'eua' → só nossa conta · null → auto (BYO tem prioridade).
+  // 1) Conta Telnyx PRÓPRIA do cliente (BYO). Tem prioridade no auto; obrigatória se forcar==='api'.
+  if (forcar !== 'eua') {
+    const prov = await getTelnyxProviderCliente(uid)
+    if (prov) return { cfg: { apiKey: prov.apiKey, from: prov.from, profileId: prov.messagingProfileId || '' }, propria: true }
+    if (forcar === 'api') return { erro: 'Conecte sua conta Telnyx (aba API\'s em SMS → Integração) para enviar por aqui.' }
+  }
+  // 2) Número comprado na NOSSA conta Telnyx (key compartilhada) — canal EUA.
   const base = await getTelnyxConfig()
   if (!base.apiKey) return { erro: 'O envio de SMS ainda não foi ativado pela plataforma.' }
   const num = await getTelnyxNumeroCliente(uid)
   if (num) return { cfg: { apiKey: base.apiKey, from: num.number, profileId: num.messagingProfileId || base.profileId || '' }, propria: false }
   if (ehAdmin && (base.from || base.profileId)) return { cfg: base, propria: false }
-  return { erro: 'Você ainda não tem um número de SMS. Vá em SMS → Integração: compre um número ou conecte sua conta Telnyx.' }
+  return { erro: 'Você ainda não tem um número de SMS (EUA). Vá em SMS → Integração e compre um número.' }
 }
 
 /** Compra 1 número toll-free na Telnyx (conta da plataforma) e associa ao messaging profile. */
@@ -899,7 +903,8 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   if (recipients.length === 0) throw new HttpsError('invalid-argument', 'Nenhum destinatário na lista.')
 
   const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
-  const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin)
+  const canal = data.canal === 'api' ? 'api' : 'eua' // aba do menu: eua = nossa conta · api = conta dele
+  const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin, canal)
   if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
   const cfg = rEnvio.cfg
   // Conta própria (BYO): envia pela conta Telnyx do cliente → aceita qualquer país (inclusive BR) e NÃO consome nossa cota.
@@ -947,6 +952,7 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
     totalLotes: lotes.length,
     creditoConsumido: creditoAConsumir,
     contaPropria, // envio pela conta Telnyx do próprio cliente (BYO) → não conta na nossa cota
+    canal, // 'eua' (nossa conta) | 'api' (conta do cliente)
     status: 'enviando',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
@@ -990,7 +996,8 @@ exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   const mensagem = String(data.mensagem || '').trim()
   if (!mensagem) throw new HttpsError('invalid-argument', 'Nenhuma automação de SMS configurada para este evento.')
   const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
-  const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin)
+  const canal = data.canal === 'api' ? 'api' : 'eua'
+  const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin, canal)
   if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
   const cfg = rEnvio.cfg
   const contaPropria = !!rEnvio.propria
@@ -1008,7 +1015,7 @@ exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   let erroMsg = null
   try { await enviarSMSTelnyx(cfg, norm.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
   await db.collection('users').doc(uid).collection('smsLogs').add({
-    leadId: data.leadId || null, evento: data.evento || '', produto: product.nome, telefone: norm.e164, nome: customer.nome,
+    leadId: data.leadId || null, evento: data.evento || '', produto: product.nome, telefone: norm.e164, nome: customer.nome, canal,
     status: ok ? 'enviado' : 'erro', erroMsg, mensagem: texto, createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
   if (!ok) throw new HttpsError('internal', erroMsg || 'Falha ao enviar SMS.')
@@ -1029,15 +1036,17 @@ exports.processarLotesSMS = onSchedule(
       const uid = parts[1]
       const dispId = parts[3]
       try {
-        if (!cfgCache[uid]) {
-          const rEnvio = await resolverTelnyxEnvio(uid, await ehUidAdmin(uid))
-          if (rEnvio.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
-          cfgCache[uid] = { cfg: rEnvio.cfg, permitirBR: !!rEnvio.propria }
-        }
-        const cfg = cfgCache[uid].cfg
         const dSnap = await db.doc(`users/${uid}/smsDisparos/${dispId}`).get()
         const dd = dSnap.exists ? dSnap.data() : {}
-        const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId, permitirBR: cfgCache[uid].permitirBR }
+        const canal = dd.canal === 'api' ? 'api' : 'eua'
+        const chave = `${uid}:${canal}`
+        if (!cfgCache[chave]) {
+          const rEnvio = await resolverTelnyxEnvio(uid, await ehUidAdmin(uid), canal)
+          if (rEnvio.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
+          cfgCache[chave] = { cfg: rEnvio.cfg, permitirBR: !!rEnvio.propria }
+        }
+        const cfg = cfgCache[chave].cfg
+        const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId, permitirBR: cfgCache[chave].permitirBR }
         const r = await enviarLoteSMS(uid, ctx, lote.recipients || [])
         await loteDoc.ref.update({ status: r.erros === 0 ? 'enviado' : 'erro' })
         await db.doc(`users/${uid}/smsDisparos/${dispId}`).set({
@@ -2547,30 +2556,36 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
     const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
     const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const grupo = acharGrupo(grupos, produtos, product)
-    let auto = null
-    if (grupo) {
-      const gSnap = await db.doc(`users/${userId}/smsAutomations/${grupo.id}__${evento}`).get()
-      if (gSnap.exists) { const d = gSnap.data(); if (d.ativo === true && d.mensagem) auto = d }
+    const ehAdm = await ehUidAdmin(userId)
+    // Cada canal é independente: EUA (nossa conta) e API (conta do cliente). Ambos podem disparar.
+    for (const canal of ['eua', 'api']) {
+      let auto = null
+      if (grupo) {
+        let s = await db.doc(`users/${userId}/smsAutomations/${canal}__${grupo.id}__${evento}`).get()
+        if (!s.exists && canal === 'eua') s = await db.doc(`users/${userId}/smsAutomations/${grupo.id}__${evento}`).get() // legado = eua
+        if (s.exists) { const d = s.data(); if (d.ativo === true && d.mensagem) auto = d }
+      }
+      if (!auto) {
+        let s = await db.doc(`users/${userId}/smsAutomations/${canal}__${evento}`).get()
+        if (!s.exists && canal === 'eua') s = await db.doc(`users/${userId}/smsAutomations/${evento}`).get()
+        if (s.exists) { const d = s.data(); if (d.ativo === true && d.mensagem && !d.grupoId && !d.produto) auto = d }
+      }
+      if (!auto) continue
+      const rEnvio = await resolverTelnyxEnvio(userId, ehAdm, canal)
+      if (rEnvio.erro) continue
+      const cfg = rEnvio.cfg
+      const norm = normalizarE164(customer.telefone, { permitirBR: !!rEnvio.propria })
+      if (!norm.ok) continue // ignora inválidos (e BR quando é a nossa conta EUA)
+      const texto = replaceVariables(auto.mensagem || '', { ...customer, telefone: norm.e164 }, product)
+      let ok = true
+      let erroMsg = null
+      try { await enviarSMSTelnyx(cfg, norm.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
+      await db.collection('users').doc(userId).collection('smsLogs').add({
+        leadId: leadRef.id, evento, canal, produto: product.nome || '', telefone: norm.e164, nome: customer.nome || '',
+        status: ok ? 'enviado' : 'erro', erroMsg, mensagem: texto,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
     }
-    if (!auto) {
-      const globalSnap = await db.doc(`users/${userId}/smsAutomations/${evento}`).get()
-      if (globalSnap.exists) { const d = globalSnap.data(); if (d.ativo === true && d.mensagem && !d.grupoId && !d.produto) auto = d }
-    }
-    if (!auto) return
-    const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId))
-    if (rEnvio.erro) return
-    const cfg = rEnvio.cfg
-    const norm = normalizarE164(customer.telefone, { permitirBR: !!rEnvio.propria })
-    if (!norm.ok) return // ignora inválidos (e BR se for nossa conta internacional)
-    const texto = replaceVariables(auto.mensagem || '', { ...customer, telefone: norm.e164 }, product)
-    let ok = true
-    let erroMsg = null
-    try { await enviarSMSTelnyx(cfg, norm.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
-    await db.collection('users').doc(userId).collection('smsLogs').add({
-      leadId: leadRef.id, evento, produto: product.nome || '', telefone: norm.e164, nome: customer.nome || '',
-      status: ok ? 'enviado' : 'erro', erroMsg, mensagem: texto,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    })
   } catch (err) {
     console.error('Erro no auto-send de SMS:', err)
   }
@@ -2656,11 +2671,11 @@ async function enviarMensagemFunil(userId, mensagem, contato) {
   } catch (err) { console.error('enviarMensagemFunil', err); return false }
 }
 
-/** Envia um SMS (Telnyx) de um nó de funil. Só internacional — ignora BR (+55). */
-async function enviarMensagemFunilSMS(userId, mensagem, contato) {
+/** Envia um SMS (Telnyx) de um nó de funil. canal: 'eua' (nossa conta) | 'api' (conta do cliente). */
+async function enviarMensagemFunilSMS(userId, mensagem, contato, canal) {
   try {
     if (!contato?.telefone || !mensagem) return false
-    const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId))
+    const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId), canal === 'api' ? 'api' : 'eua')
     if (rEnvio.erro) return false
     const cfg = rEnvio.cfg
     const norm = normalizarE164(contato.telefone, { permitirBR: !!rEnvio.propria })
@@ -3154,10 +3169,11 @@ async function processarFunnelRun(userId, runRef, run, cache) {
         }
       } else if (run.canal === 'sms') {
         if (node.data?.mensagem) {
-          const ok = await enviarMensagemFunilSMS(userId, node.data.mensagem, run.contato)
+          const smsCanal = funnel.smsCanal === 'api' ? 'api' : 'eua' // conta EUA (nossa) ou API (do cliente)
+          const ok = await enviarMensagemFunilSMS(userId, node.data.mensagem, run.contato, smsCanal)
           try {
             await db.collection('users').doc(userId).collection('funnelSends').add({
-              funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'sms',
+              funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'sms', smsCanal,
               contato: run.contato || {}, status: ok ? 'enviado' : 'erro',
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             })
@@ -3796,6 +3812,9 @@ exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
   const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
   // Sem plano = Free (o admin define Padrão/Pro). Nada é deletado; o excedente fica congelado.
   const plano = t.plano || 'free'
+  // Tem conta Telnyx própria conectada? (pro menu mostrar o subgrupo API de SMS)
+  let temSmsApi = false
+  try { const p = await db.collection(`users/${uid}/smsProviders`).limit(1).get(); temSmsApi = !p.empty } catch (_) {}
   return {
     plano, status: t.status || 'approved', overrides: t.overrides || null,
     mustChangePassword: !!t.mustChangePassword, isAdmin: isAdm,
@@ -3804,6 +3823,7 @@ exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
     documento: t.documento || '',
     email: t.email || (request.auth?.token?.email || '') || '',
     fotoURL: t.fotoURL || null,
+    temSmsApi,
   }
 })
 

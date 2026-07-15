@@ -550,10 +550,12 @@ export async function deleteEmailDisparo(uid, id) {
 
 // ── Disparos de SMS (Telnyx / internacional) ──
 
-export async function getSmsDisparos(uid) {
+/** canal opcional: 'eua' | 'api'. Filtra pelos disparos daquele canal (default de docs antigos = 'eua'). */
+export async function getSmsDisparos(uid, canal) {
   const snap = await getDocs(collection(db, 'users', uid, 'smsDisparos'))
   return snap.docs
     .map((d) => ({ ...d.data(), id: d.id }))
+    .filter((d) => !canal || (d.canal || (d.contaPropria ? 'api' : 'eua')) === canal)
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
@@ -631,10 +633,11 @@ export async function deleteWhatsappFunnel(uid, id) {
 
 // ── Funil de SMS (Telnyx / internacional) ──
 
-export async function getSmsFunnels(uid) {
+export async function getSmsFunnels(uid, canal) {
   const snap = await getDocs(collection(db, 'users', uid, 'smsFunnels'))
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((d) => !canal || (d.smsCanal || 'eua') === canal)
     .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
 }
 
@@ -653,20 +656,26 @@ export async function deleteSmsFunnel(uid, id) {
 
 // ── Automações de SMS (por grupo de produto × evento) ──
 
-export async function getSmsAutomations(uid) {
+export async function getSmsAutomations(uid, canal) {
   const snap = await getDocs(collection(db, 'users', uid, 'smsAutomations'))
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((d) => !canal || (d.canal || 'eua') === canal)
 }
 
-export async function saveSmsAutomationGrupo(uid, grupoId, evento, data) {
-  const ref = doc(db, 'users', uid, 'smsAutomations', `${grupoId}__${evento}`)
-  await setDoc(ref, removeUndefined({ grupoId, evento, ...data, updatedAt: serverTimestamp() }), { merge: true })
+export async function saveSmsAutomationGrupo(uid, grupoId, evento, data, canal = 'eua') {
+  // Chave namespaced por canal (eua/api) — legado (sem prefixo) = eua.
+  const key = canal === 'eua' ? `${grupoId}__${evento}` : `${canal}__${grupoId}__${evento}`
+  const ref = doc(db, 'users', uid, 'smsAutomations', key)
+  await setDoc(ref, removeUndefined({ grupoId, evento, canal, ...data, updatedAt: serverTimestamp() }), { merge: true })
+  return key
 }
 
-export async function getSmsLogs(uid) {
+export async function getSmsLogs(uid, canal) {
   const snap = await getDocs(collection(db, 'users', uid, 'smsLogs'))
   return snap.docs
     .map((d) => ({ ...d.data(), id: d.id }))
+    .filter((d) => !canal || (d.canal || 'eua') === canal)
     .sort((a, b) => {
       const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0

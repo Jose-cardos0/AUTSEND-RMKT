@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useParams } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { auth } from '../../lib/firebase'
-import { getLeads, getProductGroups, getSmsLogs, getSmsMensagens, getFunnelSends } from '../../lib/firestore'
+import { getLeads, getProductGroups, getSmsLogs, getSmsMensagens, getFunnelSends, getSmsDisparos } from '../../lib/firestore'
 import { canonicalEvento } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
@@ -59,6 +60,8 @@ const TIPO_LABEL = {
 
 export default function SmsMetricas() {
   const [user] = useAuthState(auth)
+  const { canal: canalParam } = useParams()
+  const canal = canalParam === 'api' ? 'api' : 'eua'
   const [loading, setLoading] = useState(true)
   const [leads, setLeads] = useState([])
   const [grupos, setGrupos] = useState([])
@@ -75,13 +78,16 @@ export default function SmsMetricas() {
   const carregar = async () => {
     if (!user?.uid) return
     setLoading(true)
-    const [ld, gs, logs, mens, sends] = await Promise.all([
-      getLeads(user.uid), getProductGroups(user.uid), getSmsLogs(user.uid), getSmsMensagens(user.uid), getFunnelSends(user.uid),
+    const [ld, gs, logs, mens, sends, disp] = await Promise.all([
+      getLeads(user.uid), getProductGroups(user.uid), getSmsLogs(user.uid, canal), getSmsMensagens(user.uid), getFunnelSends(user.uid), getSmsDisparos(user.uid, canal),
     ])
-    setLeads(ld); setGrupos(gs); setSmsLogs(logs); setSmsMensagens(mens); setFunnelSends(sends.filter((s) => s.canal === 'sms'))
+    const dispIds = new Set(disp.map((d) => d.id))
+    setLeads(ld); setGrupos(gs); setSmsLogs(logs)
+    setSmsMensagens(mens.filter((m) => dispIds.has(m.disparoId)))
+    setFunnelSends(sends.filter((s) => s.canal === 'sms' && (s.smsCanal || 'eua') === canal))
     setLoading(false)
   }
-  useEffect(() => { carregar() }, [user?.uid])
+  useEffect(() => { carregar() }, [user?.uid, canal])
 
   const grupoSel = useMemo(() => grupos.find((g) => g.id === grupoFiltro) || null, [grupos, grupoFiltro])
   const produtosGrupo = useMemo(() => new Set(grupoSel?.produtos || []), [grupoSel])

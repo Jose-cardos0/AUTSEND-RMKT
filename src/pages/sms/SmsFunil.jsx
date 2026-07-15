@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -89,6 +90,8 @@ const novoInicio = () => ({ id: `inicio_${Date.now()}`, type: 'inicio', position
 
 export default function SmsFunil() {
   const [user] = useAuthState(auth)
+  const { canal: canalParam } = useParams()
+  const canal = canalParam === 'api' ? 'api' : 'eua'
   const confirm = useConfirm()
   const [loading, setLoading] = useState(true)
   const [funis, setFunis] = useState([])
@@ -137,15 +140,15 @@ export default function SmsFunil() {
 
   useEffect(() => {
     if (!user?.uid) return
-    Promise.all([getSmsFunnels(user.uid), getProductGroups(user.uid), getFunnelSends(user.uid)])
+    Promise.all([getSmsFunnels(user.uid, canal), getProductGroups(user.uid), getFunnelSends(user.uid)])
       .then(([fs, gs, sends]) => {
         setFunis(fs)
         setGrupos(gs)
-        setFunnelSends(sends.filter((s) => s.canal === 'sms'))
+        setFunnelSends(sends.filter((s) => s.canal === 'sms' && (s.smsCanal || 'eua') === canal))
         if (fs.length > 0) carregarFunil(fs[0])
       })
       .finally(() => setLoading(false))
-  }, [user?.uid])
+  }, [user?.uid, canal])
 
   useEffect(() => {
     if (!selectedId) return
@@ -206,8 +209,8 @@ export default function SmsFunil() {
       const inicio = nodes.find((n) => n.type === 'inicio')
       const gatilhoEvento = inicio?.data?.evento || null
       const gatilhoGrupoId = inicio?.data?.grupoId || null
-      const id = await saveSmsFunnel(user.uid, selectedId, { nome: nome.trim(), ativo, gatilhoEvento, gatilhoGrupoId, nodes: cleanNodes, edges: cleanEdges })
-      setFunis(await getSmsFunnels(user.uid))
+      const id = await saveSmsFunnel(user.uid, selectedId, { nome: nome.trim(), ativo, gatilhoEvento, gatilhoGrupoId, smsCanal: canal, nodes: cleanNodes, edges: cleanEdges })
+      setFunis(await getSmsFunnels(user.uid, canal))
       setSelectedId(id)
       toast.success('Funil salvo.')
     } catch (err) {
@@ -254,7 +257,7 @@ export default function SmsFunil() {
     if (!(await confirm({ title: `Excluir o funil "${nome}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir' }))) return
     try {
       await deleteSmsFunnel(user.uid, selectedId)
-      const fs = await getSmsFunnels(user.uid)
+      const fs = await getSmsFunnels(user.uid, canal)
       setFunis(fs)
       fs.length ? carregarFunil(fs[0]) : novoFunil()
       toast.success('Funil excluído.')

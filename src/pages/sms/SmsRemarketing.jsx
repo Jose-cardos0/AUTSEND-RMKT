@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
 import { auth, functions } from '../../lib/firebase'
@@ -13,22 +14,24 @@ import { MessageSquare, Search, Send, CheckCircle2, Circle, Loader2, AlertCircle
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 
-/** Normaliza pra E.164 internacional (espelho do backend). Rejeita BR (+55). */
-function normalizarE164Internacional(raw) {
+/** Normaliza pra E.164 (espelho do backend). Rejeita BR (+55) salvo permitirBR (conta própria/API). */
+function normalizarE164Internacional(raw, permitirBR) {
   let s = String(raw || '').trim()
   const temMais = s.startsWith('+')
   let d = s.replace(/\D/g, '')
   if (!d) return { ok: false }
   if (!temMais && d.length === 10) d = '1' + d
-  if (d.startsWith('55')) return { ok: false, br: true }
+  if (!permitirBR && d.startsWith('55')) return { ok: false, br: true }
   if (d.length < 8 || d.length > 15) return { ok: false }
   return { ok: true, e164: '+' + d }
 }
 
 export default function SmsRemarketing() {
   const [user] = useAuthState(auth)
+  const { canal: canalParam } = useParams()
+  const canal = canalParam === 'api' ? 'api' : 'eua'
   const { temFeature, limiteDe } = usePlano()
-  const podeSms = temFeature('smsDisparos') && limiteDe('smsMes') > 0
+  const podeSms = temFeature('smsDisparos') && (canal === 'api' || limiteDe('smsMes') > 0)
 
   const [carts, setCarts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -51,10 +54,11 @@ export default function SmsRemarketing() {
 
   useEffect(() => {
     if (!user?.uid) return
+    setLoading(true)
     getLeads(user.uid).then((leadsData) => {
-      // Só leads com número internacional (SMS não atende BR).
+      // EUA: só internacional (sem BR). API (conta própria): qualquer país.
       const list = (leadsData || []).map((l) => {
-        const norm = normalizarE164Internacional(l.telefone)
+        const norm = normalizarE164Internacional(l.telefone, canal === 'api')
         if (!norm.ok) return null
         return {
           id: `lead_${l.id}`,
@@ -76,7 +80,7 @@ export default function SmsRemarketing() {
       setCarts(list)
       setLoading(false)
     })
-  }, [user?.uid])
+  }, [user?.uid, canal])
 
   const filtered = useMemo(() => {
     let list = carts
@@ -133,6 +137,7 @@ export default function SmsRemarketing() {
         recipients: selecionados.map((c) => ({ telefone: c.telefone, nome: c.nome })),
         loteSize: 50,
         intervaloMin: 5,
+        canal,
       })
       // Marca como enviado na UI e persiste a flag por lead
       const ids = new Set(selecionados.map((c) => c.id))

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useParams } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
@@ -14,20 +15,20 @@ import MelhorarPlano from '../../components/MelhorarPlano'
 import { Send, Loader2, Upload, Download, Users, History, Trash2, AlertCircle, MessageSquare, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import excelImg from '../../assets/excel.png'
 
-/** Normaliza pra E.164 internacional (espelho do backend). Rejeita BR (+55). */
-function normalizarE164Internacional(raw) {
+/** Normaliza pra E.164 (espelho do backend). Rejeita BR (+55) salvo permitirBR (conta própria/API). */
+function normalizarE164Internacional(raw, permitirBR) {
   let s = String(raw || '').trim()
   const temMais = s.startsWith('+')
   let d = s.replace(/\D/g, '')
   if (!d) return { ok: false, motivo: 'vazio' }
   if (!temMais && d.length === 10) d = '1' + d
-  if (d.startsWith('55')) return { ok: false, motivo: 'brasil' }
+  if (!permitirBR && d.startsWith('55')) return { ok: false, motivo: 'brasil' }
   if (d.length < 8 || d.length > 15) return { ok: false, motivo: 'tamanho' }
   return { ok: true, e164: '+' + d }
 }
 
 /** Cada linha: "numero" ou "numero,nome". */
-function parseLista(text) {
+function parseLista(text, permitirBR) {
   return text
     .split(/\n/)
     .map((l) => l.trim())
@@ -36,7 +37,7 @@ function parseLista(text) {
       const parts = line.split(/[\t,;]/).map((p) => p.trim()).filter(Boolean)
       const numero = parts[0] || ''
       const nome = parts.slice(1).join(' ').trim()
-      const norm = normalizarE164Internacional(numero)
+      const norm = normalizarE164Internacional(numero, permitirBR)
       return { numero, telefone: norm.ok ? norm.e164 : '', nome, ok: norm.ok, motivo: norm.motivo }
     })
     .filter((r) => r.numero)
@@ -51,8 +52,10 @@ const STATUS = {
 
 export default function SmsDisparos() {
   const [user] = useAuthState(auth)
+  const { canal: canalParam } = useParams()
+  const canal = canalParam === 'api' ? 'api' : 'eua'
   const { temFeature, limiteDe } = usePlano()
-  const podeSms = temFeature('smsDisparos') && limiteDe('smsMes') > 0
+  const podeSms = temFeature('smsDisparos') && (canal === 'api' || limiteDe('smsMes') > 0)
 
   const [loading, setLoading] = useState(true)
   const [historico, setHistorico] = useState([])
@@ -70,12 +73,13 @@ export default function SmsDisparos() {
 
   useEffect(() => {
     if (!user?.uid) return
-    getSmsDisparos(user.uid)
+    setLoading(true)
+    getSmsDisparos(user.uid, canal)
       .then((disp) => setHistorico(disp))
       .finally(() => setLoading(false))
-  }, [user?.uid])
+  }, [user?.uid, canal])
 
-  const linhas = useMemo(() => parseLista(lista), [lista])
+  const linhas = useMemo(() => parseLista(lista, canal === 'api'), [lista, canal])
   const validos = useMemo(() => linhas.filter((l) => l.ok), [linhas])
   const brExcluidos = useMemo(() => linhas.filter((l) => l.motivo === 'brasil').length, [linhas])
 
@@ -132,6 +136,7 @@ export default function SmsDisparos() {
         recipients: validos.map((v) => ({ telefone: v.telefone, nome: v.nome })),
         loteSize,
         intervaloMin,
+        canal,
       })
       const { enviados, total, lotes, ignoradosBR } = res.data || {}
       if (lotes > 1) {
@@ -142,7 +147,7 @@ export default function SmsDisparos() {
       if (ignoradosBR > 0) toast(`${ignoradosBR} número(s) do Brasil foram ignorados (SMS só internacional).`, { icon: '🇧🇷' })
       setLista('')
       setNomeDisparo('')
-      setHistorico(await getSmsDisparos(user.uid))
+      setHistorico(await getSmsDisparos(user.uid, canal))
     } catch (err) {
       toast.error(err.message || 'Falha no disparo.')
     } finally {

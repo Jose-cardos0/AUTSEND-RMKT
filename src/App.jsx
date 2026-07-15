@@ -163,11 +163,18 @@ export default function App() {
           <Route path="email/disparos" element={<EmailDisparos />} />
           <Route path="email/metricas" element={<EmailMetricas />} />
           <Route path="sms/integracao" element={<SmsIntegracao />} />
-          <Route path="sms/disparos" element={<SmsDisparos />} />
-          <Route path="sms/funil" element={<SmsFunil />} />
-          <Route path="sms/automacoes" element={<SmsAutomacoes />} />
-          <Route path="sms/remarketing" element={<SmsRemarketing />} />
-          <Route path="sms/metricas" element={<SmsMetricas />} />
+          {/* Canais de SMS: eua (nossa conta) | api (conta Telnyx do cliente). Param :canal. */}
+          <Route path="sms/:canal/disparos" element={<SmsDisparos />} />
+          <Route path="sms/:canal/funil" element={<SmsFunil />} />
+          <Route path="sms/:canal/automacoes" element={<SmsAutomacoes />} />
+          <Route path="sms/:canal/remarketing" element={<SmsRemarketing />} />
+          <Route path="sms/:canal/metricas" element={<SmsMetricas />} />
+          {/* Rotas antigas → redirecionam pro canal EUA (compat) */}
+          <Route path="sms/disparos" element={<Navigate to="/sms/eua/disparos" replace />} />
+          <Route path="sms/funil" element={<Navigate to="/sms/eua/funil" replace />} />
+          <Route path="sms/automacoes" element={<Navigate to="/sms/eua/automacoes" replace />} />
+          <Route path="sms/remarketing" element={<Navigate to="/sms/eua/remarketing" replace />} />
+          <Route path="sms/metricas" element={<Navigate to="/sms/eua/metricas" replace />} />
           <Route
             path="email/funil"
             element={

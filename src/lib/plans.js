@@ -61,14 +61,16 @@ export const FEATURE_LABELS = {
   emailIntegracoes: 'E-mail · Integrações', emailConstrutor: 'E-mail · Construtor', emailAutomacoes: 'E-mail · Automações', emailDisparos: 'E-mail · Disparos', emailFunil: 'E-mail · Funil', emailMetricas: 'E-mail · Métricas',
   smsDisparos: 'SMS · Disparos',
 }
-export const LIMITE_LABELS = { trackers: 'Trackers', instancias: 'Instâncias WhatsApp', emailsMes: 'E-mails/mês', smsMes: 'SMS/mês', dominios: 'Domínios de e-mail' }
+export const LIMITE_LABELS = { trackers: 'Trackers', instancias: 'Instâncias WhatsApp', emailsMes: 'E-mails/mês', smsMes: 'SMS/mês (EUA)', dominios: 'Domínios de e-mail' }
 
 // Rota → feature que a libera (usado pra esconder no menu / bloquear página).
 export const ROTA_FEATURE = {
   '/banco-leads': 'bancoLeads', '/produtos': 'produtos', '/checkouts': 'checkouts', '/templates': 'templates',
   '/integracoes': 'waIntegracoes', '/automacoes': 'waAutomacoes', '/remarketing': 'waRemarketing', '/remarketing-grupos': 'waGrupos', '/enviar-mensagem': 'waDisparos', '/funil': 'waFunil', '/metricas': 'waMetricas',
   '/email/integracoes': 'emailIntegracoes', '/email/construtor': 'emailConstrutor', '/email/automacoes': 'emailAutomacoes', '/email/disparos': 'emailDisparos', '/email/funil': 'emailFunil', '/email/metricas': 'emailMetricas',
-  '/sms/integracao': 'smsDisparos', '/sms/disparos': 'smsDisparos', '/sms/funil': 'smsDisparos', '/sms/automacoes': 'smsDisparos', '/sms/remarketing': 'smsDisparos', '/sms/metricas': 'smsDisparos',
+  '/sms/integracao': 'smsDisparos',
+  '/sms/eua/disparos': 'smsDisparos', '/sms/eua/funil': 'smsDisparos', '/sms/eua/automacoes': 'smsDisparos', '/sms/eua/remarketing': 'smsDisparos', '/sms/eua/metricas': 'smsDisparos',
+  '/sms/api/disparos': 'smsDisparos', '/sms/api/funil': 'smsDisparos', '/sms/api/automacoes': 'smsDisparos', '/sms/api/remarketing': 'smsDisparos', '/sms/api/metricas': 'smsDisparos',
 }
 
 /** Limites + features efetivos do tenant (plano + overrides do admin). */

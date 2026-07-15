@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { auth, functions } from '../../lib/firebase'
 import MessageEditor from '../../components/MessageEditor'
@@ -19,14 +19,14 @@ const eventLabel = (id) => {
   return KIWIFY_EVENTS.find((e) => e.id === id)?.label ?? id
 }
 
-/** Normaliza pra E.164 internacional (espelho do backend). Rejeita BR (+55). */
-function normalizarE164Internacional(raw) {
+/** Normaliza pra E.164 (espelho do backend). Rejeita BR (+55) salvo permitirBR (conta própria/API). */
+function normalizarE164Internacional(raw, permitirBR) {
   let s = String(raw || '').trim()
   const temMais = s.startsWith('+')
   let d = s.replace(/\D/g, '')
   if (!d) return { ok: false }
   if (!temMais && d.length === 10) d = '1' + d
-  if (d.startsWith('55')) return { ok: false, br: true }
+  if (!permitirBR && d.startsWith('55')) return { ok: false, br: true }
   if (d.length < 8 || d.length > 15) return { ok: false }
   return { ok: true, e164: '+' + d }
 }
@@ -129,8 +129,10 @@ function EventCard({ event, auto, onSave }) {
 
 export default function SmsAutomacoes() {
   const [user] = useAuthState(auth)
+  const { canal: canalParam } = useParams()
+  const canal = canalParam === 'api' ? 'api' : 'eua'
   const { temFeature, limiteDe } = usePlano()
-  const podeSms = temFeature('smsDisparos') && limiteDe('smsMes') > 0
+  const podeSms = temFeature('smsDisparos') && (canal === 'api' || limiteDe('smsMes') > 0)
 
   const [loading, setLoading] = useState(true)
   const [autos, setAutos] = useState([])
@@ -153,14 +155,15 @@ export default function SmsAutomacoes() {
 
   const load = async () => {
     if (!user?.uid) return
-    const [a, gs, l, logs] = await Promise.all([getSmsAutomations(user.uid), getProductGroups(user.uid), getLeads(user.uid), getSmsLogs(user.uid)])
+    const [a, gs, l, logs] = await Promise.all([getSmsAutomations(user.uid, canal), getProductGroups(user.uid), getLeads(user.uid), getSmsLogs(user.uid, canal)])
     setAutos(a); setGrupos(gs); setLeads(l); setSmsLogs(logs)
   }
 
   useEffect(() => {
     if (!user?.uid) return
+    setLoading(true)
     load().finally(() => setLoading(false))
-  }, [user?.uid])
+  }, [user?.uid, canal])
 
   const reload = async () => { setLoading(true); await load(); setLoading(false) }
 
@@ -185,10 +188,10 @@ export default function SmsAutomacoes() {
 
   const handleSave = async (evento, data) => {
     if (!grupoId) { toast.error('Selecione um grupo de produto.'); return }
-    await saveSmsAutomationGrupo(user.uid, grupoId, evento, data)
+    const id = await saveSmsAutomationGrupo(user.uid, grupoId, evento, data, canal)
     setAutos((prev) => {
-      const idx = prev.findIndex((a) => a.grupoId === grupoId && a.evento === evento)
-      const updated = { grupoId, evento, ...data, id: `${grupoId}__${evento}` }
+      const idx = prev.findIndex((a) => a.grupoId === grupoId && a.evento === evento && (a.canal || 'eua') === canal)
+      const updated = { grupoId, evento, canal, ...data, id }
       if (idx >= 0) { const copy = [...prev]; copy[idx] = { ...copy[idx], ...updated }; return copy }
       return [...prev, updated]
     })
@@ -199,14 +202,14 @@ export default function SmsAutomacoes() {
     const forEvent = autos.filter((a) => a.evento === lead.evento)
     const auto = (grupoLead && forEvent.find((a) => a.grupoId === grupoLead.id)) || forEvent.find((a) => !a.grupoId) || null
     if (!auto?.mensagem) { toast.error('Nenhuma automação de SMS configurada para este evento. Configure primeiro.'); return }
-    const norm = normalizarE164Internacional(lead.telefone)
-    if (!norm.ok) { toast.error(norm.br ? 'SMS não atende números do Brasil (+55).' : 'Número inválido.'); return }
+    const norm = normalizarE164Internacional(lead.telefone, canal === 'api')
+    if (!norm.ok) { toast.error(norm.br ? 'Sua conta EUA não atende números do Brasil (+55).' : 'Número inválido.'); return }
     setReenviandoId(lead.id)
     try {
       const fn = httpsCallable(functions, 'reenviarSMSLead')
-      await fn({ telefone: lead.telefone, nome: lead.nome, produto: lead.produto, email: lead.email, evento: lead.evento, mensagem: auto.mensagem, leadId: lead.id })
+      await fn({ telefone: lead.telefone, nome: lead.nome, produto: lead.produto, email: lead.email, evento: lead.evento, mensagem: auto.mensagem, leadId: lead.id, canal })
       toast.success(`SMS reenviado para ${lead.nome || lead.telefone}`)
-      setSmsLogs(await getSmsLogs(user.uid))
+      setSmsLogs(await getSmsLogs(user.uid, canal))
     } catch (err) {
       toast.error(err.message || 'Erro ao reenviar')
     } finally {

@@ -13,17 +13,17 @@ const CARD = {
   inicial: {
     tag: 'Entrada',
     preco: 'R$67',
-    features: ['2 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 1 instância', '500 e-mails/mês · 1 domínio', '200 SMS/mês', 'Construtor, Funil e Métricas de e-mail'],
+    features: ['2 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 1 instância', '500 e-mails/mês · 1 domínio', '200 SMS/mês (EUA)', 'Construtor, Funil e Métricas de e-mail'],
   },
   padrao: {
     tag: 'Mais popular',
     preco: 'R$147',
-    features: ['10 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 2 instâncias', '2.500 e-mails/mês · 1 domínio', '500 SMS/mês', 'Construtor, Funil e Métricas de e-mail'],
+    features: ['10 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 2 instâncias', '2.500 e-mails/mês · 1 domínio', '500 SMS/mês (EUA)', 'Construtor, Funil e Métricas de e-mail'],
   },
   pro: {
     tag: 'Máximo',
     preco: 'R$197',
-    features: ['20 trackers', 'Tudo do Padrão, sem travas', 'WhatsApp ilimitado · 4 instâncias', '5.000 e-mails/mês · 2 domínios', '1.000 SMS/mês', 'Limites maiores e prioridade'],
+    features: ['20 trackers', 'Tudo do Padrão, sem travas', 'WhatsApp ilimitado · 4 instâncias', '5.000 e-mails/mês · 2 domínios', '1.000 SMS/mês (EUA)', 'Limites maiores e prioridade'],
   },
 }
 

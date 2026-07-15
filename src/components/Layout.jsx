@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { isAdmin } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
@@ -72,14 +72,27 @@ const navGroups = [
         label: 'EUA',
         img: euaflag,
         items: [
-          { to: '/sms/automacoes', label: 'Automações', icon: Zap },
-          { to: '/sms/remarketing', label: 'Remarketing', icon: MessageCircle },
-          { to: '/sms/disparos', label: 'Disparos', icon: Send },
-          { to: '/sms/funil', label: 'Funil', icon: GitBranch },
-          { to: '/sms/metricas', label: 'Métricas', icon: BarChart3 },
+          { to: '/sms/eua/automacoes', label: 'Automações', icon: Zap },
+          { to: '/sms/eua/remarketing', label: 'Remarketing', icon: MessageCircle },
+          { to: '/sms/eua/disparos', label: 'Disparos', icon: Send },
+          { to: '/sms/eua/funil', label: 'Funil', icon: GitBranch },
+          { to: '/sms/eua/metricas', label: 'Métricas', icon: BarChart3 },
         ],
       },
-      { key: 'sms-br', label: 'BR', img: brlflag, soon: true, items: [] },
+      {
+        // Só aparece pra quem conectou a própria conta Telnyx (BYO). Envia pra qualquer país (mundial).
+        key: 'sms-api',
+        label: "API's",
+        icon: Globe,
+        soApi: true,
+        items: [
+          { to: '/sms/api/automacoes', label: 'Automações', icon: Zap },
+          { to: '/sms/api/remarketing', label: 'Remarketing', icon: MessageCircle },
+          { to: '/sms/api/disparos', label: 'Disparos', icon: Send },
+          { to: '/sms/api/funil', label: 'Funil', icon: GitBranch },
+          { to: '/sms/api/metricas', label: 'Métricas', icon: BarChart3 },
+        ],
+      },
     ],
   },
 ]
@@ -180,7 +193,9 @@ function NestedSubGroup({ sg, mobile, onNavigate, onLocked }) {
   return (
     <div>
       <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] font-semibold text-stone-600 hover:bg-surface-100/70 transition-colors" aria-expanded={open}>
-        {sg.img && <img src={sg.img} alt="" className="h-4 w-auto rounded-[3px] object-contain shrink-0" />}
+        {sg.img
+          ? <img src={sg.img} alt="" className="h-4 w-auto rounded-[3px] object-contain shrink-0" />
+          : sg.icon && <sg.icon className="w-4 h-4 text-primary-600 shrink-0" />}
         <span className="flex-1 text-left">{sg.label}</span>
         <ChevronDown className={clsx('w-3.5 h-3.5 text-stone-400 shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
@@ -280,7 +295,7 @@ export default function Layout() {
   const location = useLocation()
   const outlet = useOutlet()
   const [authUser] = useAuthState(auth)
-  const { temFeature, fotoURL } = usePlano()
+  const { temFeature, fotoURL, temSmsApi } = usePlano()
   const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroup] : navGroups
   // Mostra TUDO no menu; o que o plano não libera vira bloqueado (cadeado + popup de upgrade).
   const podeItem = (it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }
@@ -288,7 +303,10 @@ export default function Layout() {
   const groups = baseGroups.map((g) => ({
     ...g,
     items: (g.items || []).map(marcar),
-    subgroups: g.subgroups ? g.subgroups.map((sg) => ({ ...sg, items: (sg.items || []).map(marcar) })) : undefined,
+    // Subgrupo "API's" (soApi) só aparece se o cliente conectou a própria conta Telnyx.
+    subgroups: g.subgroups
+      ? g.subgroups.filter((sg) => !sg.soApi || temSmsApi || isAdmin(authUser)).map((sg) => ({ ...sg, items: (sg.items || []).map(marcar) }))
+      : undefined,
   }))
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const abrirUpgrade = () => setUpgradeOpen(true)

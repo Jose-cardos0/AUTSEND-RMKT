@@ -13,7 +13,7 @@ export function usePlano() {
 
 export function PlanoProvider({ children }) {
   const [user] = useAuthState(auth)
-  const [state, setState] = useState({ loading: true, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, termosAceito: true, nome: '', documento: '', emailCliente: '', fotoURL: null })
+  const [state, setState] = useState({ loading: true, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, termosAceito: true, nome: '', documento: '', emailCliente: '', fotoURL: null, temSmsApi: false })
 
   useEffect(() => {
     if (!user?.uid) { setState((s) => ({ ...s, loading: false })); return }
@@ -23,7 +23,7 @@ export function PlanoProvider({ children }) {
     getMeuPlano()
       .then((r) => {
         const ef = planoEfetivo({ plano: r.plano, overrides: r.overrides })
-        const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites, termosAceito: !!r.isAdmin || r.termosAceito !== false, nome: r.nome || '', documento: r.documento || '', emailCliente: r.email || (user.email || ''), fotoURL: r.fotoURL || null }
+        const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites, termosAceito: !!r.isAdmin || r.termosAceito !== false, nome: r.nome || '', documento: r.documento || '', emailCliente: r.email || (user.email || ''), fotoURL: r.fotoURL || null, temSmsApi: !!r.temSmsApi }
         setState(st)
         try { localStorage.setItem(cacheKey, JSON.stringify(st)) } catch { /* ignore */ }
       })
