@@ -629,7 +629,7 @@ export default function SmsIntegracao() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-semibold text-stone-800 truncate flex items-center gap-1.5"><Globe className="w-4 h-4 text-primary-600 shrink-0" /> {p.nome}</p>
-                        <p className="text-[11px] text-stone-400 mt-0.5">key {p.apiKeyMasked} · {nums.length} número(s)</p>
+                        <p className="text-[11px] text-stone-400 mt-0.5">{nums.length} número(s)</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {!isPrincipal && (
