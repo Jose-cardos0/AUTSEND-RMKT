@@ -65,7 +65,8 @@ export default function SmsRemarketing() {
           nome: l.nome,
           email: l.email,
           telefone: norm.e164,
-          remarketingEnviado: l.smsRemarketingEnviado === true,
+          // "Já enviei" é por canal (legado global = eua, pra não perder o histórico antigo).
+          remarketingEnviado: l[`smsRemarketingEnviado_${canal}`] === true || (canal === 'eua' && l.smsRemarketingEnviado === true),
           createdAt: l.createdAt,
           evento: l.evento,
           tag: eventTag(l.evento),
@@ -146,7 +147,7 @@ export default function SmsRemarketing() {
       setMensagem('')
       toast.success(`Remarketing SMS enviado para ${selecionados.length} contato(s).`)
       for (const c of selecionados) {
-        try { await updateLeadStatus(user.uid, c._leadId, { smsRemarketingEnviado: true }) }
+        try { await updateLeadStatus(user.uid, c._leadId, { [`smsRemarketingEnviado_${canal}`]: true }) }
         catch (e) { console.warn('Erro ao marcar lead:', e) }
       }
     } catch (err) {
