@@ -1265,15 +1265,28 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
   const s = await db.doc(`tenants/${uid}`).get()
   const t = s.exists ? s.data() : {}
   const lim = limitesDoTenant(t)
+  const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
   const [emailsUsados, smsUsados] = await Promise.all([emailsEnviadosNoMes(uid), smsEnviadosNoMes(uid)])
   const smsCreditos = Number(t.smsCreditos) || 0
   return {
-    plano: lim.plano,
+    plano: lim.plano, isAdmin: isAdm,
     nome: t.nome || (request.auth?.token?.name || '') || '',
     email: t.email || (request.auth?.token?.email || '') || '',
-    emailsUsados, emailsLimite: lim.emailsMes || 0,
-    smsUsados, smsLimite: lim.smsMes || 0, smsCreditos,
+    fotoURL: t.fotoURL || null,
+    emailsUsados, emailsLimite: isAdm ? -1 : (lim.emailsMes || 0),
+    smsUsados, smsLimite: isAdm ? -1 : (lim.smsMes || 0), smsCreditos,
   }
+})
+
+/** Salva a foto de perfil (data URL pequeno) no tenant. */
+exports.salvarFotoPerfil = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const dataUrl = String(request.data?.dataUrl || '')
+  if (!/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) throw new HttpsError('invalid-argument', 'Imagem inválida.')
+  if (dataUrl.length > 900000) throw new HttpsError('invalid-argument', 'Imagem muito grande. Escolha uma menor.')
+  await db.doc(`tenants/${uid}`).set({ fotoURL: dataUrl }, { merge: true })
+  return { ok: true, fotoURL: dataUrl }
 })
 
 /**

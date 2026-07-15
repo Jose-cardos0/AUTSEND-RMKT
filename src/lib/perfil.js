@@ -6,7 +6,13 @@ const call = (name) => httpsCallable(functions, name)
 /** Stats do perfil: e-mails e SMS usados no mês, limites do plano e saldo de créditos. */
 export async function getPerfilStats() {
   const r = await call('getPerfilStats')()
-  return r.data // { plano, nome, email, emailsUsados, emailsLimite, smsUsados, smsLimite, smsCreditos }
+  return r.data // { plano, isAdmin, nome, email, fotoURL, emailsUsados, emailsLimite, smsUsados, smsLimite, smsCreditos }
+}
+
+/** Salva a foto de perfil (data URL pequeno). */
+export async function salvarFotoPerfil(dataUrl) {
+  const r = await call('salvarFotoPerfil')({ dataUrl })
+  return r.data // { ok, fotoURL }
 }
 
 /** Pacotes de recarga de crédito SMS (só EUA). */
