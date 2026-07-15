@@ -30,6 +30,7 @@ import {
   Trash2,
   Star,
   ChevronDown,
+  Settings,
 } from 'lucide-react'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import PageShell, { Panel } from '../components/PageShell'
@@ -82,6 +83,7 @@ export default function Integracoes() {
   const [verificando, setVerificando] = useState(false)
   const [buscandoGruposId, setBuscandoGruposId] = useState(null)
   const [copiado, setCopiado] = useState(null)
+  const [gerenciarInst, setGerenciarInst] = useState(null) // instância aberta no popup de gerenciar
   const [criandoWebhook, setCriandoWebhook] = useState(false)
   const [msg, setMsg] = useState({ type: '', text: '' })
   const [paginaInstancias, setPaginaInstancias] = useState(1)
@@ -395,6 +397,74 @@ export default function Integracoes() {
       title="Integrações"
     >
       <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+
+      {/* Popup: gerenciar instância (principal / verificar / grupos / excluir) */}
+      {gerenciarInst && (() => {
+        const inst = gerenciarInst
+        const isPrincipal = selectedInstanceId === inst.id
+        const gruposPuxados = inst.grupos?.length > 0
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => setGerenciarInst(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-100 text-stone-600 shrink-0"><Settings className="w-5 h-5" /></span>
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-stone-800 truncate">Gerenciar instância</h3>
+                  <p className="text-sm text-stone-500 truncate">{inst.nomeInstancia || 'Sem nome'}</p>
+                </div>
+                <button onClick={() => setGerenciarInst(null)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="space-y-2.5">
+                {!isPrincipal && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await setSelectedInstance(user.uid, inst.id)
+                      setSelectedInstanceId(inst.id)
+                      const evo = await getEvolutionConfig(user.uid)
+                      setEvolution(evo)
+                      setGerenciarInst(null)
+                      toast.success(`"${inst.nomeInstancia}" é agora a instância principal para automações.`)
+                    }}
+                    className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-primary-50/50 text-left transition"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 shrink-0"><Star className="w-4 h-4" /></span>
+                    <span className="text-sm font-semibold text-stone-800">Definir como principal</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { handleVerificarStatus(inst) }}
+                  disabled={verificando || !inst.hash}
+                  className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition disabled:opacity-50"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-600 shrink-0">{verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}</span>
+                  <span className="text-sm font-semibold text-stone-800">Verificar conexão</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { handleBuscarGrupos(inst) }}
+                  disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || gruposPuxados}
+                  className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition disabled:opacity-50"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-600 shrink-0">{buscandoGruposId === inst.id ? <Loader2 className="w-4 h-4 animate-spin" /> : gruposPuxados ? <Check className="w-4 h-4 text-green-600" /> : <Users className="w-4 h-4" />}</span>
+                  <span className="text-sm font-semibold text-stone-800">{gruposPuxados ? 'Grupos já puxados' : 'Puxar grupos'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setGerenciarInst(null); handleExcluirInstancia(inst) }}
+                  className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-red-300 hover:bg-red-50/50 text-left transition"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 shrink-0"><Trash2 className="w-4 h-4" /></span>
+                  <span className="text-sm font-semibold text-stone-800">Excluir instância</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Popup: Nova instância (nome + número) */}
       {showNovaInst && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowNovaInst(false)}>
@@ -522,60 +592,14 @@ export default function Integracoes() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {!isPrincipal && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await setSelectedInstance(user.uid, inst.id)
-                                setSelectedInstanceId(inst.id)
-                                const evo = await getEvolutionConfig(user.uid)
-                                setEvolution(evo)
-                                toast.success(`"${inst.nomeInstancia}" é agora a instância principal para automações.`)
-                              }}
-                              className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation"
-                              title="Definir como principal"
-                              aria-label="Definir como principal"
-                            >
-                              <Star className="w-4 h-4" />
-                            </button>
-                          )}
                           <button
                             type="button"
-                            onClick={() => handleVerificarStatus(inst)}
-                            disabled={verificando || !inst.hash}
-                            className="p-2.5 rounded-lg border border-surface-200 bg-white text-stone-700 hover:bg-surface-100 transition-colors touch-manipulation disabled:opacity-60"
-                            title="Verificar conexão"
-                            aria-label="Verificar conexão"
+                            onClick={() => setGerenciarInst(inst)}
+                            className="p-2.5 rounded-lg text-stone-500 hover:bg-surface-100 hover:text-stone-700 transition-colors touch-manipulation"
+                            title="Gerenciar instância"
+                            aria-label="Gerenciar instância"
                           >
-                            {verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleBuscarGrupos(inst)}
-                            disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || (inst.grupos?.length > 0)}
-                            className="p-2.5 rounded-lg border border-surface-200 bg-white text-stone-700 hover:bg-surface-100 transition-colors touch-manipulation disabled:opacity-60 disabled:cursor-not-allowed"
-                            title={inst.grupos?.length > 0 ? 'Grupos já puxados' : 'Puxar grupos'}
-                            aria-label={inst.grupos?.length > 0 ? 'Grupos já puxados' : 'Puxar grupos'}
-                          >
-                            {buscandoGruposId === inst.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : inst.grupos?.length > 0 ? (
-                              <Check className="w-4 h-4 text-green-600" />
-                            ) : (
-                              <Users className="w-4 h-4" />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleExcluirInstancia(inst)
-                            }}
-                            className="p-2.5 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation"
-                            title="Excluir instância"
-                            aria-label="Excluir instância"
-                          >
-                            <Trash2 className="w-4 h-4" />
+                            <Settings className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
