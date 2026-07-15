@@ -377,7 +377,7 @@ export default function Layout() {
               title="Meu perfil"
               aria-label="Meu perfil"
               className={({ isActive }) => clsx(
-                'shrink-0 rounded-xl border transition-all overflow-hidden',
+                'shrink-0 rounded-full border transition-all overflow-hidden',
                 fotoURL ? 'p-0.5' : 'p-2.5',
                 isActive
                   ? 'text-primary-600 bg-primary-50 border-primary-100'
@@ -385,7 +385,7 @@ export default function Layout() {
               )}
             >
               {fotoURL
-                ? <img src={fotoURL} alt="Perfil" className="w-7 h-7 rounded-lg object-cover" />
+                ? <img src={fotoURL} alt="Perfil" className="w-7 h-7 rounded-full object-cover" />
                 : <User className="w-4 h-4" />}
             </NavLink>
           </div>
