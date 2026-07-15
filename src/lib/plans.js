@@ -16,8 +16,8 @@ export const PLANOS = {
   },
   inicial: {
     nome: 'Inicial',
-    // Tudo do Free + WhatsApp + 500 e-mails/mês. Sem domínios (só API's).
-    limites: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 300, dominios: 0 },
+    // Tudo do Free + WhatsApp + 500 e-mails/mês + 1 domínio.
+    limites: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1 },
     features: {
       bancoLeads: true, produtos: true, checkouts: true, templates: true,
       waIntegracoes: true, waAutomacoes: true, waRemarketing: true, waGrupos: true, waDisparos: true, waFunil: true, waMetricas: true,
@@ -27,7 +27,7 @@ export const PLANOS = {
   },
   padrao: {
     nome: 'Padrão',
-    limites: { trackers: 10, instancias: 2, emailsMes: 3000, smsMes: 1000, dominios: 1 },
+    limites: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1 },
     features: {
       bancoLeads: true, produtos: true, checkouts: true, templates: true,
       waIntegracoes: true, waAutomacoes: true, waRemarketing: true, waGrupos: true, waDisparos: true, waFunil: true, waMetricas: true,
@@ -37,7 +37,7 @@ export const PLANOS = {
   },
   pro: {
     nome: 'Pro',
-    limites: { trackers: 20, instancias: 4, emailsMes: 10000, smsMes: 2000, dominios: 2 },
+    limites: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2 },
     features: {
       bancoLeads: true, produtos: true, checkouts: true, templates: true,
       waIntegracoes: true, waAutomacoes: true, waRemarketing: true, waGrupos: true, waDisparos: true, waFunil: true, waMetricas: true,

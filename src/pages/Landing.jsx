@@ -94,9 +94,9 @@ const FEATURES = [
 
 const PLANOS_LP = [
   { key: 'free', preco: 'R$0', tag: null, destaque: false, features: ['1 tracker', 'E-mail (50/mês) via sua API', '1 template + 1 grupo de produto', 'Automação de compra aprovada'] },
-  { key: 'inicial', preco: 'R$67', tag: 'Entrada', destaque: false, features: ['2 trackers', 'WhatsApp ilimitado · 1 instância', '500 e-mails/mês', '300 SMS/mês', 'Banco de Leads, Funil e Métricas'] },
-  { key: 'padrao', preco: 'R$147', tag: 'Mais popular', destaque: true, features: ['10 trackers', 'WhatsApp ilimitado · 2 instâncias', '3.000 e-mails/mês · 1 domínio', '1.000 SMS/mês', 'Tudo desbloqueado'] },
-  { key: 'pro', preco: 'R$197', tag: 'Máximo', destaque: false, features: ['20 trackers', 'WhatsApp ilimitado · 4 instâncias', '10.000 e-mails/mês · 2 domínios', '2.000 SMS/mês', 'Limites maiores e prioridade'] },
+  { key: 'inicial', preco: 'R$67', tag: 'Entrada', destaque: false, features: ['2 trackers', 'WhatsApp ilimitado · 1 instância', '500 e-mails/mês · 1 domínio', '200 SMS/mês', 'Banco de Leads, Funil e Métricas'] },
+  { key: 'padrao', preco: 'R$147', tag: 'Mais popular', destaque: true, features: ['10 trackers', 'WhatsApp ilimitado · 2 instâncias', '2.500 e-mails/mês · 1 domínio', '500 SMS/mês', 'Tudo desbloqueado'] },
+  { key: 'pro', preco: 'R$197', tag: 'Máximo', destaque: false, features: ['20 trackers', 'WhatsApp ilimitado · 4 instâncias', '5.000 e-mails/mês · 2 domínios', '1.000 SMS/mês', 'Limites maiores e prioridade'] },
 ]
 
 
@@ -298,6 +298,29 @@ export default function Landing() {
               </motion.div>
             ))}
           </div>
+
+          {/* Plano Business — horizontal, fala com o suporte no WhatsApp */}
+          <motion.a
+            variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }}
+            href={`https://wa.me/${SUPPORT_WHATSAPP}`} target="_blank" rel="noopener noreferrer"
+            className="group mt-4 flex flex-col sm:flex-row sm:items-center gap-4 rounded-2xl p-5 sm:p-6 border-2 border-stone-800/10 bg-gradient-to-br from-stone-900 to-stone-800 text-white shadow-xl"
+          >
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 shrink-0">
+                <WhatsAppIcon className="w-6 h-6" white />
+              </span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold">Business</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary-500/90 text-white">Sob medida</span>
+                </div>
+                <p className="text-sm text-white/70">Alto volume de envios, limites personalizados e atendimento dedicado. Fale com a gente e montamos o plano ideal.</p>
+              </div>
+            </div>
+            <span className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl min-h-[46px] px-5 text-sm font-semibold bg-white text-stone-900 group-hover:bg-white/90 transition">
+              <WhatsAppIcon className="w-4 h-4" /> Falar com o suporte
+            </span>
+          </motion.a>
 
           {/* Selo de garantia */}
           <motion.div variants={fadeUp} initial="hidden" whileInView="show" viewport={{ once: true }} className="mt-10 flex justify-center">

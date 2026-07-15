@@ -4,24 +4,26 @@ import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
 import { usePlano } from '../lib/PlanoContext'
 import { PLANOS, PLANO_CHECKOUT, PLANO_ORDEM } from '../lib/plans'
+import { SUPPORT_WHATSAPP } from '../lib/constants'
 import { X, Check, Sparkles } from 'lucide-react'
+import WhatsAppIcon from './WhatsAppIcon'
 import foguete from '../assets/foguetes/foguete1.png'
 
 const CARD = {
   inicial: {
     tag: 'Entrada',
     preco: 'R$67',
-    features: ['2 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 1 instância', '500 e-mails/mês · só API\'s (sem domínio)', '300 SMS/mês', 'Construtor, Funil e Métricas de e-mail'],
+    features: ['2 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 1 instância', '500 e-mails/mês · 1 domínio', '200 SMS/mês', 'Construtor, Funil e Métricas de e-mail'],
   },
   padrao: {
     tag: 'Mais popular',
     preco: 'R$147',
-    features: ['10 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 2 instâncias', '3.000 e-mails/mês · 1 domínio', '1.000 SMS/mês', 'Construtor, Funil e Métricas de e-mail'],
+    features: ['10 trackers', 'Banco de Leads, Produtos, Checkouts, Templates', 'WhatsApp ilimitado · 2 instâncias', '2.500 e-mails/mês · 1 domínio', '500 SMS/mês', 'Construtor, Funil e Métricas de e-mail'],
   },
   pro: {
     tag: 'Máximo',
     preco: 'R$197',
-    features: ['20 trackers', 'Tudo do Padrão, sem travas', 'WhatsApp ilimitado · 4 instâncias', '10.000 e-mails/mês · 2 domínios', '2.000 SMS/mês', 'Limites maiores e prioridade'],
+    features: ['20 trackers', 'Tudo do Padrão, sem travas', 'WhatsApp ilimitado · 4 instâncias', '5.000 e-mails/mês · 2 domínios', '1.000 SMS/mês', 'Limites maiores e prioridade'],
   },
 }
 
@@ -84,6 +86,28 @@ export default function MelhorarPlano({ className = '', label = 'Melhorar plano'
                   )
                 })}
               </div>
+
+              {/* Plano Business — horizontal, fala com o suporte no WhatsApp */}
+              <a
+                href={`https://wa.me/${SUPPORT_WHATSAPP}`} target="_blank" rel="noopener noreferrer"
+                className="group mt-3 flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-stone-900 to-stone-800 text-white shadow-lg"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 shrink-0">
+                    <WhatsAppIcon className="w-5 h-5" white />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-bold">Business</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary-500/90 text-white">Sob medida</span>
+                    </div>
+                    <p className="text-[13px] text-white/70">Alto volume e limites personalizados. Fale com a gente.</p>
+                  </div>
+                </div>
+                <span className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl min-h-[44px] px-5 text-sm font-semibold bg-white text-stone-900 group-hover:bg-white/90 transition">
+                  <WhatsAppIcon className="w-4 h-4" /> Falar com o suporte
+                </span>
+              </a>
             </motion.div>
           </motion.div>
         )}

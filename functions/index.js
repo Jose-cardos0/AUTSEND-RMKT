@@ -50,9 +50,9 @@ async function assertTermosAceito(request, tenant) {
 // Limites por plano (espelho do src/lib/plans.js)
 const PLAN_LIMITS = {
   free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0 },
-  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 300, dominios: 0 },
-  padrao: { trackers: 10, instancias: 2, emailsMes: 3000, smsMes: 1000, dominios: 1 },
-  pro: { trackers: 20, instancias: 4, emailsMes: 10000, smsMes: 2000, dominios: 2 },
+  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1 },
+  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1 },
+  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2 },
 }
 function limitesDoTenant(t) {
   const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
