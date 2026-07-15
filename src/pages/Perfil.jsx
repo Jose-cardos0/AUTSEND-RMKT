@@ -10,11 +10,15 @@ import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, Shiel
 import img500 from '../assets/chip/emailautsend.png'
 import img1000 from '../assets/chip/1000sms.png'
 import img2500 from '../assets/chip/2500.png'
-import imgEmail from '../assets/chip/emailautsend.png'
+import imgEmail5000 from '../assets/email/5000email.png'
+import imgEmail10000 from '../assets/email/10000email.png'
+import imgEmail25000 from '../assets/email/25000email.png'
+import globoIcon from '../assets/global.png'
 import euaFlag from '../assets/flags/euaflaglarge.png'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
 const PACOTE_IMG = { 500: img500, 1000: img1000, 2500: img2500 }
+const PACOTE_IMG_EMAIL = { 5000: imgEmail5000, 10000: imgEmail10000, 25000: imgEmail25000 }
 
 /** Redimensiona uma imagem pra um quadrado pequeno e devolve um data URL JPEG. */
 function redimensionarImagem(file, tamanho = 256) {
@@ -61,6 +65,23 @@ function BarraUso({ icon: Icon, titulo, usados, limite, cor = 'primary' }) {
       </div>
       <div className="h-2.5 w-full rounded-full bg-surface-200 overflow-hidden">
         <div className={`h-full rounded-full transition-all ${ilimitado ? 'bg-gradient-to-r from-primary-400 to-violet-400 opacity-40' : cores[cor]}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
+/** Faixa diagonal "MAIS POPULAR" no canto superior direito, com marquee infinito. */
+function FaixaPopular({ tema = 'red' }) {
+  const grad = tema === 'red' ? 'from-rose-500 via-red-500 to-red-600' : 'from-primary-500 via-primary-600 to-violet-600'
+  return (
+    <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden pointer-events-none z-10">
+      <div className={`absolute top-[15px] right-[-42px] w-[150px] rotate-45 bg-gradient-to-r ${grad} shadow-md py-1 overflow-hidden`}>
+        <div className="faixa-marquee text-[8.5px] font-extrabold uppercase tracking-wider text-white">
+          <span className="px-2">Mais Popular</span>
+          <span className="px-2">Mais Popular</span>
+          <span className="px-2">Mais Popular</span>
+          <span className="px-2">Mais Popular</span>
+        </div>
       </div>
     </div>
   )
@@ -218,25 +239,23 @@ export default function Perfil() {
               return (
                 <div
                   key={p.key}
-                  className={`relative flex flex-col p-5 rounded-2xl border-2 transition ${
-                    p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'
+                  className={`relative overflow-hidden flex flex-col p-5 rounded-2xl border-2 transition ${
+                    p.destaque ? 'border-rose-300 bg-rose-50/50' : 'border-surface-200 bg-surface-50/60'
                   }`}
                 >
-                  {p.destaque && (
-                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary-600 text-white shadow-sm whitespace-nowrap">
-                      MAIS POPULAR
-                    </span>
-                  )}
+                  {p.destaque && <FaixaPopular tema="red" />}
                   <div className="text-center">
-                    <img src={imgEmail} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
+                    <img src={PACOTE_IMG_EMAIL[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
                     <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
-                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide">E-mails</p>
-                    <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1">
+                      <img src={globoIcon} alt="" className="w-4 h-4 object-contain" /> E-mails
+                    </p>
+                    <p className="text-lg font-bold text-rose-500 mt-2">{p.valor}</p>
                   </div>
                   <button
                     onClick={() => comprar('email', p.key)}
                     disabled={!!comprando}
-                    className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60"
+                    className="w-full mt-4 min-h-[42px] inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white bg-rose-400 hover:bg-rose-500 shadow-sm shadow-rose-400/25 transition disabled:opacity-60"
                   >
                     {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     {comprando === id ? 'Abrindo…' : 'Comprar'}
@@ -255,15 +274,11 @@ export default function Perfil() {
               return (
                 <div
                   key={p.key}
-                  className={`relative flex flex-col p-5 rounded-2xl border-2 transition ${
+                  className={`relative overflow-hidden flex flex-col p-5 rounded-2xl border-2 transition ${
                     p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'
                   }`}
                 >
-                  {p.destaque && (
-                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary-600 text-white shadow-sm whitespace-nowrap">
-                      MAIS POPULAR
-                    </span>
-                  )}
+                  {p.destaque && <FaixaPopular tema="blue" />}
                   <div className="text-center">
                     <img src={PACOTE_IMG[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
                     <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>

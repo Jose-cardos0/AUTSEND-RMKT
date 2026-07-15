@@ -193,3 +193,17 @@ select {
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Marquee infinito da faixa "MAIS POPULAR" */
+@keyframes faixaMarquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.faixa-marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: faixaMarquee 6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .faixa-marquee { animation: none; }
+}
