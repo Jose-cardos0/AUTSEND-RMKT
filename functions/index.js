@@ -1295,7 +1295,21 @@ async function validarTelnyxKey(apiKey) {
   } catch (_) { return false }
 }
 
-/** Adiciona um provedor Telnyx próprio (API key + número do cliente). Valida a key antes de salvar. */
+/** Puxa os números que o cliente tem na conta Telnyx dele (via a key dele). Retorna [{ number }]. */
+async function puxarNumerosTelnyx(apiKey) {
+  const out = []
+  try {
+    const r = await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=100&filter[status]=active', { headers: { Authorization: `Bearer ${apiKey}` } })
+    const j = await r.json().catch(() => ({}))
+    for (const n of (j?.data || [])) {
+      const num = n.phone_number || n.phoneNumber || null
+      if (num) out.push({ number: num, telnyxPhoneId: n.id || null })
+    }
+  } catch (_) {}
+  return out
+}
+
+/** Conecta a conta Telnyx do cliente (só a API key + apelido). Valida a key e PUXA os números dele. */
 exports.smsAddProvider = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
@@ -1303,15 +1317,16 @@ exports.smsAddProvider = onCall({ region: 'us-central1', timeoutSeconds: 30 }, a
   const apiKey = String(request.data?.apiKey || '').trim()
   const nome = String(request.data?.nome || '').trim() || 'Minha conta Telnyx'
   const messagingProfileId = String(request.data?.messagingProfileId || '').trim()
-  const rawFrom = String(request.data?.from || '').trim()
   if (!apiKey) throw new HttpsError('invalid-argument', 'Informe a API key da Telnyx.')
-  const normFrom = normalizarE164(rawFrom, { permitirBR: true })
-  if (!normFrom.ok) throw new HttpsError('invalid-argument', 'Informe um número de envio válido (E.164, ex.: +5511999999999).')
   const ok = await validarTelnyxKey(apiKey)
   if (!ok) throw new HttpsError('failed-precondition', 'API key da Telnyx inválida ou sem permissão. Confira em Telnyx → API Keys.')
+  // Puxa os números da conta dele — ele não precisa digitar.
+  const numeros = await puxarNumerosTelnyx(apiKey)
+  if (!numeros.length) throw new HttpsError('failed-precondition', 'Nenhum número encontrado nessa conta Telnyx. Compre um número na Telnyx primeiro.')
   const existentes = await db.collection(`users/${uid}/smsProviders`).get()
   const ref = await db.collection(`users/${uid}/smsProviders`).add({
-    apiKey, from: normFrom.e164, messagingProfileId: messagingProfileId || null, nome,
+    apiKey, from: numeros[0].number, messagingProfileId: messagingProfileId || null, nome,
+    numeros: numeros.map((n) => n.number),
     principal: existentes.empty, // 1º provedor já vira principal
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
@@ -1322,7 +1337,41 @@ exports.smsAddProvider = onCall({ region: 'us-central1', timeoutSeconds: 30 }, a
     nums.forEach((d) => { if (d.data().principal) batch.set(d.ref, { principal: false }, { merge: true }) })
     await batch.commit()
   }
-  return { ok: true, id: ref.id }
+  return { ok: true, id: ref.id, numeros: numeros.map((n) => n.number) }
+})
+
+/** Define qual número (dos puxados da Telnyx dele) o provedor usa pra enviar. */
+exports.smsProviderSetFrom = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  const from = String(request.data?.from || '').trim()
+  if (!id || !from) throw new HttpsError('invalid-argument', 'id e número obrigatórios.')
+  const ref = db.doc(`users/${uid}/smsProviders/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Provedor não encontrado.')
+  const lista = Array.isArray(snap.data().numeros) ? snap.data().numeros : []
+  if (lista.length && !lista.includes(from)) throw new HttpsError('invalid-argument', 'Esse número não pertence a essa conta.')
+  await ref.set({ from }, { merge: true })
+  return { ok: true }
+})
+
+/** Re-puxa os números da conta Telnyx do provedor (atualiza a lista). */
+exports.smsProviderSync = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  if (!id) throw new HttpsError('invalid-argument', 'id obrigatório.')
+  const ref = db.doc(`users/${uid}/smsProviders/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Provedor não encontrado.')
+  const numeros = await puxarNumerosTelnyx(snap.data().apiKey)
+  const lista = numeros.map((n) => n.number)
+  const patch = { numeros: lista }
+  // Se o "from" atual sumiu da conta, aponta pro primeiro disponível.
+  if (lista.length && !lista.includes(snap.data().from)) patch.from = lista[0]
+  await ref.set(patch, { merge: true })
+  return { ok: true, numeros: lista }
 })
 
 /** Lista os provedores Telnyx próprios do cliente (mascara a key). */
@@ -1335,6 +1384,7 @@ exports.smsListProviders = onCall({ region: 'us-central1' }, async (request) => 
     const k = String(x.apiKey || '')
     return {
       id: d.id, nome: x.nome || 'Conta Telnyx', from: x.from || '',
+      numeros: Array.isArray(x.numeros) ? x.numeros : (x.from ? [x.from] : []),
       messagingProfileId: x.messagingProfileId || null, principal: !!x.principal,
       apiKeyMasked: k ? `${k.slice(0, 6)}…${k.slice(-4)}` : '',
       criadoEm: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,

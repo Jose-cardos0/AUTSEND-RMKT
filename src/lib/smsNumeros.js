@@ -54,9 +54,21 @@ export async function listarProvidersSMS() {
   return r.data // { provedores: [{ id, nome, from, principal, apiKeyMasked, ... }] }
 }
 
-/** Conecta uma conta Telnyx própria (valida a key). */
-export async function addProviderSMS({ apiKey, from, messagingProfileId, nome }) {
-  const r = await call('smsAddProvider')({ apiKey, from, messagingProfileId, nome })
+/** Conecta uma conta Telnyx própria (valida a key e puxa os números dele). */
+export async function addProviderSMS({ apiKey, messagingProfileId, nome }) {
+  const r = await call('smsAddProvider')({ apiKey, messagingProfileId, nome })
+  return r.data
+}
+
+/** Define qual número (dos puxados) o provedor usa pra enviar. */
+export async function setFromProviderSMS(id, from) {
+  const r = await call('smsProviderSetFrom')({ id, from })
+  return r.data
+}
+
+/** Re-puxa os números da conta Telnyx do provedor. */
+export async function syncProviderSMS(id) {
+  const r = await call('smsProviderSync')({ id })
   return r.data
 }
 

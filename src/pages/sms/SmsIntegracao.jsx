@@ -18,11 +18,14 @@ import {
   addProviderSMS,
   deleteProviderSMS,
   definirPrincipalSMS,
+  setFromProviderSMS,
+  syncProviderSMS,
 } from '../../lib/smsNumeros'
 import {
   Phone, Star, Trash2, Loader2, X, Plus, Check, ShoppingCart,
   RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban, KeyRound, Globe,
 } from 'lucide-react'
+import Bandeira, { paisDoNumero, nomePais } from '../../components/Bandeira'
 import euaflag from '../../assets/euaflag.png'
 import chipastron from '../../assets/chip/chipastron.png'
 import usFlagBg from '../../assets/flags/us-flag.png'
@@ -79,7 +82,7 @@ export default function SmsIntegracao() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [tab, setTab] = useState('numeros') // 'numeros' | 'apis'
   const [novoApi, setNovoApi] = useState(false)
-  const [formApi, setFormApi] = useState({ apiKey: '', from: '', messagingProfileId: '', nome: '' })
+  const [formApi, setFormApi] = useState({ apiKey: '', messagingProfileId: '', nome: '' })
   const [salvandoApi, setSalvandoApi] = useState(false)
 
   const [popupOpen, setPopupOpen] = useState(false)
@@ -182,18 +185,43 @@ export default function SmsIntegracao() {
   }
 
   const salvarApi = async () => {
-    if (!formApi.apiKey.trim() || !formApi.from.trim()) { toast.error('Informe a API key e o número de envio.'); return }
+    if (!formApi.apiKey.trim()) { toast.error('Informe a API key da Telnyx.'); return }
     setSalvandoApi(true)
     try {
       await addProviderSMS(formApi)
-      setFormApi({ apiKey: '', from: '', messagingProfileId: '', nome: '' })
+      setFormApi({ apiKey: '', messagingProfileId: '', nome: '' })
       setNovoApi(false)
       await carregar()
-      toast.success('Conta Telnyx conectada!')
+      toast.success('Conta Telnyx conectada! Puxamos seus números.')
     } catch (err) {
       toast.error(err?.message || 'Falha ao conectar a conta Telnyx.')
     } finally {
       setSalvandoApi(false)
+    }
+  }
+
+  const escolherFrom = async (p, from) => {
+    setAcaoId(p.id)
+    try {
+      await setFromProviderSMS(p.id, from)
+      await carregar()
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao escolher número.')
+    } finally {
+      setAcaoId(null)
+    }
+  }
+
+  const sincronizarProvider = async (p) => {
+    setAcaoId(p.id)
+    try {
+      await syncProviderSMS(p.id)
+      await carregar()
+      toast.success('Números atualizados.')
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao atualizar números.')
+    } finally {
+      setAcaoId(null)
     }
   }
 
@@ -503,7 +531,7 @@ export default function SmsIntegracao() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5">
-                            <img src={euaflag} alt="EUA" className="w-4 h-4 rounded-sm object-cover shrink-0" />
+                            <Bandeira code={n.pais} numero={n.numero} className="w-4 h-auto rounded-sm shrink-0" />
                             {formatarNumero(n.numero)}
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -569,25 +597,21 @@ export default function SmsIntegracao() {
                   <input value={formApi.nome} onChange={(e) => setFormApi((f) => ({ ...f, nome: e.target.value }))} placeholder="Minha conta Telnyx" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-stone-600 mb-1">Número de envio (E.164)</label>
-                  <input value={formApi.from} onChange={(e) => setFormApi((f) => ({ ...f, from: e.target.value }))} placeholder="+5511999999999" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px] tabular-nums" />
+                  <label className="block text-xs font-medium text-stone-600 mb-1">Messaging Profile ID <span className="text-stone-400">(opcional)</span></label>
+                  <input value={formApi.messagingProfileId} onChange={(e) => setFormApi((f) => ({ ...f, messagingProfileId: e.target.value }))} placeholder="opcional" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">API Key da Telnyx</label>
                 <input value={formApi.apiKey} onChange={(e) => setFormApi((f) => ({ ...f, apiKey: e.target.value }))} placeholder="KEY..." type="password" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
-                <p className="text-[11px] text-stone-400 mt-1">Fica guardada só na sua conta e é usada pelo servidor pra enviar. Pegue em Telnyx → API Keys.</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Messaging Profile ID <span className="text-stone-400">(opcional)</span></label>
-                <input value={formApi.messagingProfileId} onChange={(e) => setFormApi((f) => ({ ...f, messagingProfileId: e.target.value }))} placeholder="opcional" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
+                <p className="text-[11px] text-stone-400 mt-1">Fica guardada só na sua conta. A gente <strong>puxa seus números da Telnyx</strong> automaticamente — você não precisa digitar. Pegue a key em Telnyx → API Keys.</p>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={salvarApi} disabled={salvandoApi} className="btn-primary min-h-[42px] px-5 disabled:opacity-60">
                   {salvandoApi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {salvandoApi ? 'Validando…' : 'Conectar'}
+                  {salvandoApi ? 'Validando e puxando números…' : 'Conectar'}
                 </button>
-                <button onClick={() => { setNovoApi(false); setFormApi({ apiKey: '', from: '', messagingProfileId: '', nome: '' }) }} className="min-h-[42px] px-4 rounded-xl border border-surface-200 text-sm text-stone-600 hover:bg-surface-100">Cancelar</button>
+                <button onClick={() => { setNovoApi(false); setFormApi({ apiKey: '', messagingProfileId: '', nome: '' }) }} className="min-h-[42px] px-4 rounded-xl border border-surface-200 text-sm text-stone-600 hover:bg-surface-100">Cancelar</button>
               </div>
             </div>
           )}
@@ -598,9 +622,10 @@ export default function SmsIntegracao() {
               <p className="text-sm text-stone-500">Nenhuma conta Telnyx conectada. Clique em <strong>Conectar Telnyx</strong> pra usar a sua.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {provedores.map((p) => {
                 const isPrincipal = p.principal
+                const nums = Array.isArray(p.numeros) && p.numeros.length ? p.numeros : (p.from ? [p.from] : [])
                 return (
                   <div key={p.id} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}>
                     {isPrincipal && (
@@ -611,18 +636,45 @@ export default function SmsIntegracao() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-semibold text-stone-800 truncate flex items-center gap-1.5"><Globe className="w-4 h-4 text-primary-600 shrink-0" /> {p.nome}</p>
-                        <p className="text-sm text-stone-500 mt-0.5 tabular-nums break-all">{p.from}</p>
-                        <p className="text-[11px] text-stone-400 mt-1">key {p.apiKeyMasked}</p>
+                        <p className="text-[11px] text-stone-400 mt-0.5">key {p.apiKeyMasked} · {nums.length} número(s)</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {!isPrincipal && (
-                          <button type="button" onClick={() => definirPrincipal('provider', p.id)} disabled={acaoId === p.id} className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation disabled:opacity-60" title="Definir como principal" aria-label="Definir como principal">
+                          <button type="button" onClick={() => definirPrincipal('provider', p.id)} disabled={acaoId === p.id} className="p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-60" title="Usar esta conta nos envios" aria-label="Definir como principal">
                             {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
                           </button>
                         )}
-                        <button type="button" onClick={() => excluirApi(p)} disabled={acaoId === p.id} className="p-2.5 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation disabled:opacity-60" title="Remover" aria-label="Remover">
-                          {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        <button type="button" onClick={() => sincronizarProvider(p)} disabled={acaoId === p.id} className="p-2 rounded-lg border border-surface-200 bg-white text-stone-600 hover:bg-surface-100 transition-colors disabled:opacity-60" title="Atualizar números" aria-label="Atualizar números">
+                          <RefreshCw className={`w-4 h-4 ${acaoId === p.id ? 'animate-spin' : ''}`} />
                         </button>
+                        <button type="button" onClick={() => excluirApi(p)} disabled={acaoId === p.id} className="p-2 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-60" title="Remover" aria-label="Remover">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Números puxados da Telnyx dele — escolhe qual usa pra enviar */}
+                    <div className="mt-3 space-y-1.5">
+                      <p className="text-[11px] font-medium text-stone-500">Enviar por: <span className="text-stone-400 font-normal">toque pra escolher</span></p>
+                      <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
+                        {nums.map((num) => {
+                          const ativo = p.from === num
+                          return (
+                            <button
+                              key={num}
+                              type="button"
+                              onClick={() => !ativo && escolherFrom(p, num)}
+                              disabled={acaoId === p.id}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition disabled:opacity-60 ${ativo ? 'border-primary-400 bg-white' : 'border-surface-200 bg-white/60 hover:border-primary-300'}`}
+                            >
+                              <Bandeira numero={num} className="w-4 h-auto rounded-sm shrink-0" />
+                              <span className="text-sm text-stone-700 tabular-nums truncate flex-1">{num}</span>
+                              {ativo
+                                ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary-600"><Check className="w-3 h-3" /> em uso</span>
+                                : <span className="text-[10px] text-stone-300">usar</span>}
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   </div>
