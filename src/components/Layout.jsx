@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { isAdmin } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
@@ -86,7 +86,17 @@ const isGroupActive = (group, pathname) =>
   allGroupItems(group).some((it) => pathname === it.to || pathname.startsWith(it.to + '/'))
 
 // Item usado no menu mobile (drawer).
-function ItemLink({ to, label, icon: Icon, soon, onNavigate }) {
+function ItemLink({ to, label, icon: Icon, soon, locked, onNavigate, onLocked }) {
+  if (locked) {
+    return (
+      <button type="button" onClick={onLocked} title="Disponível em planos superiores"
+        className="relative w-full text-left flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-[13px] font-semibold text-stone-400 hover:text-primary-700 hover:bg-primary-50/70 transition-all duration-200">
+        <Icon className="w-4 h-4 opacity-70 shrink-0" />
+        <span className="flex-1">{label}</span>
+        <Lock className="w-4 h-4 shrink-0 opacity-70" />
+      </button>
+    )
+  }
   return (
     <NavLink
       to={to}
@@ -112,8 +122,18 @@ function ItemLink({ to, label, icon: Icon, soon, onNavigate }) {
 }
 
 // Subitem (NavLink) da sidebar desktop.
-function SubItemLink({ item }) {
+function SubItemLink({ item, onLocked }) {
   const SubIcon = item.icon
+  if (item.locked) {
+    return (
+      <button type="button" onClick={onLocked} title="Disponível em planos superiores"
+        className="relative w-full flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] font-medium text-stone-400 hover:text-primary-600 hover:bg-primary-50/60 transition-all duration-200">
+        <SubIcon className="w-4 h-4 shrink-0 opacity-70" />
+        <span className="flex-1 text-left">{item.label}</span>
+        <Lock className="w-3.5 h-3.5 shrink-0 opacity-70" />
+      </button>
+    )
+  }
   return (
     <NavLink
       to={item.to}
@@ -138,7 +158,7 @@ function SubItemLink({ item }) {
 }
 
 // Subgrupo aninhado (ex.: EUA colapsável, BR congelado) — desktop e mobile.
-function NestedSubGroup({ sg, mobile, onNavigate }) {
+function NestedSubGroup({ sg, mobile, onNavigate, onLocked }) {
   const location = useLocation()
   const active = (sg.items || []).some((it) => location.pathname === it.to || location.pathname.startsWith(it.to + '/'))
   const [open, setOpen] = useState(active)
@@ -166,7 +186,7 @@ function NestedSubGroup({ sg, mobile, onNavigate }) {
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
             <div className="ml-3 pl-3 flex flex-col gap-0.5 mt-0.5 mb-1">
               {(sg.items || []).map((item) => (
-                mobile ? <ItemLink key={item.to} {...item} onNavigate={onNavigate} /> : <SubItemLink key={item.to} item={item} />
+                mobile ? <ItemLink key={item.to} {...item} onNavigate={onNavigate} onLocked={onLocked} /> : <SubItemLink key={item.to} item={item} onLocked={onLocked} />
               ))}
             </div>
           </motion.div>
@@ -177,7 +197,7 @@ function NestedSubGroup({ sg, mobile, onNavigate }) {
 }
 
 // Grupo colapsável da sidebar (desktop).
-function SidebarGroup({ group, open, onToggle }) {
+function SidebarGroup({ group, open, onToggle, onLocked }) {
   const location = useLocation()
   const active = isGroupActive(group, location.pathname)
   const Icon = group.icon
@@ -218,8 +238,8 @@ function SidebarGroup({ group, open, onToggle }) {
           >
             <div className="ml-[1.4rem] mt-0.5 mb-1 pl-3 border-l border-surface-200 flex flex-col gap-0.5">
               {group.subgroups
-                ? group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} />)
-                : group.items.map((item) => <SubItemLink key={item.to} item={item} />)}
+                ? group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} onLocked={onLocked} />)
+                : group.items.map((item) => <SubItemLink key={item.to} item={item} onLocked={onLocked} />)}
             </div>
           </motion.div>
         )}
@@ -260,15 +280,16 @@ export default function Layout() {
   const [authUser] = useAuthState(auth)
   const { temFeature } = usePlano()
   const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroup] : navGroups
-  // Esconde do menu o que o plano não libera
+  // Mostra TUDO no menu; o que o plano não libera vira bloqueado (cadeado + popup de upgrade).
   const podeItem = (it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }
-  const groups = baseGroups
-    .map((g) => ({
-      ...g,
-      items: (g.items || []).filter(podeItem),
-      subgroups: g.subgroups ? g.subgroups.map((sg) => ({ ...sg, items: (sg.items || []).filter(podeItem) })) : undefined,
-    }))
-    .filter((g) => g.items.length > 0 || (g.subgroups || []).some((sg) => sg.soon || sg.items.length > 0))
+  const marcar = (it) => ({ ...it, locked: !podeItem(it) })
+  const groups = baseGroups.map((g) => ({
+    ...g,
+    items: (g.items || []).map(marcar),
+    subgroups: g.subgroups ? g.subgroups.map((sg) => ({ ...sg, items: (sg.items || []).map(marcar) })) : undefined,
+  }))
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const abrirUpgrade = () => setUpgradeOpen(true)
   // Rota bloqueada pelo plano (acesso direto por URL)
   const rotaBloqueada = (() => {
     const k = Object.keys(ROTA_FEATURE).find((k) => location.pathname === k || location.pathname.startsWith(k + '/'))
@@ -326,11 +347,13 @@ export default function Layout() {
               group={group}
               open={!!openGroups[group.key]}
               onToggle={() => toggleGroup(group.key)}
+              onLocked={abrirUpgrade}
             />
           ))}
         </nav>
 
         <div className="shrink-0 border-t border-surface-200/60 p-2.5 space-y-1.5">
+          <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
           <MelhorarPlano className="w-full" />
           <div className="flex items-center gap-1.5">
             <button
@@ -411,12 +434,12 @@ export default function Layout() {
                       {open && (
                         group.subgroups ? (
                           <div className="flex flex-col gap-1 px-2 pb-2">
-                            {group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} mobile onNavigate={closeMenu} />)}
+                            {group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} mobile onNavigate={closeMenu} onLocked={abrirUpgrade} />)}
                           </div>
                         ) : (
-                          <div className="flex flex-col gap-1 px-2 pb-2 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3">
+                          <div className="flex flex-col gap-1 px-2 pb-2 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3 [&>button]:min-h-[48px] [&>button]:px-4 [&>button]:py-3">
                             {group.items.map((item) => (
-                              <ItemLink key={item.to} {...item} onNavigate={closeMenu} />
+                              <ItemLink key={item.to} {...item} onNavigate={closeMenu} onLocked={abrirUpgrade} />
                             ))}
                           </div>
                         )
