@@ -42,7 +42,7 @@ function formatarNumero(n) {
 }
 
 /** Seção recolhível — mesmo padrão do WhatsApp Integrações (marca faded no canto direito). */
-function Secao({ title, icon: Icon, open, onToggle, children, bgImg, action }) {
+function Secao({ title, icon: Icon, open, onToggle, children, bgImg, bgIcon: BgIcon, action }) {
   return (
     <div className="app-panel rounded-2xl overflow-hidden relative">
       {bgImg && (
@@ -53,6 +53,7 @@ function Secao({ title, icon: Icon, open, onToggle, children, bgImg, action }) {
           className="pointer-events-none select-none absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 object-contain opacity-50 z-0"
         />
       )}
+      {BgIcon && <BgIcon className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-primary-500 opacity-[0.06] z-0" />}
       <div className="relative z-10 flex items-center gap-2 px-4 sm:px-5 py-3.5">
         <button type="button" onClick={onToggle} className="flex items-center gap-2 min-w-0 flex-1 text-left">
           <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
@@ -585,7 +586,7 @@ export default function SmsIntegracao() {
 
         {/* Aba API's — conta Telnyx PRÓPRIA do cliente (BYO) */}
         {tab === 'apis' && (
-        <Secao title="Minhas contas Telnyx" icon={Globe} open={apiOpen} onToggle={() => setApiOpen((v) => !v)}>
+        <Secao title="Minhas contas Telnyx" icon={Globe} bgIcon={Globe} open={apiOpen} onToggle={() => setApiOpen((v) => !v)}>
           {provedores.length === 0 ? (
             <div className="py-6 text-center">
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
