@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { isAdmin } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
@@ -372,6 +372,19 @@ export default function Layout() {
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
+            <NavLink
+              to="/perfil"
+              title="Meu perfil"
+              aria-label="Meu perfil"
+              className={({ isActive }) => clsx(
+                'shrink-0 p-2.5 rounded-xl border transition-all',
+                isActive
+                  ? 'text-primary-600 bg-primary-50 border-primary-100'
+                  : 'text-stone-500 hover:text-primary-600 hover:bg-primary-50 border-transparent hover:border-primary-100'
+              )}
+            >
+              <User className="w-4 h-4" />
+            </NavLink>
           </div>
         </div>
       </aside>
@@ -449,6 +462,14 @@ export default function Layout() {
                   )
                 })}
                 <MelhorarPlano className="w-full mt-2" />
+                <NavLink
+                  to="/perfil"
+                  onClick={closeMenu}
+                  className="flex items-center gap-2 w-full min-h-[48px] px-4 py-3 mt-2 rounded-xl text-stone-600 hover:bg-primary-50 hover:text-primary-600 font-semibold text-[13px] touch-manipulation border border-surface-200"
+                >
+                  <User className="w-4 h-4" />
+                  Meu perfil
+                </NavLink>
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-2 w-full min-h-[48px] px-4 py-3 mt-2 rounded-xl text-red-600 hover:bg-red-50 font-semibold text-[13px] touch-manipulation border border-red-100"

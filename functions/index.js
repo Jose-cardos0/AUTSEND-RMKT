@@ -836,14 +836,20 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   }
   if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum número internacional válido na lista. SMS não atende números do Brasil (+55).')
 
-  // Cota mensal do plano (admin é ilimitado)
+  // Cota mensal do plano + créditos de recarga (admin é ilimitado)
   const lim = limitesDoTenant(tenant)
+  let creditoAConsumir = 0
   if (!ehAdmin) {
-  if (!lim.smsMes || lim.smsMes <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano.')
-  const jaEnviados = await smsEnviadosNoMes(uid)
-  if (jaEnviados + validos.length > lim.smsMes) {
-    throw new HttpsError('resource-exhausted', `Limite do plano atingido: ${lim.smsMes} SMS/mês (já enviou ${jaEnviados}). Faça upgrade do plano.`)
-  }
+    const creditos = Number(tenant.smsCreditos) || 0
+    const limiteEfetivo = (lim.smsMes || 0) + creditos
+    if (limiteEfetivo <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano ou recarregue créditos.')
+    const jaEnviados = await smsEnviadosNoMes(uid)
+    if (jaEnviados + validos.length > limiteEfetivo) {
+      throw new HttpsError('resource-exhausted', `Limite atingido: ${lim.smsMes || 0} SMS/mês + ${creditos} de crédito (já enviou ${jaEnviados}). Faça upgrade ou recarregue créditos.`)
+    }
+    // O que passar da cota mensal consome créditos (reservados já).
+    const restanteMensal = Math.max(0, (lim.smsMes || 0) - jaEnviados)
+    creditoAConsumir = Math.max(0, validos.length - restanteMensal)
   }
 
   const loteSize = Math.max(1, Math.min(200, Number(data.loteSize) || 40))
@@ -861,9 +867,15 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
     loteSize,
     intervaloMin,
     totalLotes: lotes.length,
+    creditoConsumido: creditoAConsumir,
     status: 'enviando',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
+
+  // Reserva os créditos consumidos por este disparo (o que passou da cota mensal).
+  if (creditoAConsumir > 0) {
+    await db.doc(`tenants/${uid}`).set({ smsCreditos: admin.firestore.FieldValue.increment(-creditoAConsumir) }, { merge: true })
+  }
 
   const ctx = { cfg, mensagem, disparoId: dispRef.id }
   const r0 = await enviarLoteSMS(uid, ctx, lotes[0] || [])
@@ -1191,6 +1203,77 @@ exports.smsExcluirNumero = onCall({ region: 'us-central1', timeoutSeconds: 30 },
     if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
   }
   return { ok: true }
+})
+
+// ───────────────── SMS — Recarga de créditos (pagamento único via Stripe) ─────────────────
+
+/** Pacotes de recarga: chave → { priceId, quantidade, valor }. */
+function pacotesCreditoSMS() {
+  return {
+    '500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_500, quantidade: 500, valor: 29.9 },
+    '1000': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_1000, quantidade: 1000, valor: 49.9 },
+    '2500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_2500, quantidade: 2500, valor: 99.9 },
+  }
+}
+
+/** priceId de crédito → quantidade de SMS (usado no webhook). */
+function creditosDoPriceStripe(priceId) {
+  if (!priceId) return 0
+  const p = pacotesCreditoSMS()
+  for (const k of Object.keys(p)) { if (p[k].priceId && p[k].priceId === priceId) return p[k].quantidade }
+  return 0
+}
+
+/** Cria o checkout Stripe (pagamento único) pra recarregar créditos de SMS. */
+exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const pacoteKey = String(request.data?.pacote || '')
+  const pacote = pacotesCreditoSMS()[pacoteKey]
+  if (!pacote || !pacote.priceId) throw new HttpsError('invalid-argument', 'Pacote de crédito inválido.')
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) throw new HttpsError('failed-precondition', 'Recarga ainda não configurada.')
+  const stripe = require('stripe')(key)
+  const appUrl = (process.env.APP_URL || 'https://autsend.com.br').replace(/\/+$/, '')
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'credito_sms', uid, quantidade: String(pacote.quantidade) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{ price: pacote.priceId, quantity: 1 }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      payment_intent_data: { metadata: meta },
+      success_url: `${appUrl}/perfil?recarga=ok`,
+      cancel_url: `${appUrl}/perfil?recarga=cancelado`,
+    })
+    return { url: session.url }
+  } catch (e) {
+    console.error('smsCriarCheckoutCredito', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+/**
+ * Stats do perfil: e-mails e SMS usados no mês, limites do plano e saldo de créditos.
+ */
+exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const s = await db.doc(`tenants/${uid}`).get()
+  const t = s.exists ? s.data() : {}
+  const lim = limitesDoTenant(t)
+  const [emailsUsados, smsUsados] = await Promise.all([emailsEnviadosNoMes(uid), smsEnviadosNoMes(uid)])
+  const smsCreditos = Number(t.smsCreditos) || 0
+  return {
+    plano: lim.plano,
+    nome: t.nome || (request.auth?.token?.name || '') || '',
+    email: t.email || (request.auth?.token?.email || '') || '',
+    emailsUsados, emailsLimite: lim.emailsMes || 0,
+    smsUsados, smsLimite: lim.smsMes || 0, smsCreditos,
+  }
 })
 
 /**
@@ -1671,6 +1754,21 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
 
     if (tipo === 'checkout.session.completed') {
       const session = event.data.object
+
+      // ── Recarga de crédito SMS (pagamento único) — soma créditos no tenant. ──
+      if (session.metadata?.tipo === 'credito_sms') {
+        const uidC = session.metadata.uid
+        let quantidade = Number(session.metadata.quantidade) || 0
+        if (!quantidade) quantidade = creditosDoPriceStripe((session.line_items?.data?.[0]?.price?.id) || null)
+        if (!uidC || !quantidade) { res.status(200).json({ ok: true, ignored: 'credito_sms sem uid/quantidade' }); return }
+        // Idempotência por sessão de checkout.
+        const recRef = db.doc(`tenants/${uidC}/recargasSMS/${session.id}`)
+        const jaRec = await recRef.get()
+        if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
+        await db.doc(`tenants/${uidC}`).set({ smsCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
+        await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        res.status(200).json({ ok: true, creditado: quantidade, uid: uidC }); return
+      }
 
       // ── Fase 2: compra de NÚMERO(S) SMS (não é plano) — compra na Telnyx e salva no cliente. ──
       if (session.metadata?.tipo === 'numero_sms') {

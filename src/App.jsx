@@ -15,6 +15,7 @@ import Automacoes from './pages/Automacoes'
 import Checkouts from './pages/Checkouts'
 import BancoLeads from './pages/BancoLeads'
 import Admin from './pages/Admin'
+import Perfil from './pages/Perfil'
 import { isAdmin } from './lib/admin'
 import MensagemTemplates from './pages/MensagemTemplates'
 import EmailIntegracoes from './pages/email/EmailIntegracoes'
@@ -145,6 +146,7 @@ export default function App() {
           <Route path="checkouts" element={<Checkouts />} />
           <Route path="banco-leads" element={<BancoLeads />} />
           <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
+          <Route path="perfil" element={<Perfil />} />
           <Route path="templates" element={<MensagemTemplates />} />
           <Route path="email/integracoes" element={<EmailIntegracoes />} />
           <Route path="email/tracker" element={<Tracker />} />
