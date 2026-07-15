@@ -39,6 +39,8 @@ export async function adminGetKiwifyConfig() { return (await call('adminGetKiwif
 export async function adminSetKiwifyConfig(data) { return (await call('adminSetKiwifyConfig')(data)).data }
 export async function adminStripePlanos() { return (await call('adminStripePlanos')()).data }
 export async function adminReembolsarCliente(uid) { return (await call('adminReembolsarCliente')({ uid })).data }
+// Setor de risco: 'play' (retoma e assume o risco), 'pausar' (manual), 'auto' (volta ao automático).
+export async function adminSetRiscoConta(uid, acao) { return (await call('adminSetRiscoConta')({ uid, acao })).data }
 
 // Saúde do cliente pelo % de reclamação/bounce (limiares dos provedores).
 export function healthDoCliente(c) {

@@ -376,7 +376,12 @@ exports.sendTestEmail = onCall({ region: 'us-central1' }, async (request) => {
 exports.sendTemplateManual = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
-  await assertTermosAceito(request, await assertTenantAtivo(uid))
+  const tenantSTM = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenantSTM)
+  const ehAdminSTM = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  if (!ehAdminSTM && emailPausadoPorRisco(tenantSTM)) {
+    throw new HttpsError('failed-precondition', 'Sua conta está em análise pelo setor de risco. Os envios estão temporariamente pausados.')
+  }
   const { templateId, to, nome, produto, leadId, remetenteId } = request.data || {}
   if (!templateId) throw new HttpsError('invalid-argument', 'Escolha um template.')
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || '').trim())) throw new HttpsError('invalid-argument', 'E-mail inválido.')
@@ -472,6 +477,10 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
   await assertTermosAceito(request, tenant)
+  const ehAdminEmail = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  if (!ehAdminEmail && emailPausadoPorRisco(tenant)) {
+    throw new HttpsError('failed-precondition', 'Sua conta está em análise pelo setor de risco. Os envios estão temporariamente pausados.')
+  }
 
   const data = request.data || {}
   const templateId = data.templateId
@@ -499,13 +508,19 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
     .map((r) => ({ email: String(r.email).trim(), nome: r.nome || '', produto: r.produto || '' }))
   if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum e-mail válido na lista.')
 
-  // Cota mensal do plano
+  // Crédito comprado é consumido primeiro; a cota mensal do plano só depois (admin é ilimitado).
   const lim = limitesDoTenant(tenant)
-  if (lim.emailsMes > 0) {
-    const jaEnviados = await emailsEnviadosNoMes(uid)
-    if (jaEnviados + validos.length > lim.emailsMes) {
-      throw new HttpsError('resource-exhausted', `Limite do plano atingido: ${lim.emailsMes} e-mails/mês (já enviou ${jaEnviados}). Faça upgrade do plano.`)
+  let creditoAConsumir = 0
+  if (!ehAdminEmail) {
+    const creditos = Number(tenant.emailCreditos) || 0
+    const quotaUsada = await quotaEmailUsadaNoMes(uid)
+    const restanteQuota = Math.max(0, (lim.emailsMes || 0) - quotaUsada)
+    const disponivel = creditos + restanteQuota
+    if (disponivel <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui e-mails. Faça upgrade do plano ou recarregue créditos.')
+    if (validos.length > disponivel) {
+      throw new HttpsError('resource-exhausted', `Limite atingido: ${restanteQuota} da cota do plano + ${creditos} de crédito. Faça upgrade ou recarregue créditos.`)
     }
+    creditoAConsumir = Math.min(creditos, validos.length)
   }
 
   const lotes = []
@@ -525,9 +540,15 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
     loteSize,
     intervaloMin,
     totalLotes: lotes.length,
+    creditoConsumido: creditoAConsumir,
     status: 'enviando',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
+
+  // Reserva os créditos consumidos por este disparo (o que passou da cota mensal).
+  if (creditoAConsumir > 0) {
+    await db.doc(`tenants/${uid}`).set({ emailCreditos: admin.firestore.FieldValue.increment(-creditoAConsumir) }, { merge: true })
+  }
 
   const ctx = { apiKey: cfg.apiKey, from, tplHtml: tpl.inlined || tpl.html || '', subjectBase: baseSubject, footer, unsub, disparoId: dispRef.id }
 
@@ -1278,6 +1299,135 @@ exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds
   }
 })
 
+// ───────────────── E-MAIL — Recarga de créditos (pagamento único via Stripe) ─────────────────
+
+/** Pacotes de recarga de e-mail: chave → { priceId, quantidade, valor }. */
+function pacotesCreditoEmail() {
+  return {
+    '5000': { priceId: process.env.STRIPE_PRICE_CREDITO_EMAIL_5000, quantidade: 5000, valor: 49.9 },
+    '10000': { priceId: process.env.STRIPE_PRICE_CREDITO_EMAIL_10000, quantidade: 10000, valor: 89.9 },
+    '25000': { priceId: process.env.STRIPE_PRICE_CREDITO_EMAIL_25000, quantidade: 25000, valor: 199 },
+  }
+}
+
+/** priceId de crédito de e-mail → quantidade (usado no webhook). */
+function creditosEmailDoPriceStripe(priceId) {
+  if (!priceId) return 0
+  const p = pacotesCreditoEmail()
+  for (const k of Object.keys(p)) { if (p[k].priceId && p[k].priceId === priceId) return p[k].quantidade }
+  return 0
+}
+
+/** E-mails pagos pela COTA DO PLANO neste mês (crédito é consumido primeiro). */
+async function quotaEmailUsadaNoMes(uid) {
+  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
+  let quota = 0
+  try {
+    const ds = await db.collection(`users/${uid}/emailDisparos`).get()
+    ds.forEach((d) => {
+      const x = d.data()
+      const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0)
+      if (cm >= inicio.getTime()) {
+        const totalDisp = Number(x.total) || 0
+        const credito = Number(x.creditoConsumido) || 0
+        quota += Math.max(0, totalDisp - credito)
+      }
+    })
+  } catch (_) {}
+  return quota
+}
+
+/** Cria o checkout Stripe (pagamento único) pra recarregar créditos de e-mail. */
+exports.emailCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const pacoteKey = String(request.data?.pacote || '')
+  const pacote = pacotesCreditoEmail()[pacoteKey]
+  if (!pacote || !pacote.priceId) throw new HttpsError('invalid-argument', 'Pacote de crédito inválido.')
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) throw new HttpsError('failed-precondition', 'Recarga ainda não configurada.')
+  const stripe = require('stripe')(key)
+  const appUrl = (process.env.APP_URL || 'https://autsend.com.br').replace(/\/+$/, '')
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'credito_email', uid, quantidade: String(pacote.quantidade) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{ price: pacote.priceId, quantity: 1 }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      payment_intent_data: { metadata: meta },
+      success_url: `${appUrl}/perfil?recarga=ok`,
+      cancel_url: `${appUrl}/perfil?recarga=cancelado`,
+    })
+    return { url: session.url }
+  } catch (e) {
+    console.error('emailCriarCheckoutCredito', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+// ───────────────── Setor de Risco — auto-pause por reclamação/bounce (conta Resend compartilhada) ─────────────────
+// Limiares (Gmail: reclamação 0,1% perigo / 0,3% crítico; bounce alto = lista ruim). Só avalia com amostra mínima.
+const RISCO_MIN_AMOSTRA = 100
+const RISCO_RECLAMACAO_MAX = 0.003 // 0,3%
+const RISCO_BOUNCE_MAX = 0.08 // 8%
+
+function mesAtualStr() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Contabiliza um evento de e-mail no "setor de risco" do tenant e auto-pausa se passar do limiar.
+ * tipo: 'entregue' | 'bounce' | 'reclamacao'. Janela mensal (zera na virada do mês).
+ * Não re-pausa se o admin deu override (ele assumiu o risco).
+ */
+async function registrarEventoRisco(uid, tipo) {
+  if (!uid || !tipo) return
+  const ref = db.doc(`tenants/${uid}`)
+  const mes = mesAtualStr()
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref)
+      const t = snap.exists ? snap.data() : {}
+      let r = t.risco || {}
+      if (r.mes !== mes) r = { mes, entregues: 0, bounces: 0, reclamacoes: 0, status: r.status || 'ativo', override: !!r.override }
+      if (tipo === 'entregue') r.entregues = (r.entregues || 0) + 1
+      else if (tipo === 'bounce') r.bounces = (r.bounces || 0) + 1
+      else if (tipo === 'reclamacao') r.reclamacoes = (r.reclamacoes || 0) + 1
+      // Avalia limiar (só se não estiver já pausado e o admin não tiver assumido o risco)
+      if (r.status !== 'pausado' && !r.override) {
+        const tentativas = (r.entregues || 0) + (r.bounces || 0)
+        if (tentativas >= RISCO_MIN_AMOSTRA) {
+          const recRate = (r.reclamacoes || 0) / Math.max(1, r.entregues || 0)
+          const bncRate = (r.bounces || 0) / Math.max(1, tentativas)
+          if (recRate >= RISCO_RECLAMACAO_MAX || bncRate >= RISCO_BOUNCE_MAX) {
+            r.status = 'pausado'
+            r.motivo = recRate >= RISCO_RECLAMACAO_MAX ? `reclamação ${(recRate * 100).toFixed(2)}%` : `bounce ${(bncRate * 100).toFixed(2)}%`
+            r.pausadoEm = admin.firestore.Timestamp.now()
+            r.auto = true
+          }
+        }
+      }
+      tx.set(ref, { risco: r }, { merge: true })
+    })
+  } catch (e) { console.error('registrarEventoRisco', e?.message || e) }
+}
+
+/** true se os envios de e-mail do tenant estão pausados pelo setor de risco (admin com override libera). */
+function emailPausadoPorRisco(tenant) {
+  const r = tenant?.risco
+  return !!(r && r.status === 'pausado' && !r.override)
+}
+
+/** Versão que busca o tenant pelo uid (pra jobs de background: funil, automação). */
+async function emailPausadoUid(uid) {
+  try { const s = await db.doc(`tenants/${uid}`).get(); return emailPausadoPorRisco(s.exists ? s.data() : {}) } catch (_) { return false }
+}
+
 /**
  * Stats do perfil: e-mails e SMS usados no mês, limites do plano e saldo de créditos.
  */
@@ -1290,13 +1440,16 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
   const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
   const [emailsUsados, smsUsados] = await Promise.all([emailsEnviadosNoMes(uid), smsEnviadosNoMes(uid)])
   const smsCreditos = Number(t.smsCreditos) || 0
+  const emailCreditos = Number(t.emailCreditos) || 0
   return {
     plano: lim.plano, isAdmin: isAdm,
     nome: t.nome || (request.auth?.token?.name || '') || '',
     email: t.email || (request.auth?.token?.email || '') || '',
     fotoURL: t.fotoURL || null,
-    emailsUsados, emailsLimite: isAdm ? -1 : (lim.emailsMes || 0),
+    emailsUsados, emailsLimite: isAdm ? -1 : (lim.emailsMes || 0), emailCreditos,
     smsUsados, smsLimite: isAdm ? -1 : (lim.smsMes || 0), smsCreditos,
+    // String discreta no perfil (sem citar spam). Admin com override não vê pausa.
+    pausada: emailPausadoPorRisco(t),
   }
 })
 
@@ -1421,6 +1574,11 @@ exports.resendWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         { [campo]: admin.firestore.FieldValue.increment(1) }, { merge: true }
       )
     }
+
+    // Setor de risco: conta entrega/bounce/reclamação e auto-pausa se passar do limiar.
+    if (evento === 'delivered') await registrarEventoRisco(userId, 'entregue')
+    else if (evento === 'bounced') await registrarEventoRisco(userId, 'bounce')
+    else if (evento === 'complained') await registrarEventoRisco(userId, 'reclamacao')
   } catch (err) {
     console.error('Erro ao processar evento Resend:', err)
   }
@@ -1803,6 +1961,20 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         await db.doc(`tenants/${uidC}`).set({ smsCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
         await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
         res.status(200).json({ ok: true, creditado: quantidade, uid: uidC }); return
+      }
+
+      // ── Recarga de crédito de E-MAIL (pagamento único) — soma créditos no tenant. ──
+      if (session.metadata?.tipo === 'credito_email') {
+        const uidC = session.metadata.uid
+        let quantidade = Number(session.metadata.quantidade) || 0
+        if (!quantidade) quantidade = creditosEmailDoPriceStripe((session.line_items?.data?.[0]?.price?.id) || null)
+        if (!uidC || !quantidade) { res.status(200).json({ ok: true, ignored: 'credito_email sem uid/quantidade' }); return }
+        const recRef = db.doc(`tenants/${uidC}/recargasEmail/${session.id}`)
+        const jaRec = await recRef.get()
+        if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
+        await db.doc(`tenants/${uidC}`).set({ emailCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
+        await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        res.status(200).json({ ok: true, creditadoEmail: quantidade, uid: uidC }); return
       }
 
       // ── Fase 2: compra de NÚMERO(S) SMS (não é plano) — compra na Telnyx e salva no cliente. ──
@@ -2225,6 +2397,7 @@ function proximoNode(funnel, nodeId, handle) {
 async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteId) {
   try {
     if (!contato?.email || !templateId) return false
+    if (await emailPausadoUid(userId)) return false // conta pausada pelo setor de risco
     const cfg = await resolverRemetente(userId, remetenteId || null)
     const from = cfg.from
     if (!cfg?.apiKey || !from) return false
@@ -3059,10 +3232,33 @@ exports.adminListClientes = onCall({ region: 'us-central1', timeoutSeconds: 120,
       bounced,
       complaintRate: enviadosTotal > 0 ? (complained / enviadosTotal) * 100 : 0,
       bounceRate: enviadosTotal > 0 ? (bounced / enviadosTotal) * 100 : 0,
+      risco: t.risco || null, // setor de risco: status/override/métricas do mês
+      emailCreditos: Number(t.emailCreditos) || 0,
+      smsCreditos: Number(t.smsCreditos) || 0,
       notas: t.notas || '',
     })
   }
   return { clientes, enviosPausados }
+})
+
+/**
+ * Setor de risco (admin): 'play' = retoma e assume o risco (override — para de auto-pausar, mas continua
+ * contando bounce/reclamação); 'pausar' = pausa manual; 'auto' = volta ao automático (remove override).
+ */
+exports.adminSetRiscoConta = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  const acao = String(request.data?.acao || '')
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  const ref = db.doc(`tenants/${uid}`)
+  const snap = await ref.get()
+  const r = (snap.exists && snap.data().risco) ? snap.data().risco : { mes: mesAtualStr(), entregues: 0, bounces: 0, reclamacoes: 0 }
+  if (acao === 'play') { r.status = 'ativo'; r.override = true; r.overridePor = ADMIN_EMAIL; r.overrideEm = admin.firestore.Timestamp.now() }
+  else if (acao === 'pausar') { r.status = 'pausado'; r.override = false; r.auto = false; r.motivo = 'pausa manual (admin)'; r.pausadoEm = admin.firestore.Timestamp.now() }
+  else if (acao === 'auto') { r.override = false; r.status = 'ativo' }
+  else throw new HttpsError('invalid-argument', 'ação inválida.')
+  await ref.set({ risco: r }, { merge: true })
+  return { ok: true, risco: r }
 })
 
 /** Detalhe de um cliente: últimos disparos de e-mail + contagem de leads. */

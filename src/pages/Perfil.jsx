@@ -4,12 +4,13 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
-import { getPerfilStats, criarCheckoutCreditoSMS, salvarFotoPerfil, PACOTES_CREDITO } from '../lib/perfil'
+import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_EMAIL } from '../lib/perfil'
 import { usePlano } from '../lib/PlanoContext'
 import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck } from 'lucide-react'
 import img500 from '../assets/chip/emailautsend.png'
 import img1000 from '../assets/chip/1000sms.png'
 import img2500 from '../assets/chip/2500.png'
+import imgEmail from '../assets/chip/emailautsend.png'
 import euaFlag from '../assets/flags/euaflaglarge.png'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
@@ -124,10 +125,11 @@ export default function Perfil() {
     window.history.replaceState({}, '', window.location.pathname)
   }, [])
 
-  const comprar = async (key) => {
-    setComprando(key)
+  const comprar = async (canal, key) => {
+    const id = `${canal}:${key}`
+    setComprando(id)
     try {
-      const r = await criarCheckoutCreditoSMS(key)
+      const r = canal === 'email' ? await criarCheckoutCreditoEmail(key) : await criarCheckoutCreditoSMS(key)
       if (r?.url) window.location.href = r.url
       else toast.error('Não consegui abrir o checkout. Tente de novo.')
     } catch (err) {
@@ -146,6 +148,8 @@ export default function Perfil() {
   const planoLabel = PLANO_LABEL[stats?.plano] || 'Free'
   const fotoURL = stats?.fotoURL || null
   const smsLimiteEfetivo = isAdmin ? -1 : ((stats?.smsLimite || 0) + (stats?.smsCreditos || 0))
+  const emailLimiteEfetivo = isAdmin ? -1 : ((stats?.emailsLimite || 0) + (stats?.emailCreditos || 0))
+  const pausada = !!stats?.pausada
 
   return (
     <PageShell badge="Conta · Perfil">
@@ -184,6 +188,9 @@ export default function Perfil() {
                   <Sparkles className="w-3 h-3" /> Plano {planoLabel}
                 </span>
               )}
+              {pausada && (
+                <p className="mt-1.5 text-[11px] text-red-500/80">Pausada · Em Análise pelo Setor de Risco</p>
+              )}
             </div>
           </div>
         </Panel>
@@ -191,51 +198,91 @@ export default function Perfil() {
         {/* Uso do mês */}
         <Panel title="Uso deste mês" icon={Zap}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <BarraUso icon={Mail} titulo="E-mails" usados={stats?.emailsUsados || 0} limite={isAdmin ? -1 : (stats?.emailsLimite || 0)} cor="primary" />
+            <BarraUso icon={Mail} titulo="E-mails" usados={stats?.emailsUsados || 0} limite={emailLimiteEfetivo} cor="primary" />
             <BarraUso icon={MessageSquare} titulo="SMS" usados={stats?.smsUsados || 0} limite={smsLimiteEfetivo} cor="violet" />
           </div>
           {isAdmin ? (
             <p className="text-xs text-stone-400 mt-2">Conta de administrador — envios ilimitados.</p>
           ) : (
             <p className="text-xs text-stone-400 mt-2">
-              SMS: {stats?.smsLimite || 0} do plano{stats?.smsCreditos > 0 ? ` + ${stats.smsCreditos.toLocaleString('pt-BR')} de crédito` : ''}. Os limites do plano renovam todo mês; os créditos não expiram.
+              Cota do plano: {(stats?.emailsLimite || 0).toLocaleString('pt-BR')} e-mails · {(stats?.smsLimite || 0).toLocaleString('pt-BR')} SMS{(stats?.emailCreditos > 0 || stats?.smsCreditos > 0) ? ` + créditos (${(stats?.emailCreditos || 0).toLocaleString('pt-BR')} e-mail / ${(stats?.smsCreditos || 0).toLocaleString('pt-BR')} SMS)` : ''}. Os limites do plano renovam todo mês; os créditos não expiram.
             </p>
           )}
+        </Panel>
+
+        {/* Recarga de e-mail */}
+        <Panel title="Recarregar créditos de e-mail" icon={Mail}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {PACOTES_CREDITO_EMAIL.map((p) => {
+              const id = `email:${p.key}`
+              return (
+                <div
+                  key={p.key}
+                  className={`relative flex flex-col p-5 rounded-2xl border-2 transition ${
+                    p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'
+                  }`}
+                >
+                  {p.destaque && (
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary-600 text-white shadow-sm whitespace-nowrap">
+                      MAIS POPULAR
+                    </span>
+                  )}
+                  <div className="text-center">
+                    <img src={imgEmail} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
+                    <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide">E-mails</p>
+                    <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
+                  </div>
+                  <button
+                    onClick={() => comprar('email', p.key)}
+                    disabled={!!comprando}
+                    className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60"
+                  >
+                    {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {comprando === id ? 'Abrindo…' : 'Comprar'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
         </Panel>
 
         {/* Recarga de SMS */}
         <Panel title="Recarregar créditos de SMS" icon={MessageSquare}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {PACOTES_CREDITO.map((p) => (
-              <div
-                key={p.key}
-                className={`relative flex flex-col p-5 rounded-2xl border-2 transition ${
-                  p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'
-                }`}
-              >
-                {p.destaque && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary-600 text-white shadow-sm whitespace-nowrap">
-                    MAIS POPULAR
-                  </span>
-                )}
-                <div className="text-center">
-                  <img src={PACOTE_IMG[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
-                  <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
-                  <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1">
-                    <img src={euaFlag} alt="EUA" className="w-4 h-auto object-contain" /> SMS
-                  </p>
-                  <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
-                </div>
-                <button
-                  onClick={() => comprar(p.key)}
-                  disabled={!!comprando}
-                  className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60"
+            {PACOTES_CREDITO.map((p) => {
+              const id = `sms:${p.key}`
+              return (
+                <div
+                  key={p.key}
+                  className={`relative flex flex-col p-5 rounded-2xl border-2 transition ${
+                    p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'
+                  }`}
                 >
-                  {comprando === p.key ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {comprando === p.key ? 'Abrindo…' : 'Comprar'}
-                </button>
-              </div>
-            ))}
+                  {p.destaque && (
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary-600 text-white shadow-sm whitespace-nowrap">
+                      MAIS POPULAR
+                    </span>
+                  )}
+                  <div className="text-center">
+                    <img src={PACOTE_IMG[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
+                    <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1">
+                      <img src={euaFlag} alt="EUA" className="w-4 h-auto object-contain" /> SMS
+                    </p>
+                    <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
+                  </div>
+                  <button
+                    onClick={() => comprar('sms', p.key)}
+                    disabled={!!comprando}
+                    className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60"
+                  >
+                    {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {comprando === id ? 'Abrindo…' : 'Comprar'}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </Panel>
       </div>

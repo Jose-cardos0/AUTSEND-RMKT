@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetInstanciaBloqueada, ADMIN_EMAIL } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
@@ -78,6 +78,7 @@ export default function Admin() {
   const [savingKiwify, setSavingKiwify] = useState(false)
   const [stripePlanos, setStripePlanos] = useState([])
   const [reembolsando, setReembolsando] = useState(false)
+  const [riscoLoading, setRiscoLoading] = useState(false)
   const [setupData, setSetupData] = useState(null)
   const [segCode, setSegCode] = useState('')
   const [segBusy, setSegBusy] = useState(false)
@@ -258,6 +259,18 @@ export default function Admin() {
       setForm((f) => ({ ...f, plano: 'free', limites: { ...PLANOS.free.limites } }))
       setDetalhe((d) => (d ? { ...d, tenant: { ...(d.tenant || {}), plano: 'free' } } : d))
     } catch (e) { toast.error(e.message || 'Erro ao reembolsar') } finally { setReembolsando(false) }
+  }
+
+  const handleRisco = async (c, acao) => {
+    if (!c?.uid) return
+    if (acao === 'play' && !(await confirm({ title: 'Retomar e assumir o risco?', message: `A conta de "${c.nome || c.email}" foi pausada automaticamente por reclamação/bounce (regra de spam). Ao retomar, você assume o risco: os envios voltam ao normal, mas o sistema continua medindo reclamação/bounce.`, confirmLabel: 'Retomar (assumir risco)' }))) return
+    setRiscoLoading(true)
+    try {
+      const r = await adminSetRiscoConta(c.uid, acao)
+      setClientes((prev) => prev.map((x) => (x.uid === c.uid ? { ...x, risco: r.risco } : x)))
+      setSel((x) => (x && x.uid === c.uid ? { ...x, risco: r.risco } : x))
+      toast.success(acao === 'play' ? 'Conta retomada (risco assumido).' : acao === 'pausar' ? 'Conta pausada.' : 'Voltou ao automático.')
+    } catch (e) { toast.error(e.message || 'Erro no setor de risco') } finally { setRiscoLoading(false) }
   }
 
   if (check2fa) return <PageLoader className="flex-1 min-h-0 py-10" label="Verificando acesso…" />
@@ -447,6 +460,40 @@ export default function Admin() {
                         <button onClick={() => aplicarStatus(sel, 'paused', 'Pausar')} disabled={sel.status === 'paused'} className="flex flex-col items-center gap-1 rounded-xl border border-orange-200 bg-orange-50/60 text-orange-700 py-2.5 text-xs font-semibold disabled:opacity-40"><Pause className="w-4 h-4" /> Pausar</button>
                         <button onClick={() => aplicarStatus(sel, 'banned', 'Banir')} disabled={sel.status === 'banned'} className="flex flex-col items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/60 text-rose-700 py-2.5 text-xs font-semibold disabled:opacity-40"><Ban className="w-4 h-4" /> Banir</button>
                       </div>
+
+                      {/* Setor de Risco (auto-pause por reclamação/bounce) */}
+                      {(() => {
+                        const r = sel.risco || {}
+                        const override = !!r.override
+                        const pausadoAuto = r.status === 'pausado' && !override
+                        if (pausadoAuto) {
+                          return (
+                            <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3 space-y-2">
+                              <p className="text-xs font-bold text-rose-700 flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> Pausada pelo Setor de Risco</p>
+                              <p className="text-[11px] text-rose-600/90">Motivo: <strong>{r.motivo || 'reclamação/bounce acima do limite'}</strong> (regra de spam). O cliente vê só &quot;Em Análise&quot;.</p>
+                              <button onClick={() => handleRisco(sel, 'play')} disabled={riscoLoading} className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 py-2 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50">
+                                {riscoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />} Retomar (assumir risco)
+                              </button>
+                            </div>
+                          )
+                        }
+                        if (override) {
+                          return (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+                              <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> Risco assumido por você</p>
+                              <p className="text-[11px] text-amber-600/90">Envios ativos e continua medindo reclamação/bounce, mas <strong>não pausa sozinho</strong>.</p>
+                              <button onClick={() => handleRisco(sel, 'auto')} disabled={riscoLoading} className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white text-stone-600 py-2 text-xs font-semibold hover:bg-stone-50 disabled:opacity-50">
+                                {riscoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Voltar ao automático
+                              </button>
+                            </div>
+                          )
+                        }
+                        return (
+                          <button onClick={() => handleRisco(sel, 'pausar')} disabled={riscoLoading} className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-surface-200 bg-surface-50/60 text-stone-500 py-2 text-xs font-semibold hover:bg-surface-100 disabled:opacity-50">
+                            {riscoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldAlert className="w-4 h-4" />} Pausar por risco (manual)
+                          </button>
+                        )
+                      })()}
 
                       {/* Entrar como cliente */}
                       <button onClick={() => impersonar(sel)} disabled={impersonando} className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50/60 text-primary-700 hover:bg-primary-100 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50">

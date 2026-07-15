@@ -22,8 +22,21 @@ export const PACOTES_CREDITO = [
   { key: '2500', quantidade: 2500, valor: 'R$ 99,90' },
 ]
 
-/** Cria o checkout Stripe (pagamento único) pra recarregar créditos e devolve a URL. */
+/** Pacotes de recarga de crédito de e-mail. */
+export const PACOTES_CREDITO_EMAIL = [
+  { key: '5000', quantidade: 5000, valor: 'R$ 49,90' },
+  { key: '10000', quantidade: 10000, valor: 'R$ 89,90', destaque: true },
+  { key: '25000', quantidade: 25000, valor: 'R$ 199,00' },
+]
+
+/** Cria o checkout Stripe (pagamento único) pra recarregar créditos de SMS e devolve a URL. */
 export async function criarCheckoutCreditoSMS(pacote) {
   const r = await call('smsCriarCheckoutCredito')({ pacote })
+  return r.data // { url }
+}
+
+/** Cria o checkout Stripe (pagamento único) pra recarregar créditos de e-mail e devolve a URL. */
+export async function criarCheckoutCreditoEmail(pacote) {
+  const r = await call('emailCriarCheckoutCredito')({ pacote })
   return r.data // { url }
 }
