@@ -31,10 +31,22 @@ function normalizarE164Internacional(raw, permitirBR) {
   return { ok: true, e164: '+' + d }
 }
 
-function SmsStatusBadge({ status }) {
+function SmsStatusBadge({ status, erroMsg }) {
   const map = { enviado: 'bg-green-100 text-green-700', erro: 'bg-red-100 text-red-700', pendente: 'bg-stone-100 text-stone-500' }
   const label = { enviado: 'Enviado', erro: 'Erro', pendente: 'Não enviado' }
-  return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.pendente}`}>{label[status] || 'Não enviado'}</span>
+  return (
+    <div className="flex flex-col gap-1 items-start">
+      <span
+        title={status === 'erro' && erroMsg ? erroMsg : undefined}
+        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.pendente}`}
+      >
+        {label[status] || 'Não enviado'}
+      </span>
+      {status === 'erro' && erroMsg && (
+        <span className="text-[11px] leading-tight text-red-500 max-w-[200px]">{erroMsg}</span>
+      )}
+    </div>
+  )
 }
 
 function EventCard({ event, auto, onSave }) {
@@ -183,6 +195,13 @@ export default function SmsAutomacoes() {
   const smsStatusByLead = useMemo(() => {
     const m = {}
     for (const l of smsLogs) { if (l.leadId && !(l.leadId in m)) m[l.leadId] = l.status }
+    return m
+  }, [smsLogs])
+
+  // Motivo do erro por lead (pra mostrar o que a Telnyx/validação retornou).
+  const smsErroByLead = useMemo(() => {
+    const m = {}
+    for (const l of smsLogs) { if (l.leadId && !(l.leadId in m) && l.erroMsg) m[l.leadId] = l.erroMsg }
     return m
   }, [smsLogs])
 
@@ -375,7 +394,7 @@ export default function SmsAutomacoes() {
                           <td className="px-3 sm:px-4 py-2.5 sm:py-3">
                             <span className="text-xs bg-surface-100 text-stone-600 px-2 py-0.5 rounded-full whitespace-nowrap">{eventLabel(lead.evento)}</span>
                           </td>
-                          <td className="px-3 sm:px-4 py-2.5 sm:py-3"><SmsStatusBadge status={smsStatusByLead[lead.id] || 'pendente'} /></td>
+                          <td className="px-3 sm:px-4 py-2.5 sm:py-3"><SmsStatusBadge status={smsStatusByLead[lead.id] || 'pendente'} erroMsg={smsErroByLead[lead.id]} /></td>
                           <td className="px-3 sm:px-4 py-2.5 sm:py-3 text-xs text-stone-500 whitespace-nowrap">{formatDate(lead.createdAt)}</td>
                           <td className="px-3 sm:px-4 py-2.5 sm:py-3">
                             <button

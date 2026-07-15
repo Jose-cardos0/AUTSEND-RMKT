@@ -802,6 +802,16 @@ function normalizarE164(raw, opts) {
 /** Compat: internacional (rejeita BR). */
 function normalizarE164Internacional(raw) { return normalizarE164(raw, { permitirBR: false }) }
 
+/** Mensagem legível pro motivo de rejeição do normalizarE164 (mostrada no relatório). */
+function motivoNumeroInvalido(motivo) {
+  switch (motivo) {
+    case 'vazio': return 'Número não informado'
+    case 'brasil': return 'Número do Brasil — o canal EUA não envia para +55 (use o canal API)'
+    case 'tamanho': return 'Número inválido — verifique o DDI e a quantidade de dígitos (ex.: +1 seguido de 10 dígitos)'
+    default: return 'Número inválido'
+  }
+}
+
 /** Remove acentos (mantém GSM-7 / 160 chars e evita virar UCS-2 de 70). */
 function semAcentos(s) {
   return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -2578,7 +2588,15 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
       if (rEnvio.erro) continue
       const cfg = rEnvio.cfg
       const norm = normalizarE164(customer.telefone, { permitirBR: !!rEnvio.propria })
-      if (!norm.ok) continue // ignora inválidos (e BR quando é a nossa conta EUA)
+      if (!norm.ok) {
+        // Número inválido: registra o motivo em vez de sumir silenciosamente, pra aparecer no relatório.
+        await db.collection('users').doc(userId).collection('smsLogs').add({
+          leadId: leadRef.id, evento, canal, produto: product.nome || '', telefone: customer.telefone || '', nome: customer.nome || '',
+          status: 'erro', erroMsg: motivoNumeroInvalido(norm.motivo), mensagem: auto.mensagem || '',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+        continue
+      }
       const texto = replaceVariables(auto.mensagem || '', { ...customer, telefone: norm.e164 }, product)
       let ok = true
       let erroMsg = null
