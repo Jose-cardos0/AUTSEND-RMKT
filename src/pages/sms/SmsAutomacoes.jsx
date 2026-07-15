@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
 import { Link, useParams } from 'react-router-dom'
@@ -36,22 +37,34 @@ function SmsStatusBadge({ status, erroMsg }) {
   const map = { enviado: 'bg-green-100 text-green-700', erro: 'bg-red-100 text-red-700', pendente: 'bg-stone-100 text-stone-500' }
   const label = { enviado: 'Enviado', erro: 'Erro', pendente: 'Não enviado' }
   const erroPt = status === 'erro' && erroMsg ? traduzErroSMS(erroMsg) : ''
+  const [tip, setTip] = useState(null) // { x, y } quando o mouse está em cima
+
   const badge = (
     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.pendente}`}>
       {label[status] || 'Não enviado'}
     </span>
   )
   if (!erroPt) return badge
+
+  const mostrar = (e) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    setTip({ x: r.left + r.width / 2, y: r.top })
+  }
+
   return (
-    <span className="relative inline-flex group cursor-help">
+    <span className="relative inline-flex cursor-help" onMouseEnter={mostrar} onMouseLeave={() => setTip(null)}>
       {badge}
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute left-0 bottom-full mb-2 z-20 w-56 rounded-lg bg-stone-800 px-3 py-2 text-xs leading-snug text-white shadow-lg opacity-0 translate-y-1 transition duration-150 group-hover:opacity-100 group-hover:translate-y-0"
-      >
-        {erroPt}
-        <span className="absolute left-4 top-full -mt-1 h-2 w-2 rotate-45 bg-stone-800" />
-      </span>
+      {tip && createPortal(
+        <div
+          role="tooltip"
+          style={{ position: 'fixed', left: tip.x, top: tip.y - 10, transform: 'translate(-50%, -100%)', zIndex: 9999 }}
+          className="pointer-events-none w-60 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium leading-snug text-red-700 shadow-xl"
+        >
+          {erroPt}
+          <span className="absolute left-1/2 top-full -translate-x-1/2 -mt-1 h-2.5 w-2.5 rotate-45 border-b border-r border-red-200 bg-red-50" />
+        </div>,
+        document.body,
+      )}
     </span>
   )
 }
