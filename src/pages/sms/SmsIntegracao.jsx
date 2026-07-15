@@ -555,7 +555,7 @@ export default function SmsIntegracao() {
                               type="button"
                               onClick={() => definirPrincipal('numero', n.id)}
                               disabled={acaoId === n.id}
-                              className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation disabled:opacity-60"
+                              className="p-2.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors touch-manipulation disabled:opacity-60"
                               title="Definir como principal"
                               aria-label="Definir como principal"
                             >
@@ -652,7 +652,7 @@ export default function SmsIntegracao() {
                                     </div>
                                   </div>
                                   {!ativo && (
-                                    <button type="button" onClick={() => escolherFrom(p, num)} disabled={acaoId === p.id} className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation disabled:opacity-60 shrink-0" title="Definir como principal" aria-label="Definir como principal">
+                                    <button type="button" onClick={() => escolherFrom(p, num)} disabled={acaoId === p.id} className="p-2.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors touch-manipulation disabled:opacity-60 shrink-0" title="Definir como principal" aria-label="Definir como principal">
                                       {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
                                     </button>
                                   )}
