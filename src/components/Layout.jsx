@@ -69,6 +69,7 @@ const navGroups = [
         label: 'EUA',
         img: euaflag,
         items: [
+          { to: '/sms/integracao', label: 'Integração', icon: Link2 },
           { to: '/sms/automacoes', label: 'Automações', icon: Zap },
           { to: '/sms/remarketing', label: 'Remarketing', icon: MessageCircle },
           { to: '/sms/disparos', label: 'Disparos', icon: Send },

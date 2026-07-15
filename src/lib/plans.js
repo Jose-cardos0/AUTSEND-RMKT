@@ -68,7 +68,7 @@ export const ROTA_FEATURE = {
   '/banco-leads': 'bancoLeads', '/produtos': 'produtos', '/checkouts': 'checkouts', '/templates': 'templates',
   '/integracoes': 'waIntegracoes', '/automacoes': 'waAutomacoes', '/remarketing': 'waRemarketing', '/remarketing-grupos': 'waGrupos', '/enviar-mensagem': 'waDisparos', '/funil': 'waFunil', '/metricas': 'waMetricas',
   '/email/integracoes': 'emailIntegracoes', '/email/construtor': 'emailConstrutor', '/email/automacoes': 'emailAutomacoes', '/email/disparos': 'emailDisparos', '/email/funil': 'emailFunil', '/email/metricas': 'emailMetricas',
-  '/sms/disparos': 'smsDisparos', '/sms/funil': 'smsDisparos', '/sms/automacoes': 'smsDisparos', '/sms/remarketing': 'smsDisparos', '/sms/metricas': 'smsDisparos',
+  '/sms/integracao': 'smsDisparos', '/sms/disparos': 'smsDisparos', '/sms/funil': 'smsDisparos', '/sms/automacoes': 'smsDisparos', '/sms/remarketing': 'smsDisparos', '/sms/metricas': 'smsDisparos',
 }
 
 /** Limites + features efetivos do tenant (plano + overrides do admin). */

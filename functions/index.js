@@ -625,6 +625,75 @@ async function getTelnyxConfig() {
   return { apiKey: envKey || '', from: envFrom || '', profileId: envProfile || '' }
 }
 
+/** Número SMS ATIVO do cliente (Fase 2: cada cliente envia do próprio número). Retorna o principal ou null. */
+async function getTelnyxNumeroCliente(uid) {
+  try {
+    const snap = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').get()
+    if (snap.empty) return null
+    const nums = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const principal = nums.find((n) => n.principal) || nums[0]
+    if (!principal?.number) return null
+    return { number: principal.number, messagingProfileId: principal.messagingProfileId || '' }
+  } catch (_) { return null }
+}
+
+/** true se o UID é a conta admin (pra background jobs que não têm request.auth). */
+async function ehUidAdmin(uid) {
+  try { const u = await admin.auth().getUser(uid); return (u.email || '').toLowerCase() === ADMIN_EMAIL } catch (_) { return false }
+}
+
+/**
+ * Resolve a config de envio de SMS. Cada cliente envia do PRÓPRIO número (isolamento de reputação — Fase 2).
+ * Admin usa o número compartilhado da plataforma (TELNYX_FROM/PROFILE_ID). Retorna { cfg } ou { erro }.
+ */
+async function resolverTelnyxEnvio(uid, ehAdmin) {
+  const base = await getTelnyxConfig()
+  if (!base.apiKey) return { erro: 'O envio de SMS ainda não foi ativado pela plataforma.' }
+  const num = await getTelnyxNumeroCliente(uid)
+  if (num) return { cfg: { apiKey: base.apiKey, from: num.number, profileId: num.messagingProfileId || base.profileId || '' } }
+  if (ehAdmin && (base.from || base.profileId)) return { cfg: base }
+  return { erro: 'Você ainda não tem um número de SMS. Vá em SMS → Integração e compre um número para enviar.' }
+}
+
+/** Compra 1 número toll-free na Telnyx (conta da plataforma) e associa ao messaging profile. */
+async function comprarNumeroSMSNoTelnyx(numero) {
+  const base = await getTelnyxConfig()
+  if (!base.apiKey) throw new Error('Telnyx não configurado na plataforma.')
+  const orderRes = await fetch('https://api.telnyx.com/v2/number_orders', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${base.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone_numbers: [{ phone_number: numero }], ...(base.profileId ? { messaging_profile_id: base.profileId } : {}) }),
+  })
+  const orderData = await orderRes.json().catch(() => ({}))
+  if (!orderRes.ok) throw new Error(orderData?.errors?.[0]?.detail || orderData?.errors?.[0]?.title || `Falha ao comprar número (HTTP ${orderRes.status})`)
+  const order = orderData.data || {}
+  const phoneItem = (order.phone_numbers || [])[0] || {}
+  const phoneNumberId = phoneItem.id || null
+  // Garante que o número está no messaging profile (sem isso não envia SMS)
+  if (phoneNumberId && base.profileId) {
+    try {
+      await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}/messaging`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${base.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_profile_id: base.profileId }),
+      })
+    } catch (_) { /* segue mesmo assim — dá pra associar depois */ }
+  }
+  return { orderId: order.id || null, phoneNumberId, messagingProfileId: base.profileId || '' }
+}
+
+/** Libera (devolve) um número na Telnyx quando a assinatura dele é cancelada. */
+async function liberarNumeroTelnyx(phoneNumberId) {
+  if (!phoneNumberId) return
+  const base = await getTelnyxConfig()
+  if (!base.apiKey) return
+  try {
+    await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${base.apiKey}` },
+    })
+  } catch (e) { console.error('liberarNumeroTelnyx', e?.message || e) }
+}
+
 /** Normaliza pra E.164 internacional. Rejeita números do Brasil (+55) — SMS só fora do BR. */
 function normalizarE164Internacional(raw) {
   let s = String(raw || '').trim()
@@ -712,8 +781,10 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   if (!mensagem) throw new HttpsError('invalid-argument', 'Escreva a mensagem do SMS.')
   if (recipients.length === 0) throw new HttpsError('invalid-argument', 'Nenhum destinatário na lista.')
 
-  const cfg = await getTelnyxConfig()
-  if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) throw new HttpsError('failed-precondition', 'O envio de SMS ainda não foi ativado pela plataforma.')
+  const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin)
+  if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
+  const cfg = rEnvio.cfg
 
   // Só números internacionais (fora do BR) entram.
   const validos = []
@@ -726,7 +797,6 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum número internacional válido na lista. SMS não atende números do Brasil (+55).')
 
   // Cota mensal do plano (admin é ilimitado)
-  const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
   const lim = limitesDoTenant(tenant)
   if (!ehAdmin) {
   if (!lim.smsMes || lim.smsMes <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano.')
@@ -790,10 +860,10 @@ exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   if (!mensagem) throw new HttpsError('invalid-argument', 'Nenhuma automação de SMS configurada para este evento.')
   const norm = normalizarE164Internacional(data.telefone)
   if (!norm.ok) throw new HttpsError('invalid-argument', norm.motivo === 'brasil' ? 'SMS não atende números do Brasil (+55).' : 'Número inválido.')
-  const cfg = await getTelnyxConfig()
-  if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) throw new HttpsError('failed-precondition', 'O envio de SMS ainda não foi ativado pela plataforma.')
-
   const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin)
+  if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
+  const cfg = rEnvio.cfg
   if (!ehAdmin) {
     const lim = limitesDoTenant(tenant)
     if (!lim.smsMes || lim.smsMes <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano.')
@@ -820,15 +890,19 @@ exports.processarLotesSMS = onSchedule(
     const now = admin.firestore.Timestamp.now()
     const snap = await db.collectionGroup('smsLotes').where('status', '==', 'pendente').where('sendAfter', '<=', now).limit(20).get()
     if (snap.empty) return null
-    let cfg = null
+    const cfgCache = {} // cfg por uid (cada cliente envia do próprio número)
     for (const loteDoc of snap.docs) {
       const lote = loteDoc.data()
       const parts = loteDoc.ref.path.split('/') // users/{uid}/smsDisparos/{dispId}/smsLotes/{loteId}
       const uid = parts[1]
       const dispId = parts[3]
       try {
-        if (!cfg) cfg = await getTelnyxConfig()
-        if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) { await loteDoc.ref.update({ status: 'erro' }); continue }
+        if (!cfgCache[uid]) {
+          const rEnvio = await resolverTelnyxEnvio(uid, await ehUidAdmin(uid))
+          if (rEnvio.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
+          cfgCache[uid] = rEnvio.cfg
+        }
+        const cfg = cfgCache[uid]
         const dSnap = await db.doc(`users/${uid}/smsDisparos/${dispId}`).get()
         const dd = dSnap.exists ? dSnap.data() : {}
         const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId }
@@ -872,6 +946,135 @@ exports.telnyxWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, m
     console.error('telnyxWebhook', err)
     res.status(200).send('ok')
   }
+})
+
+// ───────────────── SMS — Números do cliente (Fase 2: cada cliente compra o próprio número) ─────────────────
+
+/** Busca números toll-free (EUA) disponíveis pra compra na Telnyx. Só leitura — não gasta nada. */
+exports.smsBuscarNumeros = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertTenantAtivo(uid)
+  const base = await getTelnyxConfig()
+  if (!base.apiKey) throw new HttpsError('failed-precondition', 'SMS ainda não foi ativado pela plataforma.')
+  const url = 'https://api.telnyx.com/v2/available_phone_numbers?filter[country_code]=US&filter[phone_number_type]=toll_free&filter[features][]=sms&filter[limit]=8'
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${base.apiKey}` } })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new HttpsError('internal', data?.errors?.[0]?.detail || 'Falha ao buscar números disponíveis.')
+  const numeros = (data.data || []).map((n) => ({
+    numero: n.phone_number,
+    regiao: 'EUA · Toll-Free',
+    tipo: 'toll_free',
+  }))
+  return { numeros }
+})
+
+/** Cria o checkout Stripe (assinatura R$29,90/mês por número) pra comprar 1 ou VÁRIOS números. Compra real no webhook, após pagar. */
+exports.smsCriarCheckoutNumero = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  // Aceita `numeros` (lista) ou `numero` (único, compat).
+  const raw = Array.isArray(request.data?.numeros) ? request.data.numeros : (request.data?.numero ? [request.data.numero] : [])
+  const numeros = [...new Set(raw.map((n) => String(n || '').trim()).filter(Boolean))]
+  if (!numeros.length) throw new HttpsError('invalid-argument', 'Escolha pelo menos um número.')
+  if (numeros.length > 20) throw new HttpsError('invalid-argument', 'Máximo de 20 números por compra.')
+  const key = process.env.STRIPE_SECRET_KEY
+  const priceNumero = process.env.STRIPE_PRICE_NUMERO_SMS
+  if (!key || !priceNumero) throw new HttpsError('failed-precondition', 'A compra de número ainda não foi configurada.')
+  const stripe = require('stripe')(key)
+  const appUrl = (process.env.APP_URL || 'https://autsend.com.br').replace(/\/+$/, '')
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'numero_sms', uid, numeros: JSON.stringify(numeros) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [{ price: priceNumero, quantity: numeros.length }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      subscription_data: { metadata: meta },
+      success_url: `${appUrl}/sms/integracao?compra=ok`,
+      cancel_url: `${appUrl}/sms/integracao?compra=cancelado`,
+    })
+    return { url: session.url }
+  } catch (e) {
+    console.error('smsCriarCheckoutNumero', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+/** Lista os números SMS do cliente (pra tela de Integração). */
+exports.smsListarNumeros = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const snap = await db.collection(`users/${uid}/smsNumeros`).get()
+  const numeros = snap.docs.map((d) => {
+    const x = d.data()
+    return {
+      id: d.id, numero: x.number, status: x.status || 'active', principal: !!x.principal,
+      erro: x.erro || null, valorMensal: x.valorMensal || 29.9,
+      criadoEm: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,
+    }
+  })
+  numeros.sort((a, b) => (Number(b.principal) - Number(a.principal)) || ((a.criadoEm || 0) - (b.criadoEm || 0)))
+  return { numeros }
+})
+
+/** Define qual número é o principal (usado nos envios). */
+exports.smsSetPrincipalNumero = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  if (!id) throw new HttpsError('invalid-argument', 'id obrigatório.')
+  const alvo = await db.doc(`users/${uid}/smsNumeros/${id}`).get()
+  if (!alvo.exists) throw new HttpsError('not-found', 'Número não encontrado.')
+  const todos = await db.collection(`users/${uid}/smsNumeros`).get()
+  const batch = db.batch()
+  todos.forEach((d) => batch.set(d.ref, { principal: d.id === id }, { merge: true }))
+  await batch.commit()
+  return { ok: true }
+})
+
+/** Cancela a assinatura do número (Stripe), libera o número na Telnyx e remove do cliente. */
+exports.smsCancelarNumero = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  if (!id) throw new HttpsError('invalid-argument', 'id obrigatório.')
+  const ref = db.doc(`users/${uid}/smsNumeros/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Número não encontrado.')
+  const data = snap.data()
+  const key = process.env.STRIPE_SECRET_KEY
+  // Quantos números compartilham essa assinatura? (compra de vários = 1 assinatura com quantidade N)
+  let irmaos = 1
+  if (data.stripeSubscriptionId) {
+    try { const q = await db.collection(`users/${uid}/smsNumeros`).where('stripeSubscriptionId', '==', data.stripeSubscriptionId).get(); irmaos = q.size || 1 } catch (_) {}
+  }
+  if (key && data.stripeSubscriptionId) {
+    try {
+      const stripe = require('stripe')(key)
+      if (irmaos > 1 && data.stripeSubItemId) {
+        // Ainda há outros números nessa assinatura → só reduz a quantidade (mantém os outros ativos).
+        await stripe.subscriptions.update(data.stripeSubscriptionId, {
+          items: [{ id: data.stripeSubItemId, quantity: irmaos - 1 }],
+          proration_behavior: 'none',
+        })
+      } else {
+        // Era o último número da assinatura → cancela a assinatura toda.
+        await stripe.subscriptions.cancel(data.stripeSubscriptionId)
+      }
+    } catch (e) { console.error('cancelar/decrementar sub numero', e?.message || e) }
+  }
+  await liberarNumeroTelnyx(data.telnyxPhoneId)
+  await ref.delete()
+  // Se era o principal, promove outro número ativo a principal
+  if (data.principal) {
+    const outros = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').limit(1).get()
+    if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
+  }
+  return { ok: true }
 })
 
 /**
@@ -1352,6 +1555,51 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
 
     if (tipo === 'checkout.session.completed') {
       const session = event.data.object
+
+      // ── Fase 2: compra de NÚMERO(S) SMS (não é plano) — compra na Telnyx e salva no cliente. ──
+      if (session.metadata?.tipo === 'numero_sms') {
+        const uidN = session.metadata.uid
+        let numeros = []
+        try { numeros = JSON.parse(session.metadata.numeros || '[]') } catch (_) {}
+        if (!numeros.length && session.metadata.numero) numeros = [session.metadata.numero] // compat
+        const subscriptionId = session.subscription || null
+        if (!uidN || !numeros.length) { res.status(200).json({ ok: true, ignored: 'numero_sms sem uid/numeros' }); return }
+        // Idempotência: se já processamos esta assinatura, sai.
+        try {
+          const ja = await db.collection(`users/${uidN}/smsNumeros`).where('stripeSubscriptionId', '==', subscriptionId).limit(1).get()
+          if (!ja.empty) { res.status(200).json({ ok: true, ja: true }); return }
+        } catch (_) {}
+        // Pega o subscription item id (usado pra decrementar a quantidade num cancelamento parcial).
+        let subItemId = null
+        try { if (subscriptionId) { const s = await stripe.subscriptions.retrieve(subscriptionId); subItemId = s.items?.data?.[0]?.id || null } } catch (_) {}
+        const existentes = await db.collection(`users/${uidN}/smsNumeros`).limit(1).get()
+        const semNumeros = existentes.empty // se não tinha nenhum, o 1º da lista vira principal
+        let comprados = 0
+        for (let i = 0; i < numeros.length; i++) {
+          const numero = String(numeros[i] || '').trim()
+          if (!numero) continue
+          let compra = null, erroCompra = null
+          try { compra = await comprarNumeroSMSNoTelnyx(numero) }
+          catch (e) { erroCompra = e.message || 'falha ao comprar número'; console.error('comprarNumeroSMSNoTelnyx', e) }
+          if (!erroCompra) comprados++
+          await db.collection(`users/${uidN}/smsNumeros`).add({
+            number: numero,
+            telnyxOrderId: compra?.orderId || null,
+            telnyxPhoneId: compra?.phoneNumberId || null,
+            messagingProfileId: compra?.messagingProfileId || null,
+            status: erroCompra ? 'erro' : 'active',
+            erro: erroCompra || null,
+            principal: semNumeros && i === 0 && !erroCompra,
+            stripeSubscriptionId: subscriptionId,
+            stripeSubItemId: subItemId,
+            stripeCustomerId: session.customer || null,
+            valorMensal: 29.9,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          })
+        }
+        res.status(200).json({ ok: true, total: numeros.length, comprados }); return
+      }
+
       const email = (session.customer_details?.email || session.customer_email || '').toLowerCase().trim()
       const nome = session.customer_details?.name || null
       const documento = extrairDocumentoStripe(session)
@@ -1379,9 +1627,35 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
     }
 
     if (tipo === 'customer.subscription.deleted') {
-      const customerId = event.data.object.customer
+      const sub = event.data.object
+      const subId = sub.id
+      const customerId = sub.customer
+
+      // 1) Assinatura de NÚMERO(S) SMS? Libera TODOS os números dela e sai — NÃO mexe no plano do cliente.
+      const numSnap = await db.collectionGroup('smsNumeros').where('stripeSubscriptionId', '==', subId).get()
+      if (!numSnap.empty) {
+        const uidN = numSnap.docs[0].ref.path.split('/')[1] // users/{uid}/smsNumeros/{id}
+        for (const doc of numSnap.docs) {
+          const dataN = doc.data()
+          await liberarNumeroTelnyx(dataN.telnyxPhoneId)
+          await doc.ref.delete()
+        }
+        // Se ficou sem principal, promove outro número ativo do mesmo cliente.
+        const temPrincipal = await db.collection(`users/${uidN}/smsNumeros`).where('principal', '==', true).limit(1).get()
+        if (temPrincipal.empty) {
+          const outros = await db.collection(`users/${uidN}/smsNumeros`).where('status', '==', 'active').limit(1).get()
+          if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
+        }
+        res.status(200).json({ ok: true, numerosLiberados: numSnap.size }); return
+      }
+
+      // 2) Assinatura de PLANO → volta pro Free (só se for mesmo a assinatura do plano do tenant).
       const snap = await db.collection('tenants').where('stripeCustomerId', '==', customerId).limit(1).get()
       if (!snap.empty) {
+        const t = snap.docs[0].data()
+        if (t.stripeSubscriptionId && t.stripeSubscriptionId !== subId) {
+          res.status(200).json({ ok: true, ignored: 'assinatura não é a do plano' }); return
+        }
         await snap.docs[0].ref.set({ plano: 'free', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
         res.status(200).json({ ok: true, revogado: true }); return
       }
@@ -1673,8 +1947,9 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
       if (globalSnap.exists) { const d = globalSnap.data(); if (d.ativo === true && d.mensagem && !d.grupoId && !d.produto) auto = d }
     }
     if (!auto) return
-    const cfg = await getTelnyxConfig()
-    if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) return
+    const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId))
+    if (rEnvio.erro) return
+    const cfg = rEnvio.cfg
     const texto = replaceVariables(auto.mensagem || '', { ...customer, telefone: norm.e164 }, product)
     let ok = true
     let erroMsg = null
@@ -1772,8 +2047,9 @@ async function enviarMensagemFunilSMS(userId, mensagem, contato) {
     if (!contato?.telefone || !mensagem) return false
     const norm = normalizarE164Internacional(contato.telefone)
     if (!norm.ok) return false
-    const cfg = await getTelnyxConfig()
-    if (!cfg.apiKey || (!cfg.from && !cfg.profileId)) return false
+    const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId))
+    if (rEnvio.erro) return false
+    const cfg = rEnvio.cfg
     const texto = replaceVariables(mensagem, { nome: contato.nome || '', telefone: norm.e164, email: contato.email || '' }, { nome: contato.produto || '' })
     await enviarSMSTelnyx(cfg, norm.e164, texto)
     return true
