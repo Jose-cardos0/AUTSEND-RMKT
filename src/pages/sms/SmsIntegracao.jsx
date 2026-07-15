@@ -11,13 +11,14 @@ import {
   buscarNumerosSMS,
   criarCheckoutNumeroSMS,
   listarNumerosSMS,
+  sincronizarNumerosSMS,
   setPrincipalNumeroSMS,
   cancelarNumeroSMS,
   excluirNumeroSMS,
 } from '../../lib/smsNumeros'
 import {
   Phone, Star, Trash2, Loader2, X, Plus, Check, ShoppingCart,
-  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, AlertTriangle,
+  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban,
 } from 'lucide-react'
 import euaflag from '../../assets/euaflag.png'
 import chipastron from '../../assets/chip/chipastron.png'
@@ -97,6 +98,10 @@ export default function SmsIntegracao() {
   useEffect(() => {
     if (!user?.uid) return
     carregar()
+    // Em background: sincroniza status (banido/restrito) com a Telnyx e atualiza os cards.
+    sincronizarNumerosSMS()
+      .then((r) => { if (r?.numeros) setNumeros(r.numeros) })
+      .catch(() => {})
   }, [user?.uid])
 
   // Volta do checkout do Stripe (?compra=ok|cancelado)
@@ -229,10 +234,7 @@ export default function SmsIntegracao() {
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 shrink-0">
                   {gerenciando === 'cancelar' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
                 </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-stone-800">Cancelar assinatura</span>
-                  <span className="block text-xs text-stone-500">Cancela a cobrança na Stripe e libera o número na Telnyx.</span>
-                </span>
+                <span className="text-sm font-semibold text-stone-800">Cancelar assinatura</span>
               </button>
 
               {/* Excluir o chip */}
@@ -245,19 +247,9 @@ export default function SmsIntegracao() {
                 <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-600 shrink-0">
                   {gerenciando === 'excluir' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-stone-800">Excluir o chip</span>
-                  <span className="block text-xs text-stone-500">Libera o número na Telnyx e remove do app, sem mexer na assinatura.</span>
-                </span>
+                <span className="text-sm font-semibold text-stone-800">Excluir o chip</span>
               </button>
             </div>
-
-            {gerenciar.valorMensal > 0 && (
-              <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                <p>Este número tem assinatura ativa. Se você só <strong>excluir o chip</strong>, a cobrança continua — para parar de pagar use <strong>Cancelar assinatura</strong>.</p>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -430,14 +422,23 @@ export default function SmsIntegracao() {
                 {numeros.map((n) => {
                   const isPrincipal = n.principal
                   const comErro = n.status === 'erro'
+                  const banido = n.status === 'banido'
+                  const restrito = n.status === 'restrito'
+                  const bloqueado = restrito || banido
                   return (
                     <div
                       key={n.id}
                       className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${
-                        isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'
+                        bloqueado ? 'border-red-300 bg-red-50'
+                          : isPrincipal ? 'border-primary-500 bg-primary-50/50'
+                          : 'border-surface-200 bg-surface-50'
                       }`}
                     >
-                      {isPrincipal && (
+                      {bloqueado ? (
+                        <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200 shadow-sm">
+                          <Ban className="w-2.5 h-2.5" /> {banido ? 'Banido' : 'Restringido'}
+                        </span>
+                      ) : isPrincipal && (
                         <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
                           <Star className="w-2.5 h-2.5" /> Principal
                         </span>
@@ -449,17 +450,18 @@ export default function SmsIntegracao() {
                             {formatarNumero(n.numero)}
                           </p>
                           <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {comErro ? (
+                            {bloqueado ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-red-600"><Ban className="w-3 h-3" /> {banido ? 'Banido' : 'Restringido'}</span>
+                            ) : comErro ? (
                               <span className="inline-flex items-center gap-1 text-xs text-red-600"><AlertCircle className="w-3 h-3" /> Falha na ativação</span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
                             )}
-                            <span className="text-xs text-stone-400">{PRECO_MES}</span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {!isPrincipal && !comErro && (
+                          {!isPrincipal && !comErro && !bloqueado && (
                             <button
                               type="button"
                               onClick={() => definirPrincipal(n.id)}

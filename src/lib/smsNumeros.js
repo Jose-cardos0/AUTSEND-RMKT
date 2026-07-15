@@ -22,6 +22,12 @@ export async function listarNumerosSMS() {
   return r.data // { numeros: [{ id, numero, status, principal, erro, valorMensal, criadoEm }] }
 }
 
+/** Sincroniza o status dos números com a Telnyx (detecta banido/restrito) e devolve a lista atualizada. */
+export async function sincronizarNumerosSMS() {
+  const r = await call('smsSincronizarNumeros')()
+  return r.data // { numeros }
+}
+
 /** Define qual número é o principal (usado nos envios). */
 export async function setPrincipalNumeroSMS(id) {
   const r = await call('smsSetPrincipalNumero')({ id })

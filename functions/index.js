@@ -694,6 +694,42 @@ async function liberarNumeroTelnyx(phoneNumberId) {
   } catch (e) { console.error('liberarNumeroTelnyx', e?.message || e) }
 }
 
+/** Erro da Telnyx que indica bloqueio/spam/restrição (não é falha transitória tipo número inválido). */
+function erroIndicaBloqueio(msg) {
+  return /block|spam|restrict|not authorized|unauthoriz|suspend|forbidden|violat|10dlc|campaign|throughput exceeded|number.*disabled/i.test(String(msg || ''))
+}
+
+// Só marca o chip como restrito após MUITOS bloqueios SEGUIDOS (um envio bem-sucedido zera a contagem).
+const LIMITE_BLOQUEIOS_SEGUIDOS = 100
+
+/**
+ * Contabiliza o resultado de um lote no número que enviou. Um sucesso zera a sequência de bloqueios;
+ * bloqueios seguidos acumulam e só marcam o chip como 'restrito' ao passar do limite.
+ */
+async function registrarResultadoNumero(uid, fromNumber, sucessos, bloqueios) {
+  try {
+    if (!uid || !fromNumber) return
+    const q = await db.collection(`users/${uid}/smsNumeros`).where('number', '==', fromNumber).limit(1).get()
+    if (q.empty) return
+    const ref = q.docs[0].ref
+    const d = q.docs[0].data()
+    if (sucessos > 0) {
+      if ((d.bloqueiosSeguidos || 0) !== 0) await ref.set({ bloqueiosSeguidos: 0 }, { merge: true })
+      return
+    }
+    if (bloqueios > 0) {
+      const novo = (d.bloqueiosSeguidos || 0) + bloqueios
+      const patch = { bloqueiosSeguidos: novo }
+      if (novo >= LIMITE_BLOQUEIOS_SEGUIDOS && d.status !== 'restrito' && d.status !== 'banido') {
+        patch.status = 'restrito'
+        patch.restritoMotivo = `${novo} envios seguidos bloqueados/spam`
+        patch.restritoEm = admin.firestore.FieldValue.serverTimestamp()
+      }
+      await ref.set(patch, { merge: true })
+    }
+  } catch (_) {}
+}
+
 /** Normaliza pra E.164 internacional. Rejeita números do Brasil (+55) — SMS só fora do BR. */
 function normalizarE164Internacional(raw) {
   let s = String(raw || '').trim()
@@ -746,6 +782,7 @@ async function enviarSMSTelnyx(cfg, to, text) {
 async function enviarLoteSMS(uid, ctx, recipients) {
   let enviados = 0
   let erros = 0
+  let bloqueios = 0
   for (const r of (recipients || [])) {
     const norm = normalizarE164Internacional(r.telefone || r.numero || '')
     if (!norm.ok) { erros++; continue }
@@ -762,9 +799,12 @@ async function enviarLoteSMS(uid, ctx, recipients) {
       } catch (_) {}
     } catch (err) {
       erros++
+      if (erroIndicaBloqueio(err?.message)) bloqueios++
       console.error('enviarSMSTelnyx erro', err?.message || err)
     }
   }
+  // Acumula bloqueios seguidos no número; um único sucesso zera a contagem.
+  await registrarResultadoNumero(uid, ctx.cfg?.from, enviados, bloqueios)
   return { enviados, erros }
 }
 
@@ -1019,6 +1059,63 @@ exports.smsListarNumeros = onCall({ region: 'us-central1' }, async (request) => 
   })
   numeros.sort((a, b) => (Number(b.principal) - Number(a.principal)) || ((a.criadoEm || 0) - (b.criadoEm || 0)))
   return { numeros }
+})
+
+/** Serializa os números do cliente pra resposta (mesmo shape de smsListarNumeros). */
+async function listarNumerosMapeados(uid) {
+  const snap = await db.collection(`users/${uid}/smsNumeros`).get()
+  const numeros = snap.docs.map((d) => {
+    const x = d.data()
+    return {
+      id: d.id, numero: x.number, status: x.status || 'active', principal: !!x.principal,
+      erro: x.erro || null, restritoMotivo: x.restritoMotivo || null, valorMensal: x.valorMensal || 29.9,
+      criadoEm: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,
+    }
+  })
+  numeros.sort((a, b) => (Number(b.principal) - Number(a.principal)) || ((a.criadoEm || 0) - (b.criadoEm || 0)))
+  return numeros
+}
+
+/**
+ * Sincroniza o status dos números com a Telnyx (best-effort): posse do número (não-active = banido)
+ * e verificação toll-free (rejeitada = restrito). Não reativa sozinho um número marcado por erro de envio.
+ */
+exports.smsSincronizarNumeros = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const base = await getTelnyxConfig()
+  if (base.apiKey) {
+    const snap = await db.collection(`users/${uid}/smsNumeros`).get()
+    // Verificações toll-free do cadastro (uma chamada só, best-effort)
+    let verifs = []
+    try {
+      const r = await fetch('https://api.telnyx.com/v2/messaging_tollfree/verification/requests?page[size]=100', { headers: { Authorization: `Bearer ${base.apiKey}` } })
+      const j = await r.json()
+      verifs = Array.isArray(j?.data) ? j.data : []
+    } catch (_) {}
+    for (const doc of snap.docs) {
+      const d = doc.data()
+      if (!d.telnyxPhoneId) continue
+      let novo = null
+      // 1) posse do número — se saiu de "active", tratamos como banido/perdido
+      try {
+        const r = await fetch(`https://api.telnyx.com/v2/phone_numbers/${d.telnyxPhoneId}`, { headers: { Authorization: `Bearer ${base.apiKey}` } })
+        const j = await r.json()
+        const st = j?.data?.status
+        if (st && st !== 'active' && st !== 'purchase-pending') novo = 'banido'
+      } catch (_) {}
+      // 2) verificação toll-free rejeitada → restrito
+      if (!novo) {
+        const req = verifs.find((x) => (x.phoneNumbers || x.phone_numbers || []).some((p) => (p?.phoneNumber || p?.phone_number || p) === d.number))
+        const vs = req?.verificationStatus || req?.status
+        if (vs && /reject/i.test(String(vs))) novo = 'restrito'
+      }
+      if (novo && novo !== d.status) {
+        await doc.ref.set({ status: novo, restritoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      }
+    }
+  }
+  return { numeros: await listarNumerosMapeados(uid) }
 })
 
 /** Define qual número é o principal (usado nos envios). */
