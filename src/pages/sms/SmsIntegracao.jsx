@@ -596,8 +596,8 @@ export default function SmsIntegracao() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">API Key da Telnyx</label>
-                <input value={formApi.apiKey} onChange={(e) => setFormApi((f) => ({ ...f, apiKey: e.target.value }))} placeholder="KEY..." type="password" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
-                <p className="text-[11px] text-stone-400 mt-1">Fica guardada só na sua conta. A gente <strong>puxa seus números da Telnyx</strong> automaticamente — você não precisa digitar. Pegue a key em Telnyx → API Keys.</p>
+                <input value={formApi.apiKey} onChange={(e) => setFormApi((f) => ({ ...f, apiKey: e.target.value }))} placeholder="cole o valor da sua API Key" type="password" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
+                <p className="text-[11px] text-stone-400 mt-1">Em Telnyx → API Keys → <strong>Create API Key</strong>, copie o <strong>valor da chave</strong> mostrado na hora (não o &quot;API Key ID&quot;). Fica guardada só na sua conta e a gente <strong>puxa seus números</strong> automaticamente.</p>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={salvarApi} disabled={salvandoApi} className="btn-primary min-h-[42px] px-5 disabled:opacity-60">

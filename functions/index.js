@@ -1296,11 +1296,14 @@ exports.smsExcluirNumero = onCall({ region: 'us-central1', timeoutSeconds: 30 },
 
 // ───────────────── SMS — Conta Telnyx PRÓPRIA do cliente (BYO / API's) ─────────────────
 
-/** Valida a API key da Telnyx (checa o saldo — 200 = key ok). */
+/** Valida a API key da Telnyx (lista números — 200 = key ok, mesmo endpoint que a gente usa). */
 async function validarTelnyxKey(apiKey) {
   try {
-    const r = await fetch('https://api.telnyx.com/v2/balance', { headers: { Authorization: `Bearer ${apiKey}` } })
-    return r.ok
+    const r = await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=1', { headers: { Authorization: `Bearer ${apiKey}` } })
+    if (r.ok) return true
+    // fallback: alguns escopos de key não leem phone_numbers mas leem balance
+    const r2 = await fetch('https://api.telnyx.com/v2/balance', { headers: { Authorization: `Bearer ${apiKey}` } })
+    return r2.ok
   } catch (_) { return false }
 }
 
@@ -1328,7 +1331,7 @@ exports.smsAddProvider = onCall({ region: 'us-central1', timeoutSeconds: 30 }, a
   const messagingProfileId = String(request.data?.messagingProfileId || '').trim()
   if (!apiKey) throw new HttpsError('invalid-argument', 'Informe a API key da Telnyx.')
   const ok = await validarTelnyxKey(apiKey)
-  if (!ok) throw new HttpsError('failed-precondition', 'API key da Telnyx inválida ou sem permissão. Confira em Telnyx → API Keys.')
+  if (!ok) throw new HttpsError('failed-precondition', 'API key inválida. Atenção: use o VALOR da chave (mostrado ao CRIAR a key), não o "API Key ID". Como o valor fica encriptado, crie uma NOVA key em Telnyx → API Keys → Create API Key e copie na hora.')
   // Puxa os números da conta dele — ele não precisa digitar.
   const numeros = await puxarNumerosTelnyx(apiKey)
   if (!numeros.length) throw new HttpsError('failed-precondition', 'Nenhum número encontrado nessa conta Telnyx. Compre um número na Telnyx primeiro.')
