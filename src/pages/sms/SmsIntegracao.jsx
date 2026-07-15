@@ -83,8 +83,9 @@ export default function SmsIntegracao() {
   const [tab, setTab] = useState('numeros') // 'numeros' | 'apis'
   const [numOpen, setNumOpen] = useState(false) // dropdown recolhido por padrão (como WhatsApp)
   const [apiOpen, setApiOpen] = useState(false)
-  const [novoApi, setNovoApi] = useState(false)
-  const [formApi, setFormApi] = useState({ apiKey: '', messagingProfileId: '', nome: '' })
+  const [contaAberta, setContaAberta] = useState(null) // id da conta Telnyx expandida
+  const [novoApi, setNovoApi] = useState(false) // popup de conectar conta
+  const [formApi, setFormApi] = useState({ apiKey: '', nome: '' })
   const [salvandoApi, setSalvandoApi] = useState(false)
 
   const [popupOpen, setPopupOpen] = useState(false)
@@ -191,7 +192,7 @@ export default function SmsIntegracao() {
     setSalvandoApi(true)
     try {
       await addProviderSMS(formApi)
-      setFormApi({ apiKey: '', messagingProfileId: '', nome: '' })
+      setFormApi({ apiKey: '', nome: '' })
       setNovoApi(false)
       await carregar()
       toast.success('Conta Telnyx conectada! Puxamos seus números.')
@@ -582,56 +583,34 @@ export default function SmsIntegracao() {
         {/* Aba API's — conta Telnyx PRÓPRIA do cliente (BYO) */}
         {tab === 'apis' && (
         <Secao title="Minhas contas Telnyx" icon={Globe} open={apiOpen} onToggle={() => setApiOpen((v) => !v)}>
-          {novoApi && (
-            <div className="mb-4 p-4 rounded-xl border border-surface-200 bg-surface-50/60 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-stone-600 mb-1">Apelido</label>
-                  <input value={formApi.nome} onChange={(e) => setFormApi((f) => ({ ...f, nome: e.target.value }))} placeholder="Minha conta Telnyx" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-stone-600 mb-1">Messaging Profile ID <span className="text-stone-400">(opcional)</span></label>
-                  <input value={formApi.messagingProfileId} onChange={(e) => setFormApi((f) => ({ ...f, messagingProfileId: e.target.value }))} placeholder="opcional" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">API Key da Telnyx</label>
-                <input value={formApi.apiKey} onChange={(e) => setFormApi((f) => ({ ...f, apiKey: e.target.value }))} placeholder="cole o valor da sua API Key" type="password" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[42px]" />
-                <p className="text-[11px] text-stone-400 mt-1">Em Telnyx → API Keys → <strong>Create API Key</strong>, copie o <strong>valor da chave</strong> mostrado na hora (não o &quot;API Key ID&quot;). Fica guardada só na sua conta e a gente <strong>puxa seus números</strong> automaticamente.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={salvarApi} disabled={salvandoApi} className="btn-primary min-h-[42px] px-5 disabled:opacity-60">
-                  {salvandoApi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  {salvandoApi ? 'Validando e puxando números…' : 'Conectar'}
-                </button>
-                <button onClick={() => { setNovoApi(false); setFormApi({ apiKey: '', messagingProfileId: '', nome: '' }) }} className="min-h-[42px] px-4 rounded-xl border border-surface-200 text-sm text-stone-600 hover:bg-surface-100">Cancelar</button>
-              </div>
-            </div>
-          )}
-
-          {provedores.length === 0 && !novoApi ? (
+          {provedores.length === 0 ? (
             <div className="py-6 text-center">
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
               <p className="text-sm text-stone-500">Nenhuma conta Telnyx conectada.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2.5">
               {provedores.map((p) => {
                 const isPrincipal = p.principal
                 const nums = Array.isArray(p.numeros) && p.numeros.length ? p.numeros : (p.from ? [p.from] : [])
+                const aberta = contaAberta === p.id
                 return (
-                  <div key={p.id} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}>
-                    {isPrincipal && (
-                      <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
-                        <Star className="w-2.5 h-2.5" /> Principal
-                      </span>
-                    )}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-stone-800 truncate flex items-center gap-1.5"><Globe className="w-4 h-4 text-primary-600 shrink-0" /> {p.nome}</p>
-                        <p className="text-[11px] text-stone-400 mt-0.5">{nums.length} número(s)</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                  <div key={p.id} className={`rounded-xl border-2 transition ${isPrincipal ? 'border-primary-500 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
+                    {/* Cabeçalho da conta (dropdown) */}
+                    <div className="relative flex items-center gap-2 p-3 sm:p-4">
+                      {isPrincipal && (
+                        <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
+                          <Star className="w-2.5 h-2.5" /> Principal
+                        </span>
+                      )}
+                      <button type="button" onClick={() => setContaAberta((v) => (v === p.id ? null : p.id))} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                        <Globe className="w-4 h-4 text-primary-600 shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-stone-800 truncate">{p.nome}</span>
+                          <span className="block text-[11px] text-stone-400">{nums.length} número(s)</span>
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {!isPrincipal && (
                           <button type="button" onClick={() => definirPrincipal('provider', p.id)} disabled={acaoId === p.id} className="p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-60" title="Usar esta conta nos envios" aria-label="Definir como principal">
                             {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
@@ -643,33 +622,48 @@ export default function SmsIntegracao() {
                         <button type="button" onClick={() => excluirApi(p)} disabled={acaoId === p.id} className="p-2 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-60" title="Remover" aria-label="Remover">
                           <Trash2 className="w-4 h-4" />
                         </button>
+                        <button type="button" onClick={() => setContaAberta((v) => (v === p.id ? null : p.id))} className="p-1 text-stone-400 hover:text-stone-600" aria-label={aberta ? 'Recolher' : 'Expandir'}>
+                          <ChevronDown className={`w-5 h-5 transition-transform ${aberta ? 'rotate-180' : ''}`} />
+                        </button>
                       </div>
                     </div>
 
-                    {/* Números puxados da Telnyx dele — escolhe qual usa pra enviar */}
-                    <div className="mt-3 space-y-1.5">
-                      <p className="text-[11px] font-medium text-stone-500">Enviar por: <span className="text-stone-400 font-normal">toque pra escolher</span></p>
-                      <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto">
-                        {nums.map((num) => {
-                          const ativo = p.from === num
-                          return (
-                            <button
-                              key={num}
-                              type="button"
-                              onClick={() => !ativo && escolherFrom(p, num)}
-                              disabled={acaoId === p.id}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition disabled:opacity-60 ${ativo ? 'border-primary-400 bg-white' : 'border-surface-200 bg-white/60 hover:border-primary-300'}`}
-                            >
-                              <Bandeira numero={num} className="w-4 h-auto rounded-sm shrink-0" />
-                              <span className="text-sm text-stone-700 tabular-nums truncate flex-1">{num}</span>
-                              {ativo
-                                ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary-600"><Check className="w-3 h-3" /> em uso</span>
-                                : <span className="text-[10px] text-stone-300">usar</span>}
-                            </button>
-                          )
-                        })}
+                    {/* Números da conta — mesmo estilo dos cards de Números */}
+                    {aberta && (
+                      <div className="px-3 sm:px-4 pb-4 pt-1">
+                        <p className="text-sm font-medium text-stone-700 mb-2">Selecione qual número usar como <strong>principal</strong> nos envios.</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                          {nums.map((num) => {
+                            const ativo = p.from === num
+                            return (
+                              <div key={num} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${ativo ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-white'}`}>
+                                {ativo && (
+                                  <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
+                                    <Star className="w-2.5 h-2.5" /> Principal
+                                  </span>
+                                )}
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5">
+                                      <Bandeira numero={num} className="w-4 h-auto rounded-sm shrink-0" />
+                                      {formatarNumero(num)}
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                                      <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
+                                    </div>
+                                  </div>
+                                  {!ativo && (
+                                    <button type="button" onClick={() => escolherFrom(p, num)} disabled={acaoId === p.id} className="p-2.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors touch-manipulation disabled:opacity-60 shrink-0" title="Definir como principal" aria-label="Definir como principal">
+                                      {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               })}
@@ -678,6 +672,35 @@ export default function SmsIntegracao() {
         </Secao>
         )}
       </div>
+
+      {/* Popup: conectar conta Telnyx (só Apelido + API Key) */}
+      {novoApi && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => !salvandoApi && setNovoApi(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Globe className="w-5 h-5" /></span>
+              <h3 className="text-base font-semibold text-stone-800">Conectar conta Telnyx</h3>
+              <button onClick={() => !salvandoApi && setNovoApi(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-stone-600 mb-1">Apelido</label>
+              <input value={formApi.nome} onChange={(e) => setFormApi((f) => ({ ...f, nome: e.target.value }))} placeholder="Minha conta Telnyx" autoFocus className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[44px]" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-stone-600 mb-1">API Key da Telnyx</label>
+              <input value={formApi.apiKey} onChange={(e) => setFormApi((f) => ({ ...f, apiKey: e.target.value }))} placeholder="cole o valor da sua API Key" type="password" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-white text-sm min-h-[44px]" />
+              <p className="text-[11px] text-stone-400 mt-1">Em Telnyx → API Keys → <strong>Create API Key</strong>, copie o <strong>valor da chave</strong> mostrado na hora (não o &quot;API Key ID&quot;). A gente <strong>puxa seus números</strong> automaticamente.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={salvarApi} disabled={salvandoApi} className="btn-primary flex-1 min-h-[44px] disabled:opacity-60">
+                {salvandoApi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                {salvandoApi ? 'Validando…' : 'Conectar'}
+              </button>
+              <button onClick={() => { setNovoApi(false); setFormApi({ apiKey: '', nome: '' }) }} className="min-h-[44px] px-4 rounded-xl border border-surface-200 text-sm text-stone-600 hover:bg-surface-100">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageShell>
   )
 }
