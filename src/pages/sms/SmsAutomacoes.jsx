@@ -36,18 +36,23 @@ function SmsStatusBadge({ status, erroMsg }) {
   const map = { enviado: 'bg-green-100 text-green-700', erro: 'bg-red-100 text-red-700', pendente: 'bg-stone-100 text-stone-500' }
   const label = { enviado: 'Enviado', erro: 'Erro', pendente: 'Não enviado' }
   const erroPt = status === 'erro' && erroMsg ? traduzErroSMS(erroMsg) : ''
+  const badge = (
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.pendente}`}>
+      {label[status] || 'Não enviado'}
+    </span>
+  )
+  if (!erroPt) return badge
   return (
-    <div className="flex flex-col gap-1 items-start">
+    <span className="relative inline-flex group cursor-help">
+      {badge}
       <span
-        title={erroPt || undefined}
-        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.pendente}`}
+        role="tooltip"
+        className="pointer-events-none absolute left-0 bottom-full mb-2 z-20 w-56 rounded-lg bg-stone-800 px-3 py-2 text-xs leading-snug text-white shadow-lg opacity-0 translate-y-1 transition duration-150 group-hover:opacity-100 group-hover:translate-y-0"
       >
-        {label[status] || 'Não enviado'}
+        {erroPt}
+        <span className="absolute left-4 top-full -mt-1 h-2 w-2 rotate-45 bg-stone-800" />
       </span>
-      {erroPt && (
-        <span className="text-[11px] leading-tight text-red-500 max-w-[200px]">{erroPt}</span>
-      )}
-    </div>
+    </span>
   )
 }
 
