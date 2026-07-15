@@ -13,10 +13,11 @@ import {
   listarNumerosSMS,
   setPrincipalNumeroSMS,
   cancelarNumeroSMS,
+  excluirNumeroSMS,
 } from '../../lib/smsNumeros'
 import {
   Phone, Star, Trash2, Loader2, X, Plus, Check, ShoppingCart,
-  RefreshCw, AlertCircle, Lock, ChevronDown,
+  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, AlertTriangle,
 } from 'lucide-react'
 import euaflag from '../../assets/euaflag.png'
 import chipastron from '../../assets/chip/chipastron.png'
@@ -79,6 +80,8 @@ export default function SmsIntegracao() {
   const [selecionados, setSelecionados] = useState([]) // números marcados pra comprar
   const [comprando, setComprando] = useState(false) // criando o checkout
   const [acaoId, setAcaoId] = useState(null) // id em ação (principal/cancelar)
+  const [gerenciar, setGerenciar] = useState(null) // número aberto no popup de gerenciar
+  const [gerenciando, setGerenciando] = useState(null) // 'cancelar' | 'excluir' em andamento
 
   const carregar = async () => {
     try {
@@ -165,21 +168,31 @@ export default function SmsIntegracao() {
     }
   }
 
-  const cancelar = async (n) => {
-    if (!(await confirm({
-      title: `Cancelar ${formatarNumero(n.numero)}?`,
-      message: 'A assinatura mensal é cancelada e o número é liberado. Você deixa de enviar SMS por ele.',
-      confirmLabel: 'Cancelar número',
-    }))) return
-    setAcaoId(n.id)
+  const cancelarAssinatura = async (n) => {
+    setGerenciando('cancelar')
     try {
       await cancelarNumeroSMS(n.id)
       await carregar()
-      toast.success('Número cancelado e liberado.')
+      setGerenciar(null)
+      toast.success('Assinatura cancelada e número liberado.')
     } catch (err) {
-      toast.error(err?.message || 'Erro ao cancelar número.')
+      toast.error(err?.message || 'Erro ao cancelar a assinatura.')
     } finally {
-      setAcaoId(null)
+      setGerenciando(null)
+    }
+  }
+
+  const excluirChip = async (n) => {
+    setGerenciando('excluir')
+    try {
+      await excluirNumeroSMS(n.id)
+      await carregar()
+      setGerenciar(null)
+      toast.success('Chip excluído e número liberado na Telnyx.')
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao excluir o chip.')
+    } finally {
+      setGerenciando(null)
     }
   }
 
@@ -188,6 +201,66 @@ export default function SmsIntegracao() {
   return (
     <PageShell badge="SMS · Integração">
       <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+
+      {/* Popup: gerenciar número (cancelar assinatura / excluir chip) */}
+      {gerenciar && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => !gerenciando && setGerenciar(null)}
+        >
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-100 text-stone-600 shrink-0"><Settings className="w-5 h-5" /></span>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-stone-800">Gerenciar número</h3>
+                <p className="text-sm text-stone-500 tabular-nums truncate">{formatarNumero(gerenciar.numero)}</p>
+              </div>
+              <button onClick={() => !gerenciando && setGerenciar(null)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="space-y-2.5">
+              {/* Cancelar assinatura */}
+              <button
+                type="button"
+                onClick={() => cancelarAssinatura(gerenciar)}
+                disabled={!!gerenciando}
+                className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-red-300 hover:bg-red-50/50 text-left transition disabled:opacity-60"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 shrink-0">
+                  {gerenciando === 'cancelar' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-stone-800">Cancelar assinatura</span>
+                  <span className="block text-xs text-stone-500">Cancela a cobrança na Stripe e libera o número na Telnyx.</span>
+                </span>
+              </button>
+
+              {/* Excluir o chip */}
+              <button
+                type="button"
+                onClick={() => excluirChip(gerenciar)}
+                disabled={!!gerenciando}
+                className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-stone-300 hover:bg-surface-50 text-left transition disabled:opacity-60"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-600 shrink-0">
+                  {gerenciando === 'excluir' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-stone-800">Excluir o chip</span>
+                  <span className="block text-xs text-stone-500">Libera o número na Telnyx e remove do app, sem mexer na assinatura.</span>
+                </span>
+              </button>
+            </div>
+
+            {gerenciar.valorMensal > 0 && (
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-xs text-amber-700">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <p>Este número tem assinatura ativa. Se você só <strong>excluir o chip</strong>, a cobrança continua — para parar de pagar use <strong>Cancelar assinatura</strong>.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Popup: mockup estilo tela de MacBook (80% largura × 90% altura) */}
       {popupOpen && (
@@ -400,13 +473,13 @@ export default function SmsIntegracao() {
                           )}
                           <button
                             type="button"
-                            onClick={() => cancelar(n)}
+                            onClick={() => setGerenciar(n)}
                             disabled={acaoId === n.id}
-                            className="p-2.5 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors touch-manipulation disabled:opacity-60"
-                            title="Cancelar número"
-                            aria-label="Cancelar número"
+                            className="p-2.5 rounded-lg text-stone-500 hover:bg-surface-100 hover:text-stone-700 transition-colors touch-manipulation disabled:opacity-60"
+                            title="Gerenciar número"
+                            aria-label="Gerenciar número"
                           >
-                            {acaoId === n.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            <Settings className="w-4 h-4" />
                           </button>
                         </div>
                       </div>

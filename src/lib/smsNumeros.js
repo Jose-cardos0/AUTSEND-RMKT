@@ -28,8 +28,14 @@ export async function setPrincipalNumeroSMS(id) {
   return r.data
 }
 
-/** Cancela a assinatura do número e libera na Telnyx. */
+/** Cancela a assinatura do número (Stripe) e libera na Telnyx. */
 export async function cancelarNumeroSMS(id) {
   const r = await call('smsCancelarNumero')({ id })
+  return r.data
+}
+
+/** Exclui só o chip: libera na Telnyx e remove do app, sem mexer na assinatura Stripe. */
+export async function excluirNumeroSMS(id) {
+  const r = await call('smsExcluirNumero')({ id })
   return r.data
 }

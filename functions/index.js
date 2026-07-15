@@ -1077,6 +1077,25 @@ exports.smsCancelarNumero = onCall({ region: 'us-central1', timeoutSeconds: 30 }
   return { ok: true }
 })
 
+/** Exclui só o chip: libera o número na Telnyx e remove do app, SEM mexer na assinatura Stripe. */
+exports.smsExcluirNumero = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  if (!id) throw new HttpsError('invalid-argument', 'id obrigatório.')
+  const ref = db.doc(`users/${uid}/smsNumeros/${id}`)
+  const snap = await ref.get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Número não encontrado.')
+  const data = snap.data()
+  await liberarNumeroTelnyx(data.telnyxPhoneId)
+  await ref.delete()
+  if (data.principal) {
+    const outros = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').limit(1).get()
+    if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
+  }
+  return { ok: true }
+})
+
 /**
  * Verifica a assinatura Svix do webhook do Resend.
  * `secret` = o "Signing secret" do webhook no Resend (formato whsec_BASE64).
