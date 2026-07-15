@@ -240,9 +240,8 @@ function SidebarGroup({ group, open, onToggle, onLocked }) {
             className="overflow-hidden"
           >
             <div className="ml-[1.4rem] mt-0.5 mb-1 pl-3 border-l border-surface-200 flex flex-col gap-0.5">
-              {group.subgroups
-                ? group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} onLocked={onLocked} />)
-                : group.items.map((item) => <SubItemLink key={item.to} item={item} onLocked={onLocked} />)}
+              {(group.items || []).map((item) => <SubItemLink key={item.to} item={item} onLocked={onLocked} />)}
+              {(group.subgroups || []).map((sg) => <NestedSubGroup key={sg.key} sg={sg} onLocked={onLocked} />)}
             </div>
           </motion.div>
         )}
@@ -451,17 +450,16 @@ export default function Layout() {
                         <ChevronDown className={clsx('w-4 h-4 shrink-0 transition-transform', open && 'rotate-180')} />
                       </button>
                       {open && (
-                        group.subgroups ? (
-                          <div className="flex flex-col gap-1 px-2 pb-2">
-                            {group.subgroups.map((sg) => <NestedSubGroup key={sg.key} sg={sg} mobile onNavigate={closeMenu} onLocked={abrirUpgrade} />)}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-1 px-2 pb-2 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3 [&>button]:min-h-[48px] [&>button]:px-4 [&>button]:py-3">
-                            {group.items.map((item) => (
-                              <ItemLink key={item.to} {...item} onNavigate={closeMenu} onLocked={abrirUpgrade} />
-                            ))}
-                          </div>
-                        )
+                        <div className="flex flex-col gap-1 px-2 pb-2">
+                          {(group.items || []).length > 0 && (
+                            <div className="flex flex-col gap-1 [&>a]:min-h-[48px] [&>a]:px-4 [&>a]:py-3 [&>button]:min-h-[48px] [&>button]:px-4 [&>button]:py-3">
+                              {group.items.map((item) => (
+                                <ItemLink key={item.to} {...item} onNavigate={closeMenu} onLocked={abrirUpgrade} />
+                              ))}
+                            </div>
+                          )}
+                          {(group.subgroups || []).map((sg) => <NestedSubGroup key={sg.key} sg={sg} mobile onNavigate={closeMenu} onLocked={abrirUpgrade} />)}
+                        </div>
                       )}
                     </div>
                   )
