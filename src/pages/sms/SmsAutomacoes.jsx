@@ -8,6 +8,7 @@ import MessageEditor from '../../components/MessageEditor'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import CollapsibleSearch from '../../components/CollapsibleSearch'
 import { getSmsAutomations, saveSmsAutomationGrupo, getProductGroups, getLeads, getSmsLogs } from '../../lib/firestore'
+import { traduzErroSMS } from '../../lib/smsErros'
 import { KIWIFY_EVENTS, TEMPLATE_VARIABLES } from '../../lib/constants'
 import { usePlano } from '../../lib/PlanoContext'
 import { Loader2, Zap, Package, Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Send, MessageSquare, AlertCircle, RefreshCw, Filter } from 'lucide-react'
@@ -34,16 +35,17 @@ function normalizarE164Internacional(raw, permitirBR) {
 function SmsStatusBadge({ status, erroMsg }) {
   const map = { enviado: 'bg-green-100 text-green-700', erro: 'bg-red-100 text-red-700', pendente: 'bg-stone-100 text-stone-500' }
   const label = { enviado: 'Enviado', erro: 'Erro', pendente: 'Não enviado' }
+  const erroPt = status === 'erro' && erroMsg ? traduzErroSMS(erroMsg) : ''
   return (
     <div className="flex flex-col gap-1 items-start">
       <span
-        title={status === 'erro' && erroMsg ? erroMsg : undefined}
+        title={erroPt || undefined}
         className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.pendente}`}
       >
         {label[status] || 'Não enviado'}
       </span>
-      {status === 'erro' && erroMsg && (
-        <span className="text-[11px] leading-tight text-red-500 max-w-[200px]">{erroMsg}</span>
+      {erroPt && (
+        <span className="text-[11px] leading-tight text-red-500 max-w-[200px]">{erroPt}</span>
       )}
     </div>
   )
@@ -230,7 +232,7 @@ export default function SmsAutomacoes() {
       toast.success(`SMS reenviado para ${lead.nome || lead.telefone}`)
       setSmsLogs(await getSmsLogs(user.uid, canal))
     } catch (err) {
-      toast.error(err.message || 'Erro ao reenviar')
+      toast.error(traduzErroSMS(err.message) || 'Erro ao reenviar')
     } finally {
       setReenviandoId(null)
     }
