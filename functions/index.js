@@ -760,6 +760,28 @@ async function smsEnviadosNoMes(uid) {
   return total
 }
 
+/**
+ * SMS pagos pela COTA DO PLANO neste mês (não os que vieram de crédito).
+ * Como o crédito é sempre consumido primeiro, a cota = total planejado - crédito consumido, por disparo.
+ */
+async function quotaSMSUsadaNoMes(uid) {
+  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
+  let quota = 0
+  try {
+    const ds = await db.collection(`users/${uid}/smsDisparos`).get()
+    ds.forEach((d) => {
+      const x = d.data()
+      const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0)
+      if (cm >= inicio.getTime()) {
+        const totalDisp = Number(x.total) || 0
+        const credito = Number(x.creditoConsumido) || 0
+        quota += Math.max(0, totalDisp - credito)
+      }
+    })
+  } catch (_) {}
+  return quota
+}
+
 /** Envia 1 SMS via API da Telnyx. Retorna { ok, id } ou lança. */
 async function enviarSMSTelnyx(cfg, to, text) {
   const body = { to, text: semAcentos(text).slice(0, 480) }
@@ -836,20 +858,20 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   }
   if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum número internacional válido na lista. SMS não atende números do Brasil (+55).')
 
-  // Cota mensal do plano + créditos de recarga (admin é ilimitado)
+  // Crédito comprado é SEMPRE consumido primeiro; a cota mensal do plano só depois (admin é ilimitado).
   const lim = limitesDoTenant(tenant)
   let creditoAConsumir = 0
   if (!ehAdmin) {
     const creditos = Number(tenant.smsCreditos) || 0
-    const limiteEfetivo = (lim.smsMes || 0) + creditos
-    if (limiteEfetivo <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano ou recarregue créditos.')
-    const jaEnviados = await smsEnviadosNoMes(uid)
-    if (jaEnviados + validos.length > limiteEfetivo) {
-      throw new HttpsError('resource-exhausted', `Limite atingido: ${lim.smsMes || 0} SMS/mês + ${creditos} de crédito (já enviou ${jaEnviados}). Faça upgrade ou recarregue créditos.`)
+    const quotaUsada = await quotaSMSUsadaNoMes(uid)
+    const restanteQuota = Math.max(0, (lim.smsMes || 0) - quotaUsada)
+    const disponivel = creditos + restanteQuota
+    if (disponivel <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui SMS. Faça upgrade do plano ou recarregue créditos.')
+    if (validos.length > disponivel) {
+      throw new HttpsError('resource-exhausted', `Limite atingido: ${restanteQuota} da cota do plano + ${creditos} de crédito. Faça upgrade ou recarregue créditos.`)
     }
-    // O que passar da cota mensal consome créditos (reservados já).
-    const restanteMensal = Math.max(0, (lim.smsMes || 0) - jaEnviados)
-    creditoAConsumir = Math.max(0, validos.length - restanteMensal)
+    // Crédito primeiro; o resto sai da cota do plano.
+    creditoAConsumir = Math.min(creditos, validos.length)
   }
 
   const loteSize = Math.max(1, Math.min(200, Number(data.loteSize) || 40))
