@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import { getCheckoutStores, saveCheckoutStore, deleteCheckoutStore } from '../lib/firestore'
 import { LOJAS, lojaByKey } from '../lib/lojas'
-import PageShell from '../components/PageShell'
+import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import { Plus, Trash2, ChevronDown, Loader2, X, Link2, ShoppingBag, HelpCircle } from 'lucide-react'
 
@@ -87,11 +87,14 @@ export default function Checkouts() {
     >
       <div className="space-y-3">
         {stores.length === 0 ? (
-          <div className="rounded-2xl border border-surface-200 p-8 text-center">
-            <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 text-primary-600 mb-3"><ShoppingBag className="w-7 h-7" /></span>
-            <p className="text-sm text-stone-500 mb-3">Catalogue suas lojas e os links de checkout dos produtos. Depois a IA usa esses links pra criar as ofertas.</p>
-            <button onClick={() => setShowAddLoja(true)} className="btn-primary min-h-[44px] mx-auto"><Plus className="w-4 h-4" /> Adicionar loja</button>
-          </div>
+          <Panel>
+            <div className="flex flex-col items-center justify-center text-center gap-3 py-12">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-100 to-violet-100 text-primary-600"><ShoppingBag className="w-7 h-7" /></span>
+              <h2 className="text-lg font-semibold text-stone-800">Nenhuma loja ainda</h2>
+              <p className="text-sm text-stone-500 max-w-md leading-relaxed">Catalogue suas lojas e os links de checkout dos produtos. Depois a IA usa esses links pra criar as ofertas.</p>
+              <button onClick={() => setShowAddLoja(true)} className="btn-primary min-h-[44px]"><Plus className="w-4 h-4" /> Adicionar loja</button>
+            </div>
+          </Panel>
         ) : (
           stores.map((store) => {
             const loja = lojaByKey(store.loja)

@@ -37,6 +37,8 @@ export async function getMeuPlano() { return (await call('getMeuPlano')()).data 
 // ── Config Kiwify (onboarding) ──
 export async function adminGetKiwifyConfig() { return (await call('adminGetKiwifyConfig')()).data }
 export async function adminSetKiwifyConfig(data) { return (await call('adminSetKiwifyConfig')(data)).data }
+export async function adminStripePlanos() { return (await call('adminStripePlanos')()).data }
+export async function adminReembolsarCliente(uid) { return (await call('adminReembolsarCliente')({ uid })).data }
 
 // Saúde do cliente pelo % de reclamação/bounce (limiares dos provedores).
 export function healthDoCliente(c) {

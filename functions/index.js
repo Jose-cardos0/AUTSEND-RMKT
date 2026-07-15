@@ -1185,19 +1185,31 @@ async function enviarBoasVindasKiwify(cfg, email, nome, plano) {
   const key = await getSharedResendKey()
   const from = cfg.fromEmail ? (cfg.fromName ? `${cfg.fromName} <${cfg.fromEmail}>` : cfg.fromEmail) : null
   if (!key || !from) { console.warn('Boas-vindas Kiwify: sem RESEND_SHARED_KEY ou config/kiwify.fromEmail — e-mail não enviado.'); return }
-  const url = cfg.appUrl || 'https://autsend.com.br'
+  const url = (cfg.appUrl || 'https://autsend.com.br').replace(/\/+$/, '')
+  const logo = `${url}/autsendlogo.png`
   const nomePlano = plano === 'pro' ? 'Pro' : plano === 'inicial' ? 'Inicial' : 'Padrão'
-  const html =
-    '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#333">' +
-    `<h2 style="color:#5b5eeb">Bem-vindo(a) ao Autsend! 🚀</h2>` +
-    `<p>Sua conta do plano <strong>${nomePlano}</strong> está ativa. Use os dados abaixo para entrar:</p>` +
-    `<div style="background:#f4f4fb;border-radius:12px;padding:16px;margin:16px 0">` +
-    `<p style="margin:4px 0"><strong>Acesso:</strong> <a href="${url}">${url}</a></p>` +
-    `<p style="margin:4px 0"><strong>E-mail:</strong> ${email}</p>` +
-    `<p style="margin:4px 0"><strong>Senha:</strong> ${KIWIFY_SENHA_PADRAO}</p>` +
-    `</div>` +
-    `<p style="color:#666;font-size:13px">Por segurança, <strong>troque sua senha</strong> no primeiro acesso.</p>` +
-    '</div>'
+  const saud = nome ? `Olá, ${String(nome).trim().split(' ')[0]}!` : 'Bem-vindo(a)!'
+  const html = `
+<div style="background:#eef0fb;padding:32px 12px;font-family:'Segoe UI',Arial,Helvetica,sans-serif">
+  <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:22px;overflow:hidden;box-shadow:0 10px 34px rgba(91,94,235,0.14)">
+    <div style="padding:26px 24px 18px;text-align:center;border-bottom:1px solid #f0f0f6">
+      <img src="${logo}" alt="Autsend" height="36" style="height:36px;width:auto;display:inline-block" />
+    </div>
+    <div style="padding:30px 30px 8px;color:#2b2b3a">
+      <h1 style="margin:0 0 6px;font-size:23px;font-weight:800;color:#1f2030">${saud} 🚀</h1>
+      <p style="margin:0 0 22px;font-size:15px;color:#5b5b6b;line-height:1.6">Sua conta do plano <strong style="color:#5b5eeb">${nomePlano}</strong> está ativa. É só entrar com os dados abaixo:</p>
+      <div style="background:#f5f5fc;border:1px solid #ececf7;border-radius:16px;padding:18px 20px;margin:0 0 26px">
+        <p style="margin:0 0 10px;font-size:14px;color:#2b2b3a"><span style="color:#9a9ab0;display:inline-block;width:56px">E-mail</span> <strong>${email}</strong></p>
+        <p style="margin:0;font-size:14px;color:#2b2b3a"><span style="color:#9a9ab0;display:inline-block;width:56px">Senha</span> <strong style="letter-spacing:1px">${KIWIFY_SENHA_PADRAO}</strong></p>
+      </div>
+      <a href="${url}" style="display:block;text-align:center;background:linear-gradient(135deg,#6d6ff5,#5b5eeb);background-color:#5b5eeb;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:16px;border-radius:14px;box-shadow:0 6px 16px rgba(91,94,235,0.35)">Acessar minha conta &rarr;</a>
+      <p style="margin:18px 0 0;font-size:13px;color:#9a9ab0;line-height:1.5;text-align:center">🔒 Por segurança, <strong style="color:#7a7a90">troque sua senha</strong> no primeiro acesso.</p>
+    </div>
+    <div style="padding:20px 24px 26px;text-align:center">
+      <p style="margin:0;font-size:12px;color:#b3b3c4;line-height:1.5">Autsend — Remarketing automático por WhatsApp, E-mail e SMS<br/>Este e-mail foi enviado porque você adquiriu um plano.</p>
+    </div>
+  </div>
+</div>`
   try {
     await sendEmailViaResend({ apiKey: key, from, to: email, subject: 'Seu acesso ao Autsend está pronto 🚀', html })
   } catch (e) { console.error('Erro no e-mail de boas-vindas Kiwify:', e) }
@@ -2695,6 +2707,77 @@ exports.adminSetKiwifyConfig = onCall({ region: 'us-central1' }, async (request)
   return { ok: true }
 })
 
+/** Lista os 3 planos do Stripe (nome/preço) a partir dos Price IDs do .env — só leitura, pro admin ver. */
+exports.adminStripePlanos = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) return { planos: [], configurado: false }
+  const stripe = require('stripe')(key)
+  const mapa = [['inicial', process.env.STRIPE_PRICE_INICIAL], ['padrao', process.env.STRIPE_PRICE_PADRAO], ['pro', process.env.STRIPE_PRICE_PRO]]
+  const planos = []
+  for (const [plano, priceId] of mapa) {
+    if (!priceId) { planos.push({ plano, priceId: null, erro: 'sem price id no .env' }); continue }
+    try {
+      const price = await stripe.prices.retrieve(priceId, { expand: ['product'] })
+      planos.push({
+        plano, priceId,
+        produtoNome: price.product?.name || null,
+        valor: price.unit_amount != null ? price.unit_amount / 100 : null,
+        moeda: (price.currency || 'brl').toUpperCase(),
+        intervalo: price.recurring?.interval || null,
+        ativo: price.active !== false,
+      })
+    } catch (e) { planos.push({ plano, priceId, erro: e.message || 'erro ao buscar' }) }
+  }
+  return { planos, configurado: true }
+})
+
+/** Reembolsa a assinatura VIGENTE (última fatura, 1 mês) via Stripe, cancela a assinatura e volta o cliente pro Free. */
+exports.adminReembolsarCliente = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  if (uid === request.auth?.uid) throw new HttpsError('permission-denied', 'A conta admin não pode ser reembolsada.')
+  const key = process.env.STRIPE_SECRET_KEY
+  const tSnap = await db.doc(`tenants/${uid}`).get()
+  const t = tSnap.exists ? tSnap.data() : {}
+  let reembolsado = false, cancelado = false, valor = null, motivo = null
+  if (key && (t.stripeSubscriptionId || t.stripeCustomerId)) {
+    const stripe = require('stripe')(key)
+    try {
+      let paymentIntentId = null
+      if (t.stripeSubscriptionId) {
+        try {
+          const sub = await stripe.subscriptions.retrieve(t.stripeSubscriptionId, { expand: ['latest_invoice.payment_intent'] })
+          paymentIntentId = sub.latest_invoice?.payment_intent?.id || null
+        } catch (e) { console.error('retrieve sub', e) }
+        try { await stripe.subscriptions.cancel(t.stripeSubscriptionId); cancelado = true } catch (e) { console.error('cancel sub', e) }
+      }
+      if (!paymentIntentId && t.stripeCustomerId) {
+        const pis = await stripe.paymentIntents.list({ customer: t.stripeCustomerId, limit: 10 })
+        const paid = (pis.data || []).find((p) => p.status === 'succeeded' && (p.amount_received || 0) > 0)
+        paymentIntentId = paid?.id || null
+      }
+      if (paymentIntentId) {
+        const refund = await stripe.refunds.create({ payment_intent: paymentIntentId })
+        reembolsado = true
+        valor = refund.amount != null ? refund.amount / 100 : null
+      } else {
+        motivo = 'nenhum pagamento encontrado para reembolsar'
+      }
+    } catch (e) { motivo = e.message || 'erro no reembolso'; console.error('reembolso stripe', e) }
+  } else {
+    motivo = 'cliente sem assinatura Stripe'
+  }
+  // Volta pro Free (desativa as funções dos planos pagos)
+  await db.doc(`tenants/${uid}`).set({
+    plano: 'free',
+    reembolso: { em: admin.firestore.FieldValue.serverTimestamp(), por: ADMIN_EMAIL, valor, reembolsado, cancelado },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true })
+  return { ok: true, reembolsado, cancelado, valor, motivo }
+})
+
 // ─────────────────────────────────────────────────────────────
 // 2FA do admin (TOTP / Google Authenticator) — leve, sem Identity Platform
 // ─────────────────────────────────────────────────────────────
@@ -2784,7 +2867,41 @@ exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
   const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
   // Sem plano = Free (o admin define Padrão/Pro). Nada é deletado; o excedente fica congelado.
   const plano = t.plano || 'free'
-  return { plano, status: t.status || 'approved', overrides: t.overrides || null, mustChangePassword: !!t.mustChangePassword, isAdmin: isAdm }
+  return {
+    plano, status: t.status || 'approved', overrides: t.overrides || null,
+    mustChangePassword: !!t.mustChangePassword, isAdmin: isAdm,
+    termosAceito: !!(t.termos && t.termos.aceito),
+    nome: t.nome || (request.auth?.token?.name || '') || '',
+    documento: t.documento || '',
+    email: t.email || (request.auth?.token?.email || '') || '',
+  }
+})
+
+/** Registra o aceite do Termo de Uso do tenant (IP no servidor + geo do navegador). Salva no painel admin. */
+exports.aceitarTermos = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const d = request.data || {}
+  const raw = request.rawRequest
+  const ip = (raw?.headers?.['x-forwarded-for']?.split(',')[0]?.trim()) || raw?.ip || raw?.connection?.remoteAddress || null
+  const geo = (d.geo && typeof d.geo === 'object') ? {
+    lat: Number(d.geo.lat) || null, lng: Number(d.geo.lng) || null,
+    precisao: Number(d.geo.precisao) || null, negado: !!d.geo.negado,
+  } : { negado: true }
+  await db.doc(`tenants/${uid}`).set({
+    termos: {
+      aceito: true,
+      versao: String(d.versao || '1'),
+      aceitoEm: admin.firestore.FieldValue.serverTimestamp(),
+      ip: ip || null,
+      geo,
+      userAgent: String(raw?.headers?.['user-agent'] || '').slice(0, 400),
+      nome: String(d.nome || '').slice(0, 200),
+      documento: String(d.documento || '').slice(0, 40),
+    },
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true })
+  return { ok: true }
 })
 
 /** Admin gera um token pra ENTRAR COMO o cliente (impersonação segura, sem senha). */

@@ -8,12 +8,12 @@ const Ctx = createContext(null)
 
 // Fora do provedor (ex.: tela de login) devolve tudo liberado.
 export function usePlano() {
-  return useContext(Ctx) || { loading: false, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, temFeature: () => true }
+  return useContext(Ctx) || { loading: false, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, temFeature: () => true, termosAceito: true, marcarTermosAceito: () => {} }
 }
 
 export function PlanoProvider({ children }) {
   const [user] = useAuthState(auth)
-  const [state, setState] = useState({ loading: true, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null })
+  const [state, setState] = useState({ loading: true, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, termosAceito: true, nome: '', documento: '', emailCliente: '' })
 
   useEffect(() => {
     if (!user?.uid) { setState((s) => ({ ...s, loading: false })); return }
@@ -23,12 +23,18 @@ export function PlanoProvider({ children }) {
     getMeuPlano()
       .then((r) => {
         const ef = planoEfetivo({ plano: r.plano, overrides: r.overrides })
-        const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites }
+        const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites, termosAceito: !!r.isAdmin || r.termosAceito !== false, nome: r.nome || '', documento: r.documento || '', emailCliente: r.email || (user.email || '') }
         setState(st)
         try { localStorage.setItem(cacheKey, JSON.stringify(st)) } catch { /* ignore */ }
       })
       .catch(() => setState((s) => ({ ...s, loading: false })))
   }, [user?.uid])
+
+  const marcarTermosAceito = () => setState((s) => {
+    const next = { ...s, termosAceito: true }
+    try { localStorage.setItem(`sendlyPlano:${user?.uid}`, JSON.stringify(next)) } catch { /* ignore */ }
+    return next
+  })
 
   // Admin ou enquanto carrega (features null) = liberado. Só bloqueia o que estiver explicitamente false.
   const temFeature = (key) => state.isAdmin || !state.features || state.features[key] !== false
@@ -41,5 +47,5 @@ export function PlanoProvider({ children }) {
   // true se ainda pode criar mais (atual < limite).
   const podeMais = (key, atual) => limiteDe(key) === 0 ? false : (atual < limiteDe(key))
 
-  return <Ctx.Provider value={{ ...state, temFeature, limiteDe, podeMais }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ ...state, temFeature, limiteDe, podeMais, marcarTermosAceito }}>{children}</Ctx.Provider>
 }

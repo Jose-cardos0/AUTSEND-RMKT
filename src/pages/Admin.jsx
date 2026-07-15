@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminSetInstanciaBloqueada, ADMIN_EMAIL } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetInstanciaBloqueada, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
@@ -72,12 +72,12 @@ export default function Admin() {
   const [codigo, setCodigo] = useState('')
   const [verificando2fa, setVerificando2fa] = useState(false)
   const [showSeg, setShowSeg] = useState(false)
-  // Config Kiwify (onboarding)
+  // Onboarding Stripe
   const [showKiwify, setShowKiwify] = useState(false)
   const [kiwifyCfg, setKiwifyCfg] = useState(null)
-  const [prodMap, setProdMap] = useState({})
-  const [novoProdKey, setNovoProdKey] = useState('')
   const [savingKiwify, setSavingKiwify] = useState(false)
+  const [stripePlanos, setStripePlanos] = useState([])
+  const [reembolsando, setReembolsando] = useState(false)
   const [setupData, setSetupData] = useState(null)
   const [segCode, setSegCode] = useState('')
   const [segBusy, setSegBusy] = useState(false)
@@ -209,8 +209,9 @@ export default function Admin() {
   }
 
   const abrirKiwify = async () => {
-    setShowKiwify(true); setKiwifyCfg(null); setProdMap({}); setNovoProdKey('')
-    try { const c = await adminGetKiwifyConfig(); setKiwifyCfg(c); setProdMap({ ...(c.produtos || {}) }) } catch (e) { toast.error(e.message || 'Erro ao carregar config') }
+    setShowKiwify(true); setKiwifyCfg(null); setStripePlanos([])
+    try { const c = await adminGetKiwifyConfig(); setKiwifyCfg(c) } catch (e) { toast.error(e.message || 'Erro ao carregar config') }
+    try { const r = await adminStripePlanos(); setStripePlanos(r.planos || []) } catch (_) {}
   }
   // Abre o template de e-mail numa nova aba (HTML renderizado)
   const abrirTemplate = (t) => {
@@ -234,21 +235,29 @@ export default function Admin() {
     } catch (e) { toast.error(e.message || 'Erro ao alterar instância.') }
   }
 
-  const setPlanoProd = (key, plano) => setProdMap((m) => { const n = { ...m }; if (!plano) delete n[key]; else n[key] = plano; return n })
-  const addProdManual = () => {
-    const k = novoProdKey.trim()
-    if (!k) return
-    setProdMap((m) => ({ ...m, [k]: m[k] || 'padrao' }))
-    setNovoProdKey('')
-  }
   const salvarKiwify = async () => {
     if (!kiwifyCfg) return
     setSavingKiwify(true)
     try {
-      await adminSetKiwifyConfig({ produtos: prodMap, fromEmail: kiwifyCfg.fromEmail, fromName: kiwifyCfg.fromName, appUrl: kiwifyCfg.appUrl, webhookToken: kiwifyCfg.webhookToken })
-      toast.success('Configuração da Kiwify salva.')
+      await adminSetKiwifyConfig({ fromEmail: kiwifyCfg.fromEmail, fromName: kiwifyCfg.fromName, appUrl: kiwifyCfg.appUrl })
+      toast.success('Onboarding salvo.')
       setShowKiwify(false)
     } catch (e) { toast.error(e.message || 'Erro ao salvar') } finally { setSavingKiwify(false) }
+  }
+
+  const handleReembolsar = async (c) => {
+    if (!c?.uid) return
+    if (!(await confirm({ title: 'Reembolsar e voltar pro Free?', message: `Reembolsa a assinatura vigente de "${c.nome || c.email}" na Stripe, cancela a renovação e volta a conta pro Free (desativa as funções dos planos pagos). Não afeta meses já usados.`, confirmLabel: 'Reembolsar', danger: true }))) return
+    setReembolsando(true)
+    try {
+      const r = await adminReembolsarCliente(c.uid)
+      if (r.reembolsado) toast.success(`Reembolsado${r.valor != null ? ` R$ ${Number(r.valor).toFixed(2)}` : ''} · conta voltou pro Free.`)
+      else toast(`Conta voltou pro Free. Reembolso não feito: ${r.motivo || 'sem pagamento'}.`, { icon: '⚠️' })
+      setClientes((prev) => prev.map((x) => (x.uid === c.uid ? { ...x, plano: 'free' } : x)))
+      setSel((x) => (x && x.uid === c.uid ? { ...x, plano: 'free' } : x))
+      setForm((f) => ({ ...f, plano: 'free', limites: { ...PLANOS.free.limites } }))
+      setDetalhe((d) => (d ? { ...d, tenant: { ...(d.tenant || {}), plano: 'free' } } : d))
+    } catch (e) { toast.error(e.message || 'Erro ao reembolsar') } finally { setReembolsando(false) }
   }
 
   if (check2fa) return <PageLoader className="flex-1 min-h-0 py-10" label="Verificando acesso…" />
@@ -285,8 +294,8 @@ export default function Admin() {
       title="Clientes"
       right={
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <button onClick={abrirKiwify} className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-3.5 min-h-[44px] border border-surface-200 bg-white text-stone-600 hover:border-primary-300 hover:text-primary-600 transition-colors" title="Configurar onboarding Kiwify">
-            <ShoppingBag className="w-4 h-4" /> Kiwify
+          <button onClick={abrirKiwify} className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-3.5 min-h-[44px] border border-surface-200 bg-white text-stone-600 hover:border-primary-300 hover:text-primary-600 transition-colors" title="Onboarding Stripe (planos + e-mail de boas-vindas)">
+            <ShoppingBag className="w-4 h-4" /> Stripe
           </button>
           <button onClick={() => { setSetupData(null); setSegCode(''); setShowSeg(true) }} className={`inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-3.5 min-h-[44px] border transition-colors ${enrolled2fa ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-surface-200 bg-white text-stone-600 hover:border-primary-300 hover:text-primary-600'}`} title="Segurança / 2FA">
             <KeyRound className="w-4 h-4" /> {enrolled2fa ? '2FA ativo' : '2FA'}
@@ -468,6 +477,39 @@ export default function Admin() {
                       </div>
 
                       <div><label className="block text-xs font-medium text-stone-600 mb-1">Nota interna</label><textarea value={form.notas} onChange={(e) => setForm((f) => ({ ...f, notas: e.target.value }))} rows={2} placeholder="Anotações sobre o cliente…" className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 resize-y" /></div>
+
+                      {/* Termo de Uso */}
+                      <div className="rounded-xl border border-surface-200 p-3 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-stone-600">Termo de Uso</span>
+                          {detalhe?.tenant?.termos?.aceito
+                            ? <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Aceito</span>
+                            : <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}
+                        </div>
+                        {detalhe?.tenant?.termos?.aceito && (() => {
+                          const t = detalhe.tenant.termos
+                          const dt = t.aceitoEm?.toDate ? t.aceitoEm.toDate() : t.aceitoEm?.seconds ? new Date(t.aceitoEm.seconds * 1000) : (t.aceitoEm ? new Date(t.aceitoEm) : null)
+                          return (
+                            <div className="text-[11px] text-stone-500 space-y-0.5">
+                              {dt && <p>Em: {dt.toLocaleString('pt-BR')} · v{t.versao || '1'}</p>}
+                              <p>IP: <span className="font-mono">{t.ip || '—'}</span></p>
+                              <p>Nome: {t.nome || '—'}</p>
+                              <p>Doc: {t.documento || '—'}</p>
+                              <p>Local: {t.geo?.negado ? <span className="text-amber-600">negado</span> : (t.geo?.lat != null
+                                ? <a className="text-primary-600 hover:underline" target="_blank" rel="noreferrer" href={`https://maps.google.com/?q=${t.geo.lat},${t.geo.lng}`}>{Number(t.geo.lat).toFixed(4)}, {Number(t.geo.lng).toFixed(4)}</a>
+                                : '—')}</p>
+                            </div>
+                          )
+                        })()}
+                      </div>
+
+                      {/* Reembolso */}
+                      {sel?.plano && sel.plano !== 'free' && (
+                        <button onClick={() => handleReembolsar(sel)} disabled={reembolsando} className="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold rounded-xl px-3.5 min-h-[44px] border border-red-200 bg-red-50/60 text-red-600 hover:bg-red-100/60 transition-colors disabled:opacity-50">
+                          {reembolsando ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                          Reembolsar assinatura vigente → Free
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -701,8 +743,7 @@ export default function Admin() {
             <div className="flex items-center gap-2 p-5 border-b border-surface-100">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><ShoppingBag className="w-4 h-4" /></span>
               <div className="min-w-0">
-                <h3 className="text-base font-semibold text-stone-800">Onboarding Kiwify</h3>
-                <p className="text-xs text-stone-500">Mapeia a compra do plano → conta criada automaticamente.</p>
+                <h3 className="text-base font-semibold text-stone-800">Onboarding Stripe</h3>
               </div>
               <button onClick={() => setShowKiwify(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
             </div>
@@ -712,32 +753,29 @@ export default function Admin() {
             ) : (
               <>
                 <div className="p-5 space-y-4 overflow-y-auto scroll-y-soft">
-                  {/* Produtos → plano */}
+                  {/* Planos do Stripe (read-only) */}
                   <div>
-                    <label className="block text-xs font-semibold text-stone-600 mb-1.5">Produtos → plano</label>
-                    <p className="text-[11px] text-stone-400 mb-2">Assim que uma compra chegar, o produto aparece aqui pra você escolher o plano. Ou adicione o ID/nome manualmente.</p>
-                    {(() => {
-                      const keys = Array.from(new Set([...Object.keys(kiwifyCfg.produtosVistos || {}), ...Object.keys(prodMap)]))
-                      if (keys.length === 0) return <p className="text-xs text-stone-400 py-2">Nenhum produto recebido ainda. Faça uma compra teste na Kiwify — o produto aparece aqui.</p>
-                      return (
-                        <div className="space-y-2">
-                          {keys.map((k) => (
-                            <div key={k} className="flex items-center gap-2 rounded-xl border border-surface-200 bg-surface-50/50 px-3 py-2">
-                              <span className="min-w-0 flex-1 text-sm text-stone-700 truncate" title={k}>{kiwifyCfg.produtosVistos?.[k] || k}<span className="block text-[10px] text-stone-400 truncate">{k}</span></span>
-                              <div className="inline-flex rounded-lg bg-surface-100 p-0.5 shrink-0">
-                                {[['', '—'], ['inicial', 'Inicial'], ['padrao', 'Padrão'], ['pro', 'Pro']].map(([v, lbl]) => (
-                                  <button key={v || 'none'} onClick={() => setPlanoProd(k, v)} className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${(prodMap[k] || '') === v ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>{lbl}</button>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })()}
-                    <div className="flex gap-2 mt-2">
-                      <input value={novoProdKey} onChange={(e) => setNovoProdKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addProdManual() }} placeholder="ID ou nome do produto" className="flex-1 px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm" />
-                      <button onClick={addProdManual} className="btn-secondary text-sm min-h-[40px]">Adicionar</button>
-                    </div>
+                    <label className="block text-xs font-semibold text-stone-600 mb-1.5">Planos (Stripe)</label>
+                    {stripePlanos.length === 0 ? (
+                      <p className="text-xs text-stone-400 py-2">Carregando do Stripe… (se ficar vazio, confira os STRIPE_PRICE_* no .env do servidor)</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {stripePlanos.map((p) => (
+                          <div key={p.plano} className="flex items-center gap-2 rounded-xl border border-surface-200 bg-surface-50/50 px-3 py-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 shrink-0">{p.plano === 'padrao' ? 'Padrão' : p.plano.charAt(0).toUpperCase() + p.plano.slice(1)}</span>
+                            <span className="min-w-0 flex-1 text-sm text-stone-700 truncate" title={p.priceId || ''}>
+                              {p.erro ? <span className="text-red-500">{p.erro}</span> : (p.produtoNome || '—')}
+                              {p.priceId && <span className="block text-[10px] text-stone-400 truncate font-mono">{p.priceId}</span>}
+                            </span>
+                            {!p.erro && p.valor != null && (
+                              <span className="text-sm font-semibold text-stone-800 shrink-0 tabular-nums">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: p.moeda || 'BRL' }).format(p.valor)}{p.intervalo ? `/${p.intervalo === 'month' ? 'mês' : p.intervalo}` : ''}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Remetente das boas-vindas */}
@@ -751,16 +789,10 @@ export default function Admin() {
                       <input value={kiwifyCfg.fromName} onChange={(e) => setKiwifyCfg((c) => ({ ...c, fromName: e.target.value }))} placeholder="Autsend" className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm" />
                     </div>
                   </div>
-                  <p className="text-[11px] text-stone-400 -mt-2">O e-mail remetente precisa ser de um <strong>domínio verificado</strong> na conta Resend da plataforma.</p>
 
                   <div>
                     <label className="block text-xs font-medium text-stone-600 mb-1">Link do app (no e-mail)</label>
                     <input value={kiwifyCfg.appUrl} onChange={(e) => setKiwifyCfg((c) => ({ ...c, appUrl: e.target.value }))} placeholder="https://autsend.com.br" className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm" />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-stone-600 mb-1">Token do webhook Kiwify (opcional, segurança)</label>
-                    <input value={kiwifyCfg.webhookToken} onChange={(e) => setKiwifyCfg((c) => ({ ...c, webhookToken: e.target.value }))} placeholder="deixe vazio se não usar" className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-surface-200 text-sm font-mono" />
                   </div>
                 </div>
 
