@@ -77,8 +77,7 @@ export default function SmsIntegracao() {
   const [provedores, setProvedores] = useState([])
   const [loading, setLoading] = useState(true)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
-  const [secaoAberta, setSecaoAberta] = useState(true)
-  const [secaoApi, setSecaoApi] = useState(false)
+  const [tab, setTab] = useState('numeros') // 'numeros' | 'apis'
   const [novoApi, setNovoApi] = useState(false)
   const [formApi, setFormApi] = useState({ apiKey: '', from: '', messagingProfileId: '', nome: '' })
   const [salvandoApi, setSalvandoApi] = useState(false)
@@ -242,8 +241,39 @@ export default function SmsIntegracao() {
 
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
+  const conectado = numeros.some((n) => n.status === 'active') || provedores.length > 0
+
   return (
-    <PageShell badge="SMS · Integração">
+    <PageShell
+      badge="SMS · Conexões"
+      title="Integração de SMS"
+      right={
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {conectado && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-green-100 text-green-700">
+              <Check className="w-3.5 h-3.5" /> Conectado
+            </span>
+          )}
+          <div className="inline-flex rounded-xl bg-surface-100 p-0.5">
+            <button onClick={() => setTab('numeros')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'numeros' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+              <span className="inline-flex items-center gap-1.5"><Phone className="w-4 h-4" /> Números {numeros.length > 0 && <span className="text-[11px] text-stone-400">({numeros.length})</span>}</span>
+            </button>
+            <button onClick={() => setTab('apis')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === 'apis' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+              <span className="inline-flex items-center gap-1.5"><Globe className="w-4 h-4" /> API's {provedores.length > 0 && <span className="text-[11px] text-stone-400">({provedores.length})</span>}</span>
+            </button>
+          </div>
+          {tab === 'numeros' ? (
+            <button onClick={abrirPopup} className="btn-primary text-sm min-h-[40px]">
+              <Plus className="w-4 h-4" /> Comprar Número
+            </button>
+          ) : (
+            <button onClick={() => { if (!liberado) { setUpgradeOpen(true); return } setNovoApi(true) }} className="btn-primary text-sm min-h-[40px]">
+              <Plus className="w-4 h-4" /> Conectar Telnyx
+            </button>
+          )}
+        </div>
+      }
+    >
       <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
 
       {/* Popup: gerenciar número (cancelar assinatura / excluir chip) */}
@@ -426,22 +456,10 @@ export default function SmsIntegracao() {
       )}
 
       <div className="space-y-3">
-        <Secao
-          title="SMS"
-          icon={Phone}
-          bgImg={chipastron}
-          open={secaoAberta}
-          onToggle={() => setSecaoAberta((v) => !v)}
-          action={
-            <button
-              type="button"
-              onClick={abrirPopup}
-              className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
-            >
-              <Plus className="w-4 h-4" /> Comprar Número
-            </button>
-          }
-        >
+        {tab === 'numeros' && (
+        <div className="app-panel rounded-2xl p-4 sm:p-5 relative overflow-hidden">
+          <img src={chipastron} alt="" aria-hidden="true" className="pointer-events-none select-none absolute right-0 top-0 -mr-6 -mt-6 w-32 h-32 object-contain opacity-50 z-0" />
+          <div className="relative z-10">
           {numeros.length === 0 ? (
             <div className="py-8 text-center">
               <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-3">
@@ -530,24 +548,15 @@ export default function SmsIntegracao() {
               </div>
             </div>
           )}
-        </Secao>
+          </div>
+        </div>
+        )}
 
-        {/* Provedores (API's) — conta Telnyx PRÓPRIA do cliente (BYO) */}
-        <Secao
-          title="Provedores (API's)"
-          icon={KeyRound}
-          open={secaoApi}
-          onToggle={() => setSecaoApi((v) => !v)}
-          action={
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); if (!liberado) { setUpgradeOpen(true); return } setSecaoApi(true); setNovoApi(true) }}
-              className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
-            >
-              <Plus className="w-4 h-4" /> Conectar Telnyx
-            </button>
-          }
-        >
+        {/* Aba API's — conta Telnyx PRÓPRIA do cliente (BYO) */}
+        {tab === 'apis' && (
+        <div className="app-panel rounded-2xl p-4 sm:p-5 relative overflow-hidden">
+          <Globe className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-primary-500 opacity-[0.06] z-0" />
+          <div className="relative z-10">
           <p className="text-sm text-stone-500 mb-3">
             Use a <strong>sua própria conta Telnyx</strong> (API key + número). Os envios saem pela conta <strong>dela</strong> — com os números e limites <strong>dela</strong>, e sem consumir a cota do seu plano. Ideal pra volume alto ou números de outros países (BR, Alemanha…).
           </p>
@@ -621,7 +630,9 @@ export default function SmsIntegracao() {
               })}
             </div>
           )}
-        </Secao>
+          </div>
+        </div>
+        )}
       </div>
     </PageShell>
   )
