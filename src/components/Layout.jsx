@@ -279,7 +279,7 @@ export default function Layout() {
   const location = useLocation()
   const outlet = useOutlet()
   const [authUser] = useAuthState(auth)
-  const { temFeature } = usePlano()
+  const { temFeature, fotoURL } = usePlano()
   const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroup] : navGroups
   // Mostra TUDO no menu; o que o plano não libera vira bloqueado (cadeado + popup de upgrade).
   const podeItem = (it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }
@@ -377,13 +377,16 @@ export default function Layout() {
               title="Meu perfil"
               aria-label="Meu perfil"
               className={({ isActive }) => clsx(
-                'shrink-0 p-2.5 rounded-xl border transition-all',
+                'shrink-0 rounded-xl border transition-all overflow-hidden',
+                fotoURL ? 'p-0.5' : 'p-2.5',
                 isActive
                   ? 'text-primary-600 bg-primary-50 border-primary-100'
                   : 'text-stone-500 hover:text-primary-600 hover:bg-primary-50 border-transparent hover:border-primary-100'
               )}
             >
-              <User className="w-4 h-4" />
+              {fotoURL
+                ? <img src={fotoURL} alt="Perfil" className="w-7 h-7 rounded-lg object-cover" />
+                : <User className="w-4 h-4" />}
             </NavLink>
           </div>
         </div>
@@ -467,7 +470,9 @@ export default function Layout() {
                   onClick={closeMenu}
                   className="flex items-center gap-2 w-full min-h-[48px] px-4 py-3 mt-2 rounded-xl text-stone-600 hover:bg-primary-50 hover:text-primary-600 font-semibold text-[13px] touch-manipulation border border-surface-200"
                 >
-                  <User className="w-4 h-4" />
+                  {fotoURL
+                    ? <img src={fotoURL} alt="Perfil" className="w-5 h-5 rounded-full object-cover" />
+                    : <User className="w-4 h-4" />}
                   Meu perfil
                 </NavLink>
                 <button

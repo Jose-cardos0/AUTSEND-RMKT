@@ -8,12 +8,12 @@ const Ctx = createContext(null)
 
 // Fora do provedor (ex.: tela de login) devolve tudo liberado.
 export function usePlano() {
-  return useContext(Ctx) || { loading: false, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, temFeature: () => true, termosAceito: true, marcarTermosAceito: () => {} }
+  return useContext(Ctx) || { loading: false, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, temFeature: () => true, termosAceito: true, marcarTermosAceito: () => {}, fotoURL: null, setFotoURL: () => {} }
 }
 
 export function PlanoProvider({ children }) {
   const [user] = useAuthState(auth)
-  const [state, setState] = useState({ loading: true, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, termosAceito: true, nome: '', documento: '', emailCliente: '' })
+  const [state, setState] = useState({ loading: true, isAdmin: false, plano: 'free', status: 'approved', features: null, limites: null, termosAceito: true, nome: '', documento: '', emailCliente: '', fotoURL: null })
 
   useEffect(() => {
     if (!user?.uid) { setState((s) => ({ ...s, loading: false })); return }
@@ -23,7 +23,7 @@ export function PlanoProvider({ children }) {
     getMeuPlano()
       .then((r) => {
         const ef = planoEfetivo({ plano: r.plano, overrides: r.overrides })
-        const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites, termosAceito: !!r.isAdmin || r.termosAceito !== false, nome: r.nome || '', documento: r.documento || '', emailCliente: r.email || (user.email || '') }
+        const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites, termosAceito: !!r.isAdmin || r.termosAceito !== false, nome: r.nome || '', documento: r.documento || '', emailCliente: r.email || (user.email || ''), fotoURL: r.fotoURL || null }
         setState(st)
         try { localStorage.setItem(cacheKey, JSON.stringify(st)) } catch { /* ignore */ }
       })
@@ -32,6 +32,13 @@ export function PlanoProvider({ children }) {
 
   const marcarTermosAceito = () => setState((s) => {
     const next = { ...s, termosAceito: true }
+    try { localStorage.setItem(`sendlyPlano:${user?.uid}`, JSON.stringify(next)) } catch { /* ignore */ }
+    return next
+  })
+
+  // Atualiza a foto de perfil no contexto (reflete no menu na hora, sem recarregar).
+  const setFotoURL = (url) => setState((s) => {
+    const next = { ...s, fotoURL: url || null }
     try { localStorage.setItem(`sendlyPlano:${user?.uid}`, JSON.stringify(next)) } catch { /* ignore */ }
     return next
   })
@@ -47,5 +54,5 @@ export function PlanoProvider({ children }) {
   // true se ainda pode criar mais (atual < limite).
   const podeMais = (key, atual) => limiteDe(key) === 0 ? false : (atual < limiteDe(key))
 
-  return <Ctx.Provider value={{ ...state, temFeature, limiteDe, podeMais, marcarTermosAceito }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ ...state, temFeature, limiteDe, podeMais, marcarTermosAceito, setFotoURL }}>{children}</Ctx.Provider>
 }

@@ -5,6 +5,7 @@ import { auth } from '../lib/firebase'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import { getPerfilStats, criarCheckoutCreditoSMS, salvarFotoPerfil, PACOTES_CREDITO } from '../lib/perfil'
+import { usePlano } from '../lib/PlanoContext'
 import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck } from 'lucide-react'
 import img500 from '../assets/chip/emailautsend.png'
 import img1000 from '../assets/chip/1000sms.png'
@@ -66,6 +67,7 @@ function BarraUso({ icon: Icon, titulo, usados, limite, cor = 'primary' }) {
 
 export default function Perfil() {
   const [user] = useAuthState(auth)
+  const { setFotoURL } = usePlano()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [comprando, setComprando] = useState(null) // key do pacote em compra
@@ -81,7 +83,9 @@ export default function Perfil() {
     try {
       const dataUrl = await redimensionarImagem(file, 256)
       const r = await salvarFotoPerfil(dataUrl)
-      setStats((s) => ({ ...(s || {}), fotoURL: r?.fotoURL || dataUrl }))
+      const url = r?.fotoURL || dataUrl
+      setStats((s) => ({ ...(s || {}), fotoURL: url }))
+      setFotoURL(url) // reflete no menu na hora
       toast.success('Foto atualizada!')
     } catch (err) {
       toast.error(err?.message || 'Falha ao salvar a foto.')

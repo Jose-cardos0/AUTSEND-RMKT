@@ -3392,6 +3392,7 @@ exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
     nome: t.nome || (request.auth?.token?.name || '') || '',
     documento: t.documento || '',
     email: t.email || (request.auth?.token?.email || '') || '',
+    fotoURL: t.fotoURL || null,
   }
 })
 
