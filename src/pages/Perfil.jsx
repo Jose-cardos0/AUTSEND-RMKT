@@ -6,7 +6,7 @@ import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_EMAIL } from '../lib/perfil'
 import { usePlano } from '../lib/PlanoContext'
-import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck } from 'lucide-react'
+import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck, Globe } from 'lucide-react'
 import img500 from '../assets/chip/emailautsend.png'
 import img1000 from '../assets/chip/1000sms.png'
 import img2500 from '../assets/chip/2500.png'
@@ -70,17 +70,20 @@ function BarraUso({ icon: Icon, titulo, usados, limite, cor = 'primary' }) {
   )
 }
 
-/** Faixa diagonal "MAIS POPULAR" no canto superior direito, com marquee infinito. */
+/** Faixa diagonal "MAIS POPULAR" no canto superior direito, com marquee infinito (ícone intercalado). */
 function FaixaPopular({ tema = 'red' }) {
   const grad = tema === 'red' ? 'from-rose-500 via-red-500 to-red-600' : 'from-primary-500 via-primary-600 to-violet-600'
+  // E-mail é global → globo branco; SMS → bandeirinha dos EUA (mesma do lado de "SMS").
+  const icone = () => tema === 'red'
+    ? <Globe className="w-2.5 h-2.5 shrink-0" />
+    : <img src={euaFlag} alt="" className="w-3 h-auto object-contain shrink-0" />
   return (
     <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden pointer-events-none z-10">
       <div className={`absolute top-[15px] right-[-42px] w-[150px] rotate-45 bg-gradient-to-r ${grad} shadow-md py-1 overflow-hidden`}>
-        <div className="faixa-marquee text-[8.5px] font-extrabold uppercase tracking-wider text-white">
-          <span className="px-2">Mais Popular</span>
-          <span className="px-2">Mais Popular</span>
-          <span className="px-2">Mais Popular</span>
-          <span className="px-2">Mais Popular</span>
+        <div className="faixa-marquee items-center text-[8.5px] font-extrabold uppercase tracking-wider text-white">
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} className="inline-flex items-center gap-1 px-1.5">{icone()} Mais Popular</span>
+          ))}
         </div>
       </div>
     </div>
