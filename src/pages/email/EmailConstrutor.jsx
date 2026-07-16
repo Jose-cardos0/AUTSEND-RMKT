@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import grapesjs from 'grapesjs'
 import 'grapesjs/dist/css/grapes.min.css'
+import '../../styles/grapes-theme.css'
 import presetNewsletter from 'grapesjs-preset-newsletter'
 import Editor from 'react-simple-code-editor'
 import Prism from 'prismjs'
@@ -19,7 +20,7 @@ import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Loader2, Save, Send, Trash2, Plus, FileText, Code2 } from 'lucide-react'
+import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus } from 'lucide-react'
 import EmojiPicker from '../../components/EmojiPicker'
 
 const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Arial,sans-serif;color:#666">Arraste blocos aqui para montar seu e-mail…</div>'
@@ -186,6 +187,13 @@ export default function EmailConstrutor() {
     }
   }
 
+  // Abre a galeria de imagens (upload direto pro Storage do usuário)
+  const abrirImagens = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.runCommand('open-assets')
+  }
+
   // Abre o modal de código já preenchido com o HTML atual do editor (ver/editar/colar)
   const abrirCodigo = () => {
     const editor = editorRef.current
@@ -251,6 +259,9 @@ export default function EmailConstrutor() {
         <div className="flex flex-wrap gap-2">
           <button onClick={novoTemplate} className="btn-secondary text-sm min-h-[40px]">
             <Plus className="w-4 h-4" /> Novo
+          </button>
+          <button onClick={abrirImagens} className="btn-secondary text-sm min-h-[40px]">
+            <ImagePlus className="w-4 h-4" /> Imagens
           </button>
           <button onClick={abrirCodigo} className="btn-secondary text-sm min-h-[40px]">
             <Code2 className="w-4 h-4" /> Código HTML

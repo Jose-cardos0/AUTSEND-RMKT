@@ -1,0 +1,96 @@
+/* ───────────────────────────────────────────────────────────
+   Tema do GrapesJS pra combinar com o Autsend (claro, limpo).
+   Reskin via variáveis + ajustes nas partes mais visíveis.
+   ─────────────────────────────────────────────────────────── */
+.gjs-editor,
+.gjs-one-bg { --gjs-primary-color: #ffffff; }
+.gjs-editor {
+  --gjs-secondary-color: #57534e;   /* stone-600: ícones/texto */
+  --gjs-tertiary-color: #7c3aed;     /* violet-600: destaque */
+  --gjs-quaternary-color: #6d28d9;   /* violet-700 */
+  --gjs-font-color: #44403c;         /* stone-700 */
+  --gjs-font-color-active: #7c3aed;
+  --gjs-main-dark-color: #f5f5f4;    /* fundo painel */
+  font-family: inherit;
+}
+
+/* Fundo dos painéis claro */
+.gjs-pn-panel,
+.gjs-pn-panels,
+.gjs-blocks-cs,
+.gjs-sm-sectors,
+.gjs-clm-tags,
+.gjs-trt-traits,
+.gjs-layer-manager,
+.gjs-sm-sector { background-color: #ffffff; color: #44403c; }
+
+/* Barra de topo do canvas */
+.gjs-pn-commands { background: #292524; border-radius: 0; }
+.gjs-pn-btn { color: #d6d3d1; border-radius: 8px; }
+.gjs-pn-btn.gjs-pn-active,
+.gjs-pn-btn:hover { color: #fff; background: rgba(255,255,255,0.12); box-shadow: none; }
+
+/* Canvas */
+.gjs-cv-canvas { background: #eef0f4; }
+
+/* ── Blocos viram cards bonitos ── */
+.gjs-blocks-c { gap: 8px; padding: 10px; }
+.gjs-block {
+  width: calc(33.333% - 8px);
+  min-height: 74px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px;
+  border: 1px solid #e7e5e4;
+  border-radius: 12px;
+  background: #fafaf9;
+  box-shadow: none;
+  color: #57534e;
+  transition: all .15s ease;
+  padding: 8px 6px;
+}
+.gjs-block:hover {
+  border-color: #c4b5fd;
+  background: #faf5ff;
+  color: #7c3aed;
+  box-shadow: 0 4px 12px -4px rgba(124,58,237,.25);
+  transform: translateY(-1px);
+}
+.gjs-block svg, .gjs-block i { fill: currentColor; }
+.gjs-block-label { font-size: 11px; font-weight: 600; line-height: 1.2; }
+.gjs-block-category .gjs-title {
+  background: transparent; border: 0; color: #78716c;
+  font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  padding: 10px 12px 4px;
+}
+
+/* Categorias abertas por padrão ficam sem borda pesada */
+.gjs-block-categories { border: 0; }
+
+/* ── Painel direito (estilos/config) ── */
+.gjs-pn-views { border-bottom: 1px solid #e7e5e4; }
+.gjs-pn-views-container { box-shadow: none; border-left: 1px solid #e7e5e4; }
+.gjs-sm-sector-title, .gjs-clm-tags-field, .gjs-trt-header {
+  font-weight: 600; color: #44403c;
+}
+.gjs-field, .gjs-sm-field input, .gjs-clm-field, .gjs-trt-trait input, .gjs-trt-trait select {
+  border-radius: 8px; border: 1px solid #e7e5e4; background: #fff;
+}
+.gjs-btn-prim {
+  background: #7c3aed; color: #fff; border-radius: 8px; border: 0; font-weight: 600;
+}
+
+/* Modal (asset manager / código) */
+.gjs-mdl-dialog { border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px -12px rgba(0,0,0,.4); }
+.gjs-mdl-header { background: #fff; border-bottom: 1px solid #e7e5e4; }
+.gjs-mdl-title { font-weight: 700; color: #292524; }
+
+/* Asset manager (galeria de imagens) mais convidativo */
+.gjs-am-assets-cont { background: #fafaf9; }
+.gjs-am-file-uploader #gjs-am-uploadFile,
+.gjs-am-file-uploader .gjs-am-dropzone {
+  border: 2px dashed #c4b5fd; border-radius: 14px; background: #faf5ff; color: #7c3aed;
+  padding: 28px; font-weight: 600;
+}
+.gjs-am-add-asset .gjs-am-add-field input { border-radius: 8px; }
+.gjs-am-asset { border-radius: 12px; overflow: hidden; }
+.gjs-am-preview-cont { border-radius: 12px; }
