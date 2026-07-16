@@ -45,9 +45,11 @@
 .gjs-editor .gjs-blocks-cs { background-color: #ffffff !important; }
 .gjs-editor .gjs-blocks-c { display: flex !important; flex-wrap: wrap !important; gap: 10px !important; padding: 12px !important; }
 .gjs-editor .gjs-block {
-  width: calc(50% - 10px) !important;
-  min-height: 78px !important;
-  display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 7px !important;
+  flex: 0 0 calc(50% - 5px) !important;
+  max-width: calc(50% - 5px) !important;
+  box-sizing: border-box !important;
+  min-height: 82px !important;
+  display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 8px !important;
   border: 1px solid #e7e5e4 !important;
   border-radius: 14px !important;
   background-color: #ffffff !important;
@@ -55,6 +57,7 @@
   color: #57534e !important;
   transition: all .15s ease;
   padding: 12px 8px !important;
+  margin: 0 !important;
 }
 .gjs-editor .gjs-block:hover {
   border-color: #c4b5fd !important;
@@ -63,8 +66,9 @@
   box-shadow: 0 8px 18px -8px rgba(124,58,237,.35) !important;
   transform: translateY(-2px);
 }
-.gjs-editor .gjs-block svg { fill: currentColor !important; width: 26px; height: 26px; }
-.gjs-editor .gjs-block__media { color: inherit !important; }
+/* Ícones de contorno: NÃO forçar fill (senão viram blobs). Só tamanho. */
+.gjs-editor .gjs-block svg { width: 28px !important; height: 28px !important; }
+.gjs-editor .gjs-block__media { color: inherit !important; display: flex; align-items: center; justify-content: center; }
 .gjs-editor .gjs-block-label { font-size: 11px !important; font-weight: 600 !important; line-height: 1.2 !important; color: inherit !important; }
 
 /* Títulos de categoria */
