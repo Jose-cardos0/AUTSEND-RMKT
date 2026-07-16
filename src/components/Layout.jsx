@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall } from 'lucide-react'
 import { auth } from '../lib/firebase'
 import { isAdmin } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
@@ -90,6 +90,25 @@ const navGroups = [
           { to: '/sms/api/disparos', label: 'Disparos', icon: Send },
           { to: '/sms/api/funil', label: 'Funil', icon: GitBranch },
           { to: '/sms/api/metricas', label: 'Métricas', icon: BarChart3 },
+        ],
+      },
+    ],
+  },
+  {
+    key: 'call',
+    label: 'Ligação IA',
+    icon: Phone,
+    items: [
+      { to: '/call/eua/integracao', label: 'Integração', icon: Link2 },
+    ],
+    subgroups: [
+      {
+        key: 'call-eua',
+        label: 'EUA',
+        img: euaflag,
+        items: [
+          { to: '/call/eua/campanha', label: 'Campanha', icon: PhoneCall },
+          { to: '/call/eua/metricas', label: 'Métricas', icon: BarChart3 },
         ],
       },
     ],
@@ -321,7 +340,7 @@ export default function Layout() {
     return g ? { [g.key]: true } : {}
   })
   // O construtor de e-mail, o funil e o remarketing usam mais largura (lista/editor lado a lado)
-  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || /\/sms\/(eua|api)?\/?(funil|automacoes|remarketing|metricas)/.test(location.pathname)
+  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || /\/sms\/(eua|api)?\/?(funil|automacoes|remarketing|metricas)/.test(location.pathname) || /\/call\/(eua|api)?\/?(campanha|metricas)/.test(location.pathname)
 
   // Ao navegar, garante que o grupo da rota atual esteja aberto.
   useEffect(() => {

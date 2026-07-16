@@ -4,9 +4,9 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
-import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_EMAIL } from '../lib/perfil'
+import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, criarCheckoutCreditoCall, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_EMAIL, PACOTES_CREDITO_CALL } from '../lib/perfil'
 import { usePlano } from '../lib/PlanoContext'
-import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck, Globe } from 'lucide-react'
+import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck, Globe, Phone } from 'lucide-react'
 import img500 from '../assets/chip/emailautsend.png'
 import img1000 from '../assets/chip/1000sms.png'
 import img2500 from '../assets/chip/2500.png'
@@ -153,7 +153,7 @@ export default function Perfil() {
     const id = `${canal}:${key}`
     setComprando(id)
     try {
-      const r = canal === 'email' ? await criarCheckoutCreditoEmail(key) : await criarCheckoutCreditoSMS(key)
+      const r = canal === 'email' ? await criarCheckoutCreditoEmail(key) : canal === 'call' ? await criarCheckoutCreditoCall(key) : await criarCheckoutCreditoSMS(key)
       if (r?.url) window.location.href = r.url
       else toast.error('Não consegui abrir o checkout. Tente de novo.')
     } catch (err) {
@@ -295,6 +295,33 @@ export default function Perfil() {
                     disabled={!!comprando}
                     className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60"
                   >
+                    {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {comprando === id ? 'Abrindo…' : 'Comprar'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </Panel>
+
+        <Panel title="Comprar minutos de Ligação IA" icon={Phone}>
+          <p className="text-xs text-stone-500 -mt-1 mb-1">
+            Ligação por voz com IA (EUA/Internacional e WhatsApp). R$ 1,50/min, debitado por segundo. Os minutos não expiram.
+            {stats?.callCreditosSeg > 0 && <> Você tem <b>{Math.floor((stats.callCreditosSeg || 0) / 60)} min</b> em crédito.</>}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {PACOTES_CREDITO_CALL.map((p) => {
+              const id = `call:${p.key}`
+              return (
+                <div key={p.key} className={`relative overflow-hidden flex flex-col p-5 rounded-2xl border-2 transition ${p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
+                  {p.destaque && <FaixaPopular tema="blue" />}
+                  <div className="text-center">
+                    <Phone className="w-12 h-12 mx-auto mb-2 text-primary-500" strokeWidth={1.5} />
+                    <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.minutos}</p>
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide">minutos de ligação</p>
+                    <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
+                  </div>
+                  <button onClick={() => comprar('call', p.key)} disabled={!!comprando} className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60">
                     {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     {comprando === id ? 'Abrindo…' : 'Comprar'}
                   </button>

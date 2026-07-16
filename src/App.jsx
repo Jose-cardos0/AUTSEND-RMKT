@@ -31,6 +31,9 @@ import SmsFunil from './pages/sms/SmsFunil'
 import SmsAutomacoes from './pages/sms/SmsAutomacoes'
 import SmsRemarketing from './pages/sms/SmsRemarketing'
 import SmsMetricas from './pages/sms/SmsMetricas'
+import CallIntegracao from './pages/call/CallIntegracao'
+import CallCampanha from './pages/call/CallCampanha'
+import CallMetricas from './pages/call/CallMetricas'
 import PageLoader from './components/PageLoader'
 import { ConfirmProvider } from './components/ConfirmDialog'
 import { PlanoProvider, usePlano } from './lib/PlanoContext'
@@ -175,6 +178,13 @@ export default function App() {
           <Route path="sms/automacoes" element={<Navigate to="/sms/eua/automacoes" replace />} />
           <Route path="sms/remarketing" element={<Navigate to="/sms/eua/remarketing" replace />} />
           <Route path="sms/metricas" element={<Navigate to="/sms/eua/metricas" replace />} />
+          {/* Call Marketing IA — canal eua (nossa conta) | api (Telnyx do cliente). */}
+          <Route path="call/:canal/integracao" element={<CallIntegracao />} />
+          <Route path="call/:canal/campanha" element={<CallCampanha />} />
+          <Route path="call/:canal/metricas" element={<CallMetricas />} />
+          <Route path="call/integracao" element={<Navigate to="/call/eua/integracao" replace />} />
+          <Route path="call/campanha" element={<Navigate to="/call/eua/campanha" replace />} />
+          <Route path="call/metricas" element={<Navigate to="/call/eua/metricas" replace />} />
           <Route
             path="email/funil"
             element={

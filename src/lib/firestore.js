@@ -701,6 +701,55 @@ export async function getFunnelSends(uid) {
     })
 }
 
+// ── Call Marketing IA (Ligação IA — Telnyx Voice) ──
+
+/** Agentes de IA (roteiro + voz + velocidade). */
+export async function getCallAgents(uid, canal) {
+  const snap = await getDocs(collection(db, 'users', uid, 'callAgents'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .filter((d) => !canal || (d.canal || 'eua') === canal)
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+export async function saveCallAgent(uid, id, data) {
+  if (id) { await setDoc(doc(db, 'users', uid, 'callAgents', id), { ...data, updatedAt: serverTimestamp() }, { merge: true }); return id }
+  const ref = await addDoc(collection(db, 'users', uid, 'callAgents'), { ...data, createdAt: serverTimestamp() })
+  return ref.id
+}
+export async function deleteCallAgent(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'callAgents', id))
+}
+
+/** Disparos de ligação (resumo de cada campanha). */
+export async function getCallDisparos(uid, canal) {
+  const snap = await getDocs(collection(db, 'users', uid, 'callDisparos'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .filter((d) => !canal || (d.canal || 'eua') === canal)
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
+/** Logs de ligação (um por chamada — status, segundos, débito). */
+export async function getCallLogs(uid, canal) {
+  const snap = await getDocs(collection(db, 'users', uid, 'callLogs'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .filter((d) => !canal || (d.canal || 'eua') === canal)
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+
 // ── Logs de E-mail ──
 
 export async function getEmailLogs(uid) {

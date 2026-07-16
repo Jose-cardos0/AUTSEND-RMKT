@@ -40,3 +40,16 @@ export async function criarCheckoutCreditoEmail(pacote) {
   const r = await call('emailCriarCheckoutCredito')({ pacote })
   return r.data // { url }
 }
+
+/** Pacotes de minutos de Ligação IA (chave = minutos). */
+export const PACOTES_CREDITO_CALL = [
+  { key: '30', minutos: 30, valor: 'R$ 44,90' },
+  { key: '60', minutos: 60, valor: 'R$ 84,90', destaque: true },
+  { key: '120', minutos: 120, valor: 'R$ 159,90' },
+]
+
+/** Cria o checkout Stripe (pagamento único) pra comprar minutos de Ligação IA e devolve a URL. */
+export async function criarCheckoutCreditoCall(pacote) {
+  const r = await call('callCriarCheckoutCredito')({ pacote })
+  return r.data // { url }
+}
