@@ -145,8 +145,8 @@ export default function EmailConstrutor() {
         messages: {
           en: {
             assetManager: {
-              modalTitle: 'Selecione uma imagem',
-              uploadTitle: 'Clique aqui ou arraste uma imagem do seu computador',
+              modalTitle: 'Suas imagens',
+              uploadTitle: 'Enviar imagem',
             },
           },
         },
@@ -168,7 +168,8 @@ export default function EmailConstrutor() {
       'gjs-open-import-webpage', 'gjs-open-import-template', 'gjs-toggle-images',
       'undo', 'redo', 'canvas-clear', 'gjs-open-import',
     ].forEach((id) => { try { editor.Panels.removeButton('options', id) } catch (_) {} })
-    ;['open-sm', 'open-blocks', 'open-tm', 'open-layers'].forEach((id) => { try { editor.Panels.removeButton('views', id) } catch (_) {} })
+    // As abas laterais (open-sm/blocks/tm/layers) NÃO são removidas — o dock aciona os comandos delas.
+    // A barra de abas é escondida via CSS (.gjs-pn-views), mas os comandos continuam funcionando.
 
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
@@ -440,7 +441,7 @@ export default function EmailConstrutor() {
         </div>
 
         {/* Coluna direita: editor */}
-        <div className={`flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden relative ${painelAberto ? '' : 'gjs-painel-off'}`}>
+        <div className="flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden relative">
           {!ready && (
             <div className="absolute inset-0 flex items-center justify-center text-stone-400 text-sm gap-2 bg-white/70 z-10">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando editor…
