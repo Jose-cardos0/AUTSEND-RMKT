@@ -11,6 +11,7 @@ import 'prismjs/themes/prism-tomorrow.css'
 import { html as beautifyHtml } from 'js-beautify'
 import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate } from '../../lib/firestore'
+import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../../lib/storageAssets'
 import { TEMPLATE_VARIABLES } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import Select from '../../components/Select'
@@ -42,6 +43,11 @@ export default function EmailConstrutor() {
   const containerRef = useRef(null)
   const editorRef = useRef(null)
   const subjectRef = useRef(null)
+  const uidRef = useRef(null)
+  const assetsCarregados = useRef(false)
+
+  // Mantém o uid disponível pro upload do Asset Manager (o editor é criado uma vez só).
+  useEffect(() => { uidRef.current = user?.uid || null }, [user?.uid])
 
   // Inicializa o GrapesJS uma vez
   useEffect(() => {
@@ -51,12 +57,39 @@ export default function EmailConstrutor() {
       height: '100%',
       width: 'auto',
       storageManager: false,
+      assetManager: {
+        // O usuário sobe a imagem → vai pro NOSSO Storage (pasta dele) → entra na galeria.
+        upload: false,
+        autoAdd: true,
+        dropzone: true,
+        uploadText: 'Arraste a imagem aqui ou clique para enviar',
+        addBtnText: 'Adicionar por URL',
+        uploadName: 'files',
+        uploadFile: async (e) => {
+          const files = e.dataTransfer ? e.dataTransfer.files : e.target.files
+          const uid = uidRef.current
+          if (!uid) { toast.error('Faça login para enviar imagens.'); return }
+          const ed = editorRef.current
+          for (const file of files) {
+            try {
+              const asset = await uploadEmailAsset(uid, file)
+              ed?.AssetManager.add(asset)
+            } catch (err) { toast.error(err.message || 'Falha ao enviar imagem.') }
+          }
+        },
+      },
       plugins: [(ed) => presetNewsletter(ed, {
         modalTitleImport: 'Importar HTML',
         modalTitleExport: 'HTML do e-mail',
       })],
     })
     editorRef.current = editor
+
+    // Ao remover um asset da galeria, apaga do Storage também.
+    editor.on('asset:remove', (asset) => {
+      const src = asset?.get?.('src') || asset?.src
+      if (src && /firebasestorage|storage\.googleapis/.test(src)) deleteEmailAsset(src)
+    })
     setReady(true)
     return () => {
       try { editor.destroy() } catch (_) {}
@@ -72,6 +105,16 @@ export default function EmailConstrutor() {
       if (list.length > 0) setSelectedId((cur) => cur ?? list[0].id)
     })
   }, [user?.uid])
+
+  // Popula a galeria do editor com as imagens que o usuário já subiu (uma vez).
+  useEffect(() => {
+    if (!ready || !user?.uid || assetsCarregados.current) return
+    assetsCarregados.current = true
+    listEmailAssets(user.uid).then((assets) => {
+      const ed = editorRef.current
+      if (ed && assets.length) ed.AssetManager.add(assets)
+    })
+  }, [ready, user?.uid])
 
   // Ao selecionar um template (ou ficar pronto), carrega o conteúdo no editor
   useEffect(() => {

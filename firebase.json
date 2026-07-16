@@ -6,5 +6,8 @@
   "functions": {
     "source": "functions",
     "predeploy": []
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }
