@@ -13,12 +13,16 @@ import img2500 from '../assets/chip/2500.png'
 import imgEmail5000 from '../assets/email/5000email.png'
 import imgEmail10000 from '../assets/email/10000email.png'
 import imgEmail25000 from '../assets/email/25000email.png'
+import imgCall30 from '../assets/minutes/30minutes.png'
+import imgCall60 from '../assets/minutes/60minutes.png'
+import imgCall120 from '../assets/minutes/120minutes.png'
 import globoIcon from '../assets/global.png'
 import euaFlag from '../assets/flags/euaflaglarge.png'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
 const PACOTE_IMG = { 500: img500, 1000: img1000, 2500: img2500 }
 const PACOTE_IMG_EMAIL = { 5000: imgEmail5000, 10000: imgEmail10000, 25000: imgEmail25000 }
+const PACOTE_IMG_CALL = { 30: imgCall30, 60: imgCall60, 120: imgCall120 }
 
 /** Redimensiona uma imagem pra um quadrado pequeno e devolve um data URL JPEG. */
 function redimensionarImagem(file, tamanho = 256) {
@@ -316,9 +320,11 @@ export default function Perfil() {
                 <div key={p.key} className={`relative overflow-hidden flex flex-col p-5 rounded-2xl border-2 transition ${p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
                   {p.destaque && <FaixaPopular tema="blue" />}
                   <div className="text-center">
-                    <Phone className="w-12 h-12 mx-auto mb-2 text-primary-500" strokeWidth={1.5} />
+                    <img src={PACOTE_IMG_CALL[p.minutos]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
                     <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.minutos}</p>
-                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide">minutos de ligação</p>
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1">
+                      <Phone className="w-3.5 h-3.5" /> minutos de ligação
+                    </p>
                     <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
                   </div>
                   <button onClick={() => comprar('call', p.key)} disabled={!!comprando} className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60">
