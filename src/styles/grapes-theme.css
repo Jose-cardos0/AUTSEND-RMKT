@@ -143,6 +143,18 @@
 /* ── Painel lateral escondido por padrão; canvas ocupa tudo. Aparece só ao abrir pelo dock. ── */
 .gjs-painel-off .gjs-pn-views,
 .gjs-painel-off .gjs-pn-views-container { display: none !important; }
-.gjs-painel-off .gjs-cv-canvas { width: 100% !important; right: 0 !important; }
-/* Garante o painel (quando aberto) todo branco */
+.gjs-painel-off .gjs-cv-canvas { width: 100% !important; right: 0 !important; left: 0 !important; }
+
+/* ── CATCH-ALL: força TODO fundo estrutural do editor pra claro (fim das faixas pretas) ── */
+.gjs-editor,
+.gjs-editor .gjs-pn-panel,
+.gjs-editor .gjs-pn-panels,
+.gjs-editor .gjs-pn-commands,
+.gjs-editor .gjs-pn-options,
+.gjs-editor .gjs-pn-devices-c,
+.gjs-editor .gjs-pn-views,
 .gjs-editor .gjs-pn-views-container { background-color: #ffffff !important; }
+.gjs-editor .gjs-cv-canvas,
+.gjs-editor .gjs-cv-canvas__frames,
+.gjs-editor .gjs-cv-canvas__spots,
+.gjs-editor .gjs-frame-wrapper { background-color: #f4f4f5 !important; }
