@@ -80,6 +80,16 @@ export default function EmailConstrutor() {
           }
         },
       },
+      i18n: {
+        messages: {
+          en: {
+            assetManager: {
+              modalTitle: 'Selecione uma imagem',
+              uploadTitle: 'Clique aqui ou arraste uma imagem do seu computador',
+            },
+          },
+        },
+      },
       plugins: [(ed) => presetNewsletter(ed, {
         modalTitleImport: 'Importar HTML',
         modalTitleExport: 'HTML do e-mail',
