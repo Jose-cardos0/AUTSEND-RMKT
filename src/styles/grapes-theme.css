@@ -43,7 +43,8 @@
 
 /* ── Blocos viram cards claros e bonitos ── */
 .gjs-editor .gjs-blocks-cs { background-color: #ffffff !important; }
-.gjs-editor .gjs-blocks-c { display: flex !important; flex-wrap: wrap !important; gap: 10px !important; padding: 12px !important; }
+/* Sem !important no display: senão trava o recolher da categoria. O container já é flex por padrão. */
+.gjs-editor .gjs-blocks-c { flex-wrap: wrap; gap: 10px !important; padding: 12px !important; }
 .gjs-editor .gjs-block {
   flex: 0 0 calc(50% - 5px) !important;
   max-width: calc(50% - 5px) !important;
@@ -66,8 +67,18 @@
   box-shadow: 0 8px 18px -8px rgba(124,58,237,.35) !important;
   transform: translateY(-2px);
 }
-/* Ícones de contorno: NÃO forçar fill (senão viram blobs). Só tamanho. */
+/* Ícones de CONTORNO: força fill:none (algo no GrapesJS estava preenchendo e virando blob). */
 .gjs-editor .gjs-block svg { width: 28px !important; height: 28px !important; }
+.gjs-editor .gjs-block svg,
+.gjs-editor .gjs-block svg rect,
+.gjs-editor .gjs-block svg circle,
+.gjs-editor .gjs-block svg path,
+.gjs-editor .gjs-block svg line,
+.gjs-editor .gjs-block svg polyline,
+.gjs-editor .gjs-block svg polygon {
+  fill: none !important;
+  stroke: currentColor !important;
+}
 .gjs-editor .gjs-block__media { color: inherit !important; display: flex; align-items: center; justify-content: center; }
 .gjs-editor .gjs-block-label { font-size: 11px !important; font-weight: 600 !important; line-height: 1.2 !important; color: inherit !important; }
 
