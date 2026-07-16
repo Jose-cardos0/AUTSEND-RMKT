@@ -21,7 +21,7 @@ import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus } from 'lucide-react'
+import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical } from 'lucide-react'
 import EmojiPicker from '../../components/EmojiPicker'
 
 const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Arial,sans-serif;color:#666">Arraste blocos aqui para montar seu e-mail…</div>'
@@ -47,6 +47,33 @@ export default function EmailConstrutor() {
   const subjectRef = useRef(null)
   const uidRef = useRef(null)
   const assetsCarregados = useRef(false)
+  const dockRef = useRef(null)
+  const [dockPos, setDockPos] = useState(null) // {left, top} em px; null = posição padrão (centro-baixo)
+
+  // Abre um painel do editor (blocos/estilo) a partir do dock flutuante.
+  const abrirPainel = (cmd) => { try { editorRef.current?.runCommand(cmd) } catch (_) {} }
+
+  // Arrastar o dock flutuante pela pegada.
+  const iniciarArraste = (e) => {
+    e.preventDefault()
+    const dock = dockRef.current
+    const parent = dock?.offsetParent
+    if (!dock || !parent) return
+    const r = dock.getBoundingClientRect()
+    const pr = parent.getBoundingClientRect()
+    const offX = e.clientX - r.left
+    const offY = e.clientY - r.top
+    const onMove = (ev) => {
+      let left = ev.clientX - pr.left - offX
+      let top = ev.clientY - pr.top - offY
+      left = Math.max(6, Math.min(left, pr.width - r.width - 6))
+      top = Math.max(6, Math.min(top, pr.height - r.height - 6))
+      setDockPos({ left, top })
+    }
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   // Mantém o uid disponível pro upload do Asset Manager (o editor é criado uma vez só).
   useEffect(() => { uidRef.current = user?.uid || null }, [user?.uid])
@@ -105,6 +132,8 @@ export default function EmailConstrutor() {
     ;['sw-visibility', 'preview', 'fullscreen', 'export-template',
       'gjs-open-import-webpage', 'gjs-open-import-template', 'gjs-toggle-images',
     ].forEach((id) => { try { editor.Panels.removeButton('options', id) } catch (_) {} })
+    // Pincel (estilo) e + (blocos) foram pro dock flutuante — remove do topo.
+    ;['open-sm', 'open-blocks'].forEach((id) => { try { editor.Panels.removeButton('views', id) } catch (_) {} })
 
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
@@ -383,6 +412,40 @@ export default function EmailConstrutor() {
             </div>
           )}
           <div ref={containerRef} className="h-full" />
+
+          {/* Dock flutuante e movível: Blocos + Estilo */}
+          {ready && (
+            <div
+              ref={dockRef}
+              style={dockPos ? { left: dockPos.left, top: dockPos.top } : { left: '50%', bottom: 18, transform: 'translateX(-50%)' }}
+              className="absolute z-30 flex items-center gap-1 rounded-2xl bg-white/95 backdrop-blur shadow-xl border border-surface-200 p-1.5"
+            >
+              <button
+                type="button"
+                onMouseDown={iniciarArraste}
+                title="Arraste pra mover"
+                className="cursor-grab active:cursor-grabbing p-1.5 text-stone-300 hover:text-stone-500"
+              >
+                <GripVertical className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => abrirPainel('open-blocks')}
+                title="Blocos"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-stone-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Blocos
+              </button>
+              <button
+                type="button"
+                onClick={() => abrirPainel('open-sm')}
+                title="Estilo"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-stone-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+              >
+                <Paintbrush className="w-4 h-4" /> Estilo
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
