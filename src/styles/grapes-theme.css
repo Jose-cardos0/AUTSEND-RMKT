@@ -1,96 +1,105 @@
 /* ───────────────────────────────────────────────────────────
    Tema do GrapesJS pra combinar com o Autsend (claro, limpo).
-   Reskin via variáveis + ajustes nas partes mais visíveis.
+   Tudo prefixado com .gjs-editor + !important pra ganhar do CSS da lib.
    ─────────────────────────────────────────────────────────── */
-.gjs-editor,
-.gjs-one-bg { --gjs-primary-color: #ffffff; }
 .gjs-editor {
-  --gjs-secondary-color: #57534e;   /* stone-600: ícones/texto */
-  --gjs-tertiary-color: #7c3aed;     /* violet-600: destaque */
-  --gjs-quaternary-color: #6d28d9;   /* violet-700 */
-  --gjs-font-color: #44403c;         /* stone-700 */
+  --gjs-primary-color: #ffffff;
+  --gjs-secondary-color: #57534e;
+  --gjs-tertiary-color: #7c3aed;
+  --gjs-quaternary-color: #6d28d9;
+  --gjs-font-color: #44403c;
   --gjs-font-color-active: #7c3aed;
-  --gjs-main-dark-color: #f5f5f4;    /* fundo painel */
+  --gjs-color-highlight: #7c3aed;
   font-family: inherit;
 }
 
-/* Fundo dos painéis claro */
-.gjs-pn-panel,
-.gjs-pn-panels,
-.gjs-blocks-cs,
-.gjs-sm-sectors,
-.gjs-clm-tags,
-.gjs-trt-traits,
-.gjs-layer-manager,
-.gjs-sm-sector { background-color: #ffffff; color: #44403c; }
+/* Painéis, containers de blocos, estilos, camadas → fundo claro */
+.gjs-editor .gjs-pn-panel,
+.gjs-editor .gjs-pn-views-container,
+.gjs-editor .gjs-blocks-cs,
+.gjs-editor .gjs-blocks-c,
+.gjs-editor .gjs-sm-sectors,
+.gjs-editor .gjs-clm-tags,
+.gjs-editor .gjs-trt-traits,
+.gjs-editor .gjs-layer-manager,
+.gjs-editor .gjs-layers,
+.gjs-editor .gjs-sm-sector {
+  background-color: #ffffff !important;
+  color: #44403c !important;
+}
 
-/* Barra de topo do canvas */
-.gjs-pn-commands { background: #292524; border-radius: 0; }
-.gjs-pn-btn { color: #d6d3d1; border-radius: 8px; }
-.gjs-pn-btn.gjs-pn-active,
-.gjs-pn-btn:hover { color: #fff; background: rgba(255,255,255,0.12); box-shadow: none; }
+/* Barra de topo do canvas (comandos) fica escura elegante */
+.gjs-editor .gjs-pn-commands { background-color: #292524 !important; }
+.gjs-editor .gjs-pn-commands .gjs-pn-btn { color: #d6d3d1 !important; border-radius: 8px; }
+.gjs-editor .gjs-pn-commands .gjs-pn-btn:hover,
+.gjs-editor .gjs-pn-commands .gjs-pn-btn.gjs-pn-active { color: #fff !important; background-color: rgba(255,255,255,.14) !important; box-shadow: none !important; }
+
+/* Painel lateral direito (onde ficam os blocos/estilos) */
+.gjs-editor .gjs-pn-views { background-color: #f5f5f4 !important; border-bottom: 1px solid #e7e5e4 !important; }
+.gjs-editor .gjs-pn-views .gjs-pn-btn { color: #78716c !important; }
+.gjs-editor .gjs-pn-views .gjs-pn-btn.gjs-pn-active { color: #7c3aed !important; background: #faf5ff !important; border-radius: 8px; }
+.gjs-editor .gjs-pn-views-container { box-shadow: none !important; border-left: 1px solid #e7e5e4 !important; }
 
 /* Canvas */
-.gjs-cv-canvas { background: #eef0f4; }
+.gjs-editor .gjs-cv-canvas { background-color: #eef0f4 !important; }
 
-/* ── Blocos viram cards bonitos ── */
-.gjs-blocks-c { gap: 8px; padding: 10px; }
-.gjs-block {
-  width: calc(33.333% - 8px);
-  min-height: 74px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px;
-  border: 1px solid #e7e5e4;
-  border-radius: 12px;
-  background: #fafaf9;
-  box-shadow: none;
-  color: #57534e;
+/* ── Blocos viram cards claros ── */
+.gjs-editor .gjs-blocks-c { gap: 8px !important; padding: 10px !important; }
+.gjs-editor .gjs-block {
+  width: calc(50% - 8px) !important;
+  min-height: 76px !important;
+  display: flex !important; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px !important;
+  border: 1px solid #e7e5e4 !important;
+  border-radius: 12px !important;
+  background-color: #fafaf9 !important;
+  box-shadow: none !important;
+  color: #57534e !important;
   transition: all .15s ease;
-  padding: 8px 6px;
+  padding: 10px 8px !important;
 }
-.gjs-block:hover {
-  border-color: #c4b5fd;
-  background: #faf5ff;
-  color: #7c3aed;
-  box-shadow: 0 4px 12px -4px rgba(124,58,237,.25);
-  transform: translateY(-1px);
+.gjs-editor .gjs-block:hover {
+  border-color: #c4b5fd !important;
+  background-color: #faf5ff !important;
+  color: #7c3aed !important;
+  box-shadow: 0 6px 16px -6px rgba(124,58,237,.3) !important;
+  transform: translateY(-2px);
 }
-.gjs-block svg, .gjs-block i { fill: currentColor; }
-.gjs-block-label { font-size: 11px; font-weight: 600; line-height: 1.2; }
-.gjs-block-category .gjs-title {
-  background: transparent; border: 0; color: #78716c;
-  font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-  padding: 10px 12px 4px;
+.gjs-editor .gjs-block svg { fill: currentColor !important; }
+.gjs-editor .gjs-block-label { font-size: 11px !important; font-weight: 600 !important; line-height: 1.2 !important; color: inherit !important; }
+.gjs-editor .gjs-block-category .gjs-title,
+.gjs-editor .gjs-block-categories .gjs-title {
+  background-color: #fff !important; border: 0 !important; color: #78716c !important;
+  font-size: 10px !important; font-weight: 700 !important; letter-spacing: .08em; text-transform: uppercase;
+  padding: 12px 12px 4px !important;
 }
+.gjs-editor .gjs-block-categories { border: 0 !important; }
 
-/* Categorias abertas por padrão ficam sem borda pesada */
-.gjs-block-categories { border: 0; }
-
-/* ── Painel direito (estilos/config) ── */
-.gjs-pn-views { border-bottom: 1px solid #e7e5e4; }
-.gjs-pn-views-container { box-shadow: none; border-left: 1px solid #e7e5e4; }
-.gjs-sm-sector-title, .gjs-clm-tags-field, .gjs-trt-header {
-  font-weight: 600; color: #44403c;
+/* Campos do painel de estilos/config */
+.gjs-editor .gjs-field,
+.gjs-editor .gjs-sm-field input,
+.gjs-editor .gjs-clm-field,
+.gjs-editor .gjs-trt-trait input,
+.gjs-editor .gjs-trt-trait select {
+  border-radius: 8px !important; border: 1px solid #e7e5e4 !important; background-color: #fff !important; color: #44403c !important;
 }
-.gjs-field, .gjs-sm-field input, .gjs-clm-field, .gjs-trt-trait input, .gjs-trt-trait select {
-  border-radius: 8px; border: 1px solid #e7e5e4; background: #fff;
-}
-.gjs-btn-prim {
-  background: #7c3aed; color: #fff; border-radius: 8px; border: 0; font-weight: 600;
-}
+.gjs-editor .gjs-sm-sector-title,
+.gjs-editor .gjs-trt-header,
+.gjs-editor .gjs-clm-tags-field { color: #44403c !important; font-weight: 600 !important; }
 
-/* Modal (asset manager / código) */
-.gjs-mdl-dialog { border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px -12px rgba(0,0,0,.4); }
-.gjs-mdl-header { background: #fff; border-bottom: 1px solid #e7e5e4; }
-.gjs-mdl-title { font-weight: 700; color: #292524; }
+/* Modais (galeria de imagens / código) */
+.gjs-mdl-dialog { border-radius: 16px !important; overflow: hidden; box-shadow: 0 24px 60px -12px rgba(0,0,0,.4) !important; }
+.gjs-mdl-header { background-color: #fff !important; border-bottom: 1px solid #e7e5e4 !important; }
+.gjs-mdl-title { font-weight: 700 !important; color: #292524 !important; }
+.gjs-mdl-content { background-color: #fff !important; color: #44403c !important; }
 
-/* Asset manager (galeria de imagens) mais convidativo */
-.gjs-am-assets-cont { background: #fafaf9; }
+/* Galeria de imagens (asset manager) mais convidativa */
+.gjs-am-assets-cont, .gjs-am-assets { background-color: #fafaf9 !important; }
 .gjs-am-file-uploader #gjs-am-uploadFile,
-.gjs-am-file-uploader .gjs-am-dropzone {
-  border: 2px dashed #c4b5fd; border-radius: 14px; background: #faf5ff; color: #7c3aed;
-  padding: 28px; font-weight: 600;
+.gjs-am-file-uploader form,
+.gjs-am-dropzone {
+  border: 2px dashed #c4b5fd !important; border-radius: 14px !important; background-color: #faf5ff !important; color: #7c3aed !important;
+  padding: 28px !important; font-weight: 600 !important;
 }
-.gjs-am-add-asset .gjs-am-add-field input { border-radius: 8px; }
-.gjs-am-asset { border-radius: 12px; overflow: hidden; }
-.gjs-am-preview-cont { border-radius: 12px; }
+.gjs-am-asset { border-radius: 12px !important; overflow: hidden; }
+.gjs-btn-prim { background-color: #7c3aed !important; color: #fff !important; border-radius: 8px !important; border: 0 !important; font-weight: 600 !important; }
