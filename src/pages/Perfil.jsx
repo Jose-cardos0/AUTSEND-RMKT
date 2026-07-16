@@ -18,6 +18,7 @@ import imgCall60 from '../assets/minutes/60minutes.png'
 import imgCall120 from '../assets/minutes/120minutes.png'
 import globoIcon from '../assets/global.png'
 import euaFlag from '../assets/flags/euaflaglarge.png'
+import Bandeira from '../components/Bandeira'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
 const PACOTE_IMG = { 500: img500, 1000: img1000, 2500: img2500 }
@@ -56,6 +57,7 @@ function BarraUso({ icon: Icon, titulo, usados, limite, cor = 'primary' }) {
   const cores = {
     primary: 'bg-primary-500',
     violet: 'bg-violet-500',
+    emerald: 'bg-emerald-500',
   }
   return (
     <div className="p-4 rounded-xl border border-surface-200 bg-surface-50/60">
@@ -176,6 +178,7 @@ export default function Perfil() {
   const planoLabel = PLANO_LABEL[stats?.plano] || 'Free'
   const fotoURL = stats?.fotoURL || null
   const smsLimiteEfetivo = isAdmin ? -1 : ((stats?.smsLimite || 0) + (stats?.smsCreditos || 0))
+  const callLimiteEfetivo = isAdmin ? -1 : ((stats?.callMinLimite || 0) + Math.floor((stats?.callCreditosSeg || 0) / 60))
   const emailLimiteEfetivo = isAdmin ? -1 : ((stats?.emailsLimite || 0) + (stats?.emailCreditos || 0))
   const pausada = !!stats?.pausada
 
@@ -228,6 +231,7 @@ export default function Perfil() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <BarraUso icon={Mail} titulo="E-mails" usados={stats?.emailsUsados || 0} limite={emailLimiteEfetivo} cor="primary" />
             <BarraUso icon={MessageSquare} titulo="SMS" usados={stats?.smsUsados || 0} limite={smsLimiteEfetivo} cor="violet" />
+            <BarraUso icon={Phone} titulo="Ligação IA (min)" usados={stats?.callMinUsados || 0} limite={callLimiteEfetivo} cor="emerald" />
           </div>
           {isAdmin ? (
             <p className="text-xs text-stone-400 mt-2">Conta de administrador — envios ilimitados.</p>
@@ -308,11 +312,10 @@ export default function Perfil() {
           </div>
         </Panel>
 
-        <Panel title="Comprar minutos de Ligação IA" icon={Phone}>
-          <p className="text-xs text-stone-500 -mt-1 mb-1">
-            Ligação por voz com IA (EUA/Internacional e WhatsApp). R$ 1,50/min, debitado por segundo. Os minutos não expiram.
-            {stats?.callCreditosSeg > 0 && <> Você tem <b>{Math.floor((stats.callCreditosSeg || 0) / 60)} min</b> em crédito.</>}
-          </p>
+        <Panel title="Comprar minutos de Ligação e WhatsApp IA" icon={Phone}>
+          {stats?.callCreditosSeg > 0 && (
+            <p className="text-xs text-stone-500 -mt-1 mb-1">Você tem <b>{Math.floor((stats.callCreditosSeg || 0) / 60)} min</b> em crédito.</p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {PACOTES_CREDITO_CALL.map((p) => {
               const id = `call:${p.key}`
@@ -322,8 +325,11 @@ export default function Perfil() {
                   <div className="text-center">
                     <img src={PACOTE_IMG_CALL[p.minutos]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
                     <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.minutos}</p>
-                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1">
-                      <Phone className="w-3.5 h-3.5" /> minutos de ligação
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5" />
+                      <Bandeira code="US" className="w-4 h-auto rounded-sm" />
+                      <Bandeira code="BR" className="w-4 h-auto rounded-sm" />
+                      minutos de ligação
                     </p>
                     <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
                   </div>

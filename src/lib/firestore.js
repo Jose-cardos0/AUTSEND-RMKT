@@ -724,6 +724,25 @@ export async function deleteCallAgent(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'callAgents', id))
 }
 
+/** Configurações de chamada salvas (presets reutilizáveis). */
+export async function getCallConfigs(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'callConfigs'))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+export async function saveCallConfig(uid, data) {
+  const ref = await addDoc(collection(db, 'users', uid, 'callConfigs'), { ...data, createdAt: serverTimestamp() })
+  return ref.id
+}
+export async function deleteCallConfig(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'callConfigs', id))
+}
+
 /** Disparos de ligação (resumo de cada campanha). */
 export async function getCallDisparos(uid, canal) {
   const snap = await getDocs(collection(db, 'users', uid, 'callDisparos'))

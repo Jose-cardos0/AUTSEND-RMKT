@@ -38,6 +38,8 @@ export default function Select({
   searchable = true,
   title = 'Selecionar',
   withThumb = false,
+  /** Gatilho mais baixo/fino (pra caber em headers). */
+  compact = false,
   /** Gatilho customizado (ex.: só um ícone). Se passado, substitui o botão padrão. */
   trigger,
   /** Mostra uma prévia (HTML) no hover de cada opção que tiver option.preview */
@@ -102,7 +104,8 @@ export default function Select({
           onClick={() => setOpen(true)}
           aria-haspopup="listbox"
           className={clsx(
-            'w-full flex items-center justify-between gap-2 px-3 py-2.5 min-h-[44px] rounded-xl border bg-white text-sm text-left transition-colors',
+            'w-full flex items-center justify-between gap-2 rounded-xl border bg-white text-sm text-left transition-colors',
+            compact ? 'px-3 py-1.5 min-h-[34px]' : 'px-3 py-2.5 min-h-[44px]',
             disabled
               ? 'border-surface-200 opacity-60 cursor-not-allowed'
               : open

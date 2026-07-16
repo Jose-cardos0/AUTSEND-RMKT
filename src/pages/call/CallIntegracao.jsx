@@ -4,77 +4,111 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { auth, functions } from '../../lib/firebase'
-import PageShell, { Panel } from '../../components/PageShell'
-import { usePlano } from '../../lib/PlanoContext'
-import { Phone, Check, Loader2, Sparkles, ShieldCheck, CreditCard } from 'lucide-react'
+import { listarNumerosSMS } from '../../lib/smsNumeros'
+import PageShell from '../../components/PageShell'
+import PageLoader from '../../components/PageLoader'
+import Bandeira from '../../components/Bandeira'
+import { Phone, Check, Loader2, ChevronDown, ShoppingCart } from 'lucide-react'
+
+function formatarNumero(n) {
+  const d = String(n || '').replace(/\D/g, '')
+  if (d.length === 11 && d.startsWith('1')) return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`
+  return n
+}
+
+/** Seção recolhível — mesmo padrão do "Meus números" do SMS (ícone faded no canto direito). */
+function Secao({ title, icon: Icon, open, onToggle, children, bgIcon: BgIcon }) {
+  return (
+    <div className="app-panel rounded-2xl overflow-hidden relative">
+      {BgIcon && <BgIcon className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-primary-500 opacity-[0.06] z-0" />}
+      <div className="relative z-10 flex items-center gap-2 px-4 sm:px-5 py-3.5">
+        <button type="button" onClick={onToggle} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+          <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
+            {Icon && <Icon className="w-5 h-5 text-primary-600 shrink-0" />}
+            <span className="truncate">{title}</span>
+          </span>
+        </button>
+        <button type="button" onClick={onToggle} className="shrink-0 text-stone-400 hover:text-stone-600 transition-colors" aria-label={open ? 'Recolher' : 'Expandir'}>
+          <ChevronDown className={`w-5 h-5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+      {open && <div className="relative z-10 px-4 sm:px-5 pb-4 pt-1">{children}</div>}
+    </div>
+  )
+}
 
 export default function CallIntegracao() {
   const [user] = useAuthState(auth)
   const { canal: canalParam } = useParams()
   const canal = canalParam === 'api' ? 'api' : 'eua'
-  const plano = usePlano()
-  const [ativando, setAtivando] = useState(false)
-  const [vozAtiva, setVozAtiva] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [numeros, setNumeros] = useState([])
+  const [aberto, setAberto] = useState(false)
+  const [ativandoId, setAtivandoId] = useState(null)
 
-  useEffect(() => { setVozAtiva(!!plano?.temCallVoz) }, [plano?.temCallVoz])
+  const carregar = async () => {
+    if (!user?.uid) return
+    try { const r = await listarNumerosSMS(); setNumeros(r?.numeros || []) }
+    catch { setNumeros([]) }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { carregar() }, [user?.uid])
 
-  const ativarVoz = async () => {
-    setAtivando(true)
+  const ativarVoz = async (n) => {
+    setAtivandoId(n.id)
     try {
       const fn = httpsCallable(functions, 'callAtivarVozNoChip')
-      const r = await fn({})
-      setVozAtiva(true)
-      toast.success(`Voz ativada em ${r.data?.ativados || 1} número(s)! Já pode ligar com IA.`)
+      await fn({ numeroId: n.id })
+      setNumeros((prev) => prev.map((x) => x.id === n.id ? { ...x, vozAtiva: true } : x))
+      toast.success('Ligação IA ativada neste chip!')
     } catch (err) {
       toast.error(err.message || 'Não consegui ativar a voz.')
-    } finally {
-      setAtivando(false)
-    }
+    } finally { setAtivandoId(null) }
   }
 
-  return (
-    <PageShell
-      badge={`Call · Integração · ${canal === 'api' ? "API's" : 'EUA'}`}
-      subtitle="Ative a Ligação IA no seu número e comece a recuperar vendas por voz."
-    >
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Ativar voz no chip */}
-        <Panel title="Ativar voz no meu chip (EUA)" icon={Phone}>
-          <p className="text-sm text-stone-600 leading-relaxed">
-            O mesmo número que você já usa no SMS também faz ligações. Ativar é grátis — habilita a voz
-            do seu chip pra IA ligar pros seus contatos.
-          </p>
-          {vozAtiva ? (
-            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-emerald-700 text-sm font-medium">
-              <Check className="w-5 h-5 shrink-0" /> Voz ativada no seu chip. Tudo pronto pra ligar.
-            </div>
-          ) : (
-            <button
-              onClick={ativarVoz}
-              disabled={ativando}
-              className="btn-primary w-full sm:w-auto min-h-[44px]"
-            >
-              {ativando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
-              Ativar voz no meu chip
-            </button>
-          )}
-          <p className="text-xs text-stone-400">
-            Ainda não tem um número? <Link to="/sms/integracao" className="text-primary-600 hover:underline">Compre um chip EUA em SMS → Integração</Link>.
-          </p>
-        </Panel>
+  if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
-        {/* Como funciona / créditos */}
-        <Panel title="Como funciona a Ligação IA" icon={Sparkles}>
-          <ul className="text-sm text-stone-600 space-y-2.5">
-            <li className="flex gap-2"><Sparkles className="w-4 h-4 text-primary-600 shrink-0 mt-0.5" /> A IA (Grok) escreve o roteiro e liga pro seu contato falando com voz natural em português.</li>
-            <li className="flex gap-2"><CreditCard className="w-4 h-4 text-primary-600 shrink-0 mt-0.5" /> Você paga por <b>minuto de ligação</b> (R$ 1,50/min), debitado por segundo. Só cobra ligação atendida.</li>
-            <li className="flex gap-2"><ShieldCheck className="w-4 h-4 text-primary-600 shrink-0 mt-0.5" /> Seu plano já inclui <b>{plano?.callMin === -1 ? '∞' : (plano?.callMin ?? 0)} min/mês</b> grátis. Precisou de mais? Compre minutos no Perfil.</li>
-          </ul>
-          <Link to="/perfil" className="btn-secondary w-full sm:w-auto min-h-[44px] mt-1">
-            <CreditCard className="w-4 h-4" /> Comprar minutos de ligação
-          </Link>
-        </Panel>
-      </div>
+  return (
+    <PageShell badge={`Call · Integração · ${canal === 'api' ? "API's" : 'EUA'}`}>
+      <Secao title="Ativar voz no meu chip (EUA)" icon={Phone} bgIcon={Phone} open={aberto} onToggle={() => setAberto((v) => !v)}>
+        {numeros.length === 0 ? (
+          <div className="py-8 text-center">
+            <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-3"><Phone className="w-6 h-6" /></span>
+            <p className="text-sm text-stone-600 font-medium">Você ainda não tem um número (EUA).</p>
+            <Link to="/sms/integracao" className="btn-primary mt-4 min-h-[42px] px-5 inline-flex"><ShoppingCart className="w-4 h-4" /> Comprar um chip EUA</Link>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-stone-700">Selecione o chip que a <strong>Ligação IA</strong> vai usar.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {numeros.map((n) => (
+                <div key={n.id} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${n.vozAtiva ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5">
+                        <Bandeira code={n.pais} numero={n.numero} className="w-4 h-auto rounded-sm shrink-0" />
+                        {formatarNumero(n.numero)}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        {n.vozAtiva ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium"><Check className="w-3 h-3" /> Ativo · Ligação EUA</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
+                        )}
+                      </div>
+                    </div>
+                    {!n.vozAtiva && (
+                      <button type="button" onClick={() => ativarVoz(n)} disabled={ativandoId === n.id} className="btn-primary shrink-0 min-h-[38px] text-sm px-3 disabled:opacity-60">
+                        {ativandoId === n.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />} Ativar
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Secao>
     </PageShell>
   )
 }

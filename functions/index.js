@@ -1165,7 +1165,7 @@ exports.smsListarNumeros = onCall({ region: 'us-central1' }, async (request) => 
     const x = d.data()
     return {
       id: d.id, numero: x.number, status: x.status || 'active', principal: !!x.principal,
-      erro: x.erro || null, valorMensal: x.valorMensal || 29.9,
+      erro: x.erro || null, valorMensal: x.valorMensal || 29.9, vozAtiva: !!x.vozAtiva,
       criadoEm: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,
     }
   })
@@ -1180,7 +1180,7 @@ async function listarNumerosMapeados(uid) {
     const x = d.data()
     return {
       id: d.id, numero: x.number, status: x.status || 'active', principal: !!x.principal,
-      erro: x.erro || null, restritoMotivo: x.restritoMotivo || null, valorMensal: x.valorMensal || 29.9,
+      erro: x.erro || null, restritoMotivo: x.restritoMotivo || null, valorMensal: x.valorMensal || 29.9, vozAtiva: !!x.vozAtiva,
       criadoEm: x.createdAt?.toMillis ? x.createdAt.toMillis() : null,
     }
   })
@@ -1736,9 +1736,47 @@ async function resolverCallEnvio(uid, ehAdmin, forcar) {
 }
 
 /** Grok escreve um roteiro curto e natural pra ser FALADO na ligação (não é texto pra ler). */
-async function gerarRoteiroCallGrok({ produto, nome, objetivo, tom }) {
-  const sys = 'Você escreve roteiros CURTOS de ligação telefônica em português do Brasil, para serem FALADOS por uma voz de IA. Regras: soe humano e caloroso; frases curtas; sem emojis; sem markdown; sem links falados por extenso; no máximo 60 palavras; comece cumprimentando pelo primeiro nome se houver; uma única chamada pra ação clara no fim.'
-  const usr = `Escreva o roteiro da ligação.\nObjetivo: ${objetivo || 'recuperar uma compra abandonada'}\nProduto: ${produto || 'nosso produto'}\nNome do cliente: ${nome || '(desconhecido)'}\nTom: ${tom || 'amigável e direto'}\nResponda APENAS com o roteiro falado, sem aspas.`
+// Objetivos de campanha (chave do front → instrução detalhada pro Grok).
+const CALL_OBJETIVOS = {
+  carrinho_abandonado: 'recuperar um carrinho abandonado e trazer o cliente de volta para finalizar a compra',
+  boas_vindas: 'dar as boas-vindas a quem acabou de comprar e reforçar que fez uma ótima escolha',
+  pos_venda: 'fazer um acompanhamento pós-venda, checar a satisfação e oferecer ajuda',
+  recuperar_assinatura: 'reativar uma assinatura cancelada ou um pagamento que foi recusado',
+  oferta: 'apresentar uma oferta especial e incentivar a compra agora',
+  lembrete: 'lembrar o cliente sobre um prazo, evento ou pagamento pendente',
+}
+// Tom/emoção (chave do front → instrução pro Grok).
+const CALL_TONS = {
+  persuasivo: 'persuasivo e convincente, usando gatilhos de venda',
+  engracado: 'leve e bem-humorado, arrancando um sorriso',
+  direto: 'direto e objetivo, sem rodeios',
+  emocional: 'emocional, tocando nas dores e desejos da pessoa',
+  amigavel: 'amigável e caloroso, como um amigo próximo',
+  urgente: 'com senso de urgência e escassez, incentivando a agir já',
+}
+
+// Idioma do roteiro (chave do front → instrução pro Grok).
+const CALL_IDIOMAS = {
+  pt: 'português do Brasil',
+  en: 'inglês (English)',
+  es: 'espanhol (Español)',
+}
+
+async function gerarRoteiroCallGrok({ objetivo, tom, produto, categoria, idioma }) {
+  const obj = CALL_OBJETIVOS[objetivo] || objetivo || 'recuperar uma compra abandonada'
+  const tomTxt = CALL_TONS[tom] || 'amigável e direto'
+  const lang = CALL_IDIOMAS[idioma] || CALL_IDIOMAS.pt
+  const sys = `Você é um VENDEDOR experiente que escreve roteiros CURTOS de ligação telefônica. O roteiro DEVE ser escrito 100% em ${lang}. O texto será FALADO em voz alta por uma IA — então escreva EXATAMENTE como se fala, não como se escreve. Regras rígidas: ` +
+    'soe 100% humano, com emoção e calor na voz; frases curtas e naturais para a fala; no máximo 60 palavras; UMA única chamada pra ação clara no fim. ' +
+    'PROIBIDO (porque fica ruim quando falado): emojis, markdown, hashtags, aspas, parênteses, asteriscos, qualquer símbolo; abreviações ou gírias escritas; soletrar links ou e-mails; siglas soltas. ' +
+    'Escreva tudo por extenso como a pessoa fala. Números e valores por extenso quando fizer sentido. Use pontuação natural para dar ritmo de fala. ' +
+    'IMPORTANTE: use exatamente {nome_cliente} onde entra o nome da pessoa e {nome_produto} onde entra o nome do produto (mantenha essas duas variáveis em inglês assim mesmo, com as chaves) — NUNCA invente nomes nem escreva colchetes você mesmo.'
+  const usr = `Escreva o roteiro da ligação como um vendedor de verdade, em ${lang}.\n` +
+    `Objetivo: ${obj}.\n` +
+    `Tom/emoção: seja ${tomTxt}.\n` +
+    `Produto: ${produto || '{nome_produto}'}.\n` +
+    `O que é o produto (para você entender): ${categoria || 'não informado'}.\n` +
+    `Comece cumprimentando por {nome_cliente}. Responda APENAS com o roteiro falado, sem aspas.`
   const content = await callGrok([{ role: 'system', content: sys }, { role: 'user', content: usr }])
   return String(content || '').trim().slice(0, 600)
 }
@@ -1756,11 +1794,115 @@ function semAcentosManter(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+// ───────── ElevenLabs — voz humanizada (gera o áudio; a Telnyx só toca) ─────────
+// Cada "atendente" mapeia pra um voice_id do ElevenLabs, POR CANAL (EUA/BR).
+// Defaults públicos garantem funcionamento; o cliente cola seus voice_id no .env.
+function elevenVoiceId(voz, canal) {
+  const pref = canal === 'api' ? 'BR' : 'EUA'
+  const cfg = {
+    'Polly.Camila-Neural': process.env[`ELEVEN_VOICE_${pref}_CAMILA`],
+    'Polly.Vitoria-Neural': process.env[`ELEVEN_VOICE_${pref}_VITORIA`],
+    'Polly.Thiago-Neural': process.env[`ELEVEN_VOICE_${pref}_THIAGO`],
+    'Polly.Ricardo': process.env[`ELEVEN_VOICE_${pref}_RICARDO`],
+  }
+  const fallback = {
+    'Polly.Camila-Neural': 'EXAVITQu4vr4xnSDxMaL',
+    'Polly.Vitoria-Neural': '21m00Tcm4TlvDq8ikWAM',
+    'Polly.Thiago-Neural': 'ErXwobaYiN019PkySvjV',
+    'Polly.Ricardo': 'TxGEqnHWrfWFTfGW9XjX',
+  }
+  return cfg[voz] || fallback[voz] || fallback['Polly.Camila-Neural']
+}
+
+/** Gera o áudio (mp3) do texto com a voz humanizada do ElevenLabs. Retorna um Buffer. */
+async function elevenTTS(texto, voz, velocidade, canal) {
+  const key = process.env.ELEVENLABS_API_KEY
+  if (!key) throw new Error('Voz humanizada não configurada (ELEVENLABS_API_KEY).')
+  const voiceId = elevenVoiceId(voz, canal)
+  const speed = Math.min(1.2, Math.max(0.7, Number(velocidade) || 1))
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+    body: JSON.stringify({
+      text: String(texto || '').slice(0, 900),
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.25, use_speaker_boost: true, speed },
+    }),
+  })
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`ElevenLabs ${res.status}: ${t.slice(0, 180)}`)
+  }
+  const ab = await res.arrayBuffer()
+  return Buffer.from(ab)
+}
+
+/**
+ * Áudio com CACHE: mesmo (canal+voz+velocidade+texto) → gera 1 vez só no ElevenLabs.
+ * Economiza créditos na pré-escuta repetida e em roteiros sem {nome_cliente} (áudio igual pra todos).
+ * Retorna o mp3 em base64.
+ */
+async function getOrGenAudioB64(texto, voz, velocidade, canal) {
+  const speed = Math.min(1.2, Math.max(0.7, Number(velocidade) || 1))
+  const hash = crypto.createHash('sha1').update(`${canal || 'eua'}|${voz}|${speed}|${texto}`).digest('hex')
+  const ref = db.doc(`callAudioCache/${hash}`)
+  try {
+    const snap = await ref.get()
+    if (snap.exists && snap.data().audioB64) {
+      ref.set({ usadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => {})
+      return snap.data().audioB64
+    }
+  } catch (_) {}
+  const buf = await elevenTTS(texto, voz, velocidade, canal)
+  const audioB64 = buf.toString('base64')
+  ref.set({ audioB64, createdAt: admin.firestore.FieldValue.serverTimestamp(), usadoEm: admin.firestore.FieldValue.serverTimestamp() }).catch(() => {})
+  return audioB64
+}
+
+/**
+ * Gera o áudio de UM contato reaproveitando o cache ao máximo, SEM soar picotado:
+ * quebra o roteiro em FRASES (após . ! ? … ou quebra de linha). A frase que tem o nome é gerada
+ * inteira (o nome flui natural dentro dela); as pausas ficam só nos limites naturais entre frases.
+ * Frases SEM variável são geradas 1x e reaproveitadas por toda a campanha (cache).
+ */
+async function gerarAudioContatoB64(rawTexto, contato, voz, velocidade, canal) {
+  const texto = String(rawTexto || '').trim()
+  if (!texto) return await getOrGenAudioB64('', voz, velocidade, canal)
+  const frases = texto.split(/(?<=[.!?…])\s+|\n+/).map((s) => s.trim()).filter(Boolean)
+  const lista = frases.length ? frases : [texto]
+  const buffers = []
+  for (const frase of lista) {
+    const filled = replaceVariables(frase, { nome: contato.nome || '', telefone: contato.telefone || '', email: contato.email || '' }, { nome: contato.produto || '' }).trim()
+    if (!filled) continue
+    const b64 = await getOrGenAudioB64(filled, voz, velocidade, canal)
+    buffers.push(Buffer.from(b64, 'base64'))
+  }
+  if (!buffers.length) return await getOrGenAudioB64(texto, voz, velocidade, canal)
+  return Buffer.concat(buffers).toString('base64')
+}
+
+/** Limpa o cache de áudio não usado há +7 dias (evita crescer sem limite). */
+exports.limparCacheAudioCall = onSchedule({ schedule: 'every 24 hours', region: 'us-central1' }, async () => {
+  const limite = Date.now() - 7 * 24 * 60 * 60 * 1000
+  const snap = await db.collection('callAudioCache').where('usadoEm', '<', admin.firestore.Timestamp.fromMillis(limite)).limit(400).get()
+  const batch = db.batch()
+  snap.docs.forEach((d) => batch.delete(d.ref))
+  if (!snap.empty) await batch.commit()
+})
+
 /**
  * Inicia uma ligação torpedo. Cria a chamada e guarda o contexto em callPending/{ccid}
  * pro webhook saber o que falar e como debitar. Retorna { ok, ccid } ou lança.
  */
 async function iniciarLigacaoTorpedo(cfg, to, ctx) {
+  // 1) Gera o áudio emendando trechos do cache (só o nome/produto é gerado por valor único).
+  const audioB64 = await gerarAudioContatoB64(
+    ctx.texto,
+    { nome: ctx.nome || '', produto: ctx.produto || '', telefone: to, email: ctx.email || '' },
+    ctx.voz || CALL_VOZ_PADRAO, ctx.velocidade, ctx.canal,
+  )
+  const mensagemLog = replaceVariables(ctx.texto, { nome: ctx.nome || '', telefone: to, email: ctx.email || '' }, { nome: ctx.produto || '' })
+  // 2) Cria a chamada na Telnyx.
   const res = await fetch('https://api.telnyx.com/v2/calls', {
     method: 'POST',
     headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
@@ -1773,15 +1915,35 @@ async function iniciarLigacaoTorpedo(cfg, to, ctx) {
   }
   const ccid = data?.data?.call_control_id
   if (!ccid) throw new Error('A Telnyx não retornou o identificador da chamada.')
+  // 3) Guarda o contexto + o áudio (a Telnyx busca via telnyxAudioServe e toca).
   await db.doc(`callPending/${ccid}`).set({
     uid: ctx.uid, apiKey: cfg.apiKey, from: cfg.from, to,
-    texto: ctx.texto, voz: ctx.voz || CALL_VOZ_PADRAO, velocidade: ctx.velocidade || 1,
+    texto: mensagemLog, voz: ctx.voz || CALL_VOZ_PADRAO, velocidade: ctx.velocidade || 1, audioB64,
     canal: ctx.canal || 'eua', contaPropria: !!ctx.contaPropria,
     leadId: ctx.leadId || null, produto: ctx.produto || '', nome: ctx.nome || '', agenteNome: ctx.agenteNome || '',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
   return { ok: true, ccid }
 }
+
+/** Endpoint público que devolve o mp3 da ligação (a Telnyx busca essa URL pra tocar). */
+exports.telnyxAudioServe = onRequest({ region: 'us-central1', timeoutSeconds: 20, memory: '256MiB' }, async (req, res) => {
+  try {
+    const ccid = String(req.query.ccid || '')
+    if (!ccid) { res.status(400).send('sem ccid'); return }
+    const snap = await db.doc(`callPending/${ccid}`).get()
+    const b64 = snap.exists ? snap.data().audioB64 : null
+    if (!b64) { res.status(404).send('não encontrado'); return }
+    const buf = Buffer.from(b64, 'base64')
+    res.set('Content-Type', 'audio/mpeg')
+    res.set('Content-Length', String(buf.length))
+    res.set('Cache-Control', 'no-store')
+    res.status(200).send(buf)
+  } catch (err) {
+    console.error('telnyxAudioServe', err?.message || err)
+    res.status(500).send('erro')
+  }
+})
 
 /** Ação da Telnyx: falar (TTS). */
 async function telnyxSpeak(apiKey, ccid, ssml, voz) {
@@ -1790,12 +1952,21 @@ async function telnyxSpeak(apiKey, ccid, ssml, voz) {
     body: JSON.stringify({ payload: ssml, payload_type: 'ssml', voice: voz || CALL_VOZ_PADRAO, language: 'pt-BR' }),
   })
 }
+/** Ação da Telnyx: tocar um áudio (mp3 do ElevenLabs). */
+async function telnyxPlayback(apiKey, ccid, audioUrl) {
+  await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/playback_start`, {
+    method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audio_url: audioUrl }),
+  })
+}
 /** Ação da Telnyx: desligar. */
 async function telnyxHangup(apiKey, ccid) {
   await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/hangup`, {
     method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: '{}',
   })
 }
+
+const AUDIO_BASE_URL = 'https://us-central1-afiliadocdnx.cloudfunctions.net/telnyxAudioServe'
 
 /** Webhook da Telnyx Voice (Call Control). Conduz o torpedo e debita os segundos ao desligar. */
 exports.telnyxVoiceWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
@@ -1811,12 +1982,15 @@ exports.telnyxVoiceWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
 
     if (tipo === 'call.answered') {
       await pendRef.set({ answeredAtMs: Date.now(), status: 'atendida' }, { merge: true })
-      const ssml = montarSSMLCall(p.texto || '', p.velocidade)
-      await telnyxSpeak(p.apiKey, ccid, ssml, p.voz)
+      if (p.audioB64) {
+        await telnyxPlayback(p.apiKey, ccid, `${AUDIO_BASE_URL}?ccid=${encodeURIComponent(ccid)}`) // voz humanizada (ElevenLabs)
+      } else {
+        await telnyxSpeak(p.apiKey, ccid, montarSSMLCall(p.texto || '', p.velocidade), p.voz) // fallback TTS
+      }
       res.status(200).json({ ok: true }); return
     }
-    if (tipo === 'call.speak.ended') {
-      await telnyxHangup(p.apiKey, ccid) // acabou de falar → desliga (fecha o torpedo)
+    if (tipo === 'call.playback.ended' || tipo === 'call.speak.ended') {
+      await telnyxHangup(p.apiKey, ccid) // terminou de tocar → desliga (fecha o torpedo)
       res.status(200).json({ ok: true }); return
     }
     if (tipo === 'call.hangup') {
@@ -1844,12 +2018,28 @@ exports.telnyxVoiceWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
   }
 })
 
+/** Pré-escuta: gera o áudio ElevenLabs do roteiro e devolve como data URL (a mesma voz da ligação). */
+exports.callPreviewVoz = onCall({ region: 'us-central1', timeoutSeconds: 30, memory: '512MiB' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const d = request.data || {}
+  const texto = String(d.texto || '').trim()
+  if (!texto) throw new HttpsError('invalid-argument', 'Escreva ou gere o roteiro primeiro.')
+  try {
+    // Usa o mesmo stitching da ligação (nome de exemplo "Maria") — pré-aquece o cache dos trechos fixos.
+    const audioB64 = await gerarAudioContatoB64(texto.slice(0, 800), { nome: 'Maria', produto: d.produto || 'o produto', telefone: '', email: '' }, d.voz || CALL_VOZ_PADRAO, d.velocidade, d.canal)
+    return { audio: `data:audio/mpeg;base64,${audioB64}` }
+  } catch (err) {
+    throw new HttpsError('internal', err.message || 'Não consegui gerar a pré-escuta.')
+  }
+})
+
 /** Builder do Agente IA: Grok escreve o roteiro falado da ligação. */
 exports.callGerarRoteiro = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const d = request.data || {}
-  const texto = await gerarRoteiroCallGrok({ produto: d.produto, nome: d.nome, objetivo: d.objetivo, tom: d.tom })
+  const texto = await gerarRoteiroCallGrok({ objetivo: d.objetivo, tom: d.tom, produto: d.produto, categoria: d.categoria, idioma: d.idioma })
   if (!texto) throw new HttpsError('internal', 'Não consegui gerar o roteiro agora. Tente de novo.')
   return { texto }
 })
@@ -1858,12 +2048,14 @@ exports.callGerarRoteiro = onCall({ region: 'us-central1', timeoutSeconds: 60 },
 exports.callAtivarVozNoChip = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const numeroId = String(request.data?.numeroId || '')
   const vc = await getTelnyxVoiceConfig()
   if (!vc.apiKey || !vc.connectionId) throw new HttpsError('failed-precondition', 'A Ligação IA ainda não foi ativada pela plataforma.')
   const snap = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').get()
   if (snap.empty) throw new HttpsError('failed-precondition', 'Você ainda não tem um número (EUA). Compre um chip em SMS → Integração.')
   let ativados = 0
   for (const doc of snap.docs) {
+    if (numeroId && doc.id !== numeroId) continue // ativa só o chip escolhido
     const n = doc.data()
     if (!n.telnyxPhoneId) continue
     try {
@@ -1917,11 +2109,11 @@ exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300 }, as
   for (const c of contatos) {
     const norm = normalizarE164(c.telefone || c.numero || '', { permitirBR: contaPropria })
     if (!norm.ok) { erros.push({ telefone: c.telefone, erro: motivoNumeroInvalido(norm.motivo) }); continue }
-    const txt = replaceVariables(texto, { nome: c.nome || '', telefone: norm.e164, email: c.email || '' }, { nome: c.produto || '' })
     try {
+      // Passa o texto CRU (com variáveis) — o stitching gera só o nome/produto por valor e reaproveita o resto do cache.
       await iniciarLigacaoTorpedo(cfg, norm.e164, {
-        uid, texto: txt, voz, velocidade, canal, contaPropria,
-        leadId: c.leadId || null, produto: c.produto || '', nome: c.nome || '', agenteNome: d.agenteNome || '',
+        uid, texto, voz, velocidade, canal, contaPropria,
+        leadId: c.leadId || null, produto: c.produto || '', nome: c.nome || '', email: c.email || '', agenteNome: d.agenteNome || '',
       })
       iniciadas++
     } catch (e) { erros.push({ telefone: norm.e164, erro: traduzErroVoz(e.message) }) }

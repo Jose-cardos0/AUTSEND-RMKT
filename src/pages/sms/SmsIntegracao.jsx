@@ -544,6 +544,8 @@ export default function SmsIntegracao() {
                               <span className="inline-flex items-center gap-1 text-xs text-red-600"><Ban className="w-3 h-3" /> {banido ? 'Banido' : 'Restringido'}</span>
                             ) : comErro ? (
                               <span className="inline-flex items-center gap-1 text-xs text-red-600"><AlertCircle className="w-3 h-3" /> Falha na ativação</span>
+                            ) : n.vozAtiva ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium"><Check className="w-3 h-3" /> Ativo · Ligação EUA</span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
                             )}
