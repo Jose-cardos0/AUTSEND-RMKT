@@ -49,10 +49,11 @@ async function assertTermosAceito(request, tenant) {
 
 // Limites por plano (espelho do src/lib/plans.js)
 const PLAN_LIMITS = {
-  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0 },
-  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1 },
-  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1 },
-  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2 },
+  // callMin = minutos de Ligação IA grátis por mês (pagos por nós, isca). Editável via overrides.
+  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, callMin: 0 },
+  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, callMin: 5 },
+  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, callMin: 10 },
+  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, callMin: 15 },
 }
 function limitesDoTenant(t) {
   const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
@@ -1582,6 +1583,368 @@ exports.emailCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSecon
   }
 })
 
+// ═════════════════════ CALL MARKETING IA — créditos, cota e helpers ═════════════════════
+// Ligação IA (Telnyx Voice). Unidade cobrada = SEGUNDO (crédito e cota são guardados em segundos).
+// Preço de venda: R$ 1,50/min. Pacotes vendidos no Perfil. Crédito é consumido ANTES da cota do plano.
+
+const CALL_PRECO_POR_MIN = 1.5
+
+/** Pacotes de minutos de Ligação IA: chave (min) → { priceId, segundos, valor }. */
+function pacotesCreditoCall() {
+  return {
+    '30': { priceId: process.env.STRIPE_PRICE_CREDITO_CALL_30, segundos: 30 * 60, valor: 44.9 },
+    '60': { priceId: process.env.STRIPE_PRICE_CREDITO_CALL_60, segundos: 60 * 60, valor: 84.9 },
+    '120': { priceId: process.env.STRIPE_PRICE_CREDITO_CALL_120, segundos: 120 * 60, valor: 159.9 },
+  }
+}
+
+/** priceId de crédito de call → quantidade de SEGUNDOS (usado no webhook do Stripe). */
+function creditosCallDoPriceStripe(priceId) {
+  if (!priceId) return 0
+  const p = pacotesCreditoCall()
+  for (const k of Object.keys(p)) { if (p[k].priceId && p[k].priceId === priceId) return p[k].segundos }
+  return 0
+}
+
+/** Segundos de ligação usados no mês (todos os canais/contas) — pra exibição. */
+async function callSegundosUsadosNoMes(uid) {
+  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
+  let total = 0
+  try {
+    const ds = await db.collection(`users/${uid}/callLogs`).get()
+    ds.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicio.getTime()) total += Number(x.segundos) || 0 })
+  } catch (_) {}
+  return total
+}
+
+/** Segundos pagos pela COTA DO PLANO neste mês (crédito é consumido primeiro; BYO/própria não conta). */
+async function quotaCallSegUsadaNoMes(uid) {
+  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
+  let quota = 0
+  try {
+    const ds = await db.collection(`users/${uid}/callLogs`).get()
+    ds.forEach((d) => {
+      const x = d.data()
+      if (x.contaPropria === true) return
+      const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0)
+      if (cm >= inicio.getTime()) quota += Number(x.cotaConsumidaSeg) || 0
+    })
+  } catch (_) {}
+  return quota
+}
+
+/** Saldo disponível de ligação (em segundos): crédito comprado + o que resta da cota do plano. */
+async function callSaldoDisponivel(uid, tenant, ehAdmin) {
+  if (ehAdmin) return { creditoSeg: Infinity, cotaRestanteSeg: Infinity, totalSeg: Infinity, ilimitado: true }
+  const lim = limitesDoTenant(tenant)
+  const creditoSeg = Math.max(0, Number(tenant.callCreditos) || 0)
+  const cotaTotalSeg = (Number(lim.callMin) || 0) * 60
+  const usada = await quotaCallSegUsadaNoMes(uid)
+  const cotaRestanteSeg = Math.max(0, cotaTotalSeg - usada)
+  return { creditoSeg, cotaRestanteSeg, totalSeg: creditoSeg + cotaRestanteSeg, ilimitado: false }
+}
+
+/**
+ * Debita os segundos cobrados de uma ligação atendida: crédito ANTES da cota.
+ * Retorna { creditoConsumidoSeg, cotaConsumidaSeg }. BYO/própria e admin não debitam.
+ */
+async function debitarSegundosCall(uid, tenant, ehAdmin, contaPropria, segundos) {
+  const seg = Math.max(0, Math.round(Number(segundos) || 0))
+  if (!seg || ehAdmin || contaPropria) return { creditoConsumidoSeg: 0, cotaConsumidaSeg: 0 }
+  const creditos = Math.max(0, Number(tenant.callCreditos) || 0)
+  const creditoConsumidoSeg = Math.min(seg, creditos)
+  const cotaConsumidaSeg = seg - creditoConsumidoSeg // o resto cai na cota do plano
+  if (creditoConsumidoSeg > 0) {
+    await db.doc(`tenants/${uid}`).set({ callCreditos: admin.firestore.FieldValue.increment(-creditoConsumidoSeg) }, { merge: true })
+  }
+  return { creditoConsumidoSeg, cotaConsumidaSeg }
+}
+
+/** Cria o checkout Stripe (pagamento único) pra comprar minutos de Ligação IA. */
+exports.callCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const pacoteKey = String(request.data?.pacote || '')
+  const pacote = pacotesCreditoCall()[pacoteKey]
+  if (!pacote || !pacote.priceId) throw new HttpsError('invalid-argument', 'Pacote de minutos inválido.')
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) throw new HttpsError('failed-precondition', 'Recarga ainda não configurada.')
+  const stripe = require('stripe')(key)
+  const appUrl = (process.env.APP_URL || 'https://autsend.com.br').replace(/\/+$/, '')
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'credito_call', uid, segundos: String(pacote.segundos) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{ price: pacote.priceId, quantity: 1 }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      payment_intent_data: { metadata: meta },
+      success_url: `${appUrl}/perfil?recarga=ok`,
+      cancel_url: `${appUrl}/perfil?recarga=cancelado`,
+    })
+    return { url: session.url }
+  } catch (e) {
+    console.error('callCriarCheckoutCredito', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+// ═════════════════════ CALL MARKETING IA — motor de voz (Telnyx Call Control) ═════════════════════
+// Fase 1: TORPEDO DE VOZ IA (mão única). Grok escreve o roteiro → Telnyx fala (TTS) na ligação.
+// Fluxo: POST /v2/calls → webhook call.answered → speak (SSML c/ velocidade) → speak.ended → hangup
+//        → call.hangup → debita segundos (crédito antes da cota) → grava callLog.
+
+const CALL_VOZES_PTBR = ['Polly.Camila-Neural', 'Polly.Vitoria-Neural', 'Polly.Ricardo', 'Polly.Thiago-Neural']
+const CALL_VOZ_PADRAO = 'Polly.Camila-Neural'
+
+/** Config de voz compartilhada (Voice API application / connection). */
+async function getTelnyxVoiceConfig() {
+  const base = await getTelnyxConfig()
+  let connectionId = process.env.TELNYX_VOICE_CONNECTION_ID || ''
+  try {
+    const s = await db.doc('config/telnyx').get()
+    if (s.exists) connectionId = s.data().voiceConnectionId || connectionId
+  } catch (_) {}
+  return { apiKey: base.apiKey, connectionId }
+}
+
+/**
+ * Resolve a config de LIGAÇÃO. Espelha resolverTelnyxEnvio.
+ * forcar: 'api' → conta Telnyx própria (BYO) · 'eua' → nossa conta · null → auto (BYO primeiro).
+ * Retorna { cfg: { apiKey, connectionId, from }, propria } ou { erro }.
+ */
+async function resolverCallEnvio(uid, ehAdmin, forcar) {
+  if (forcar !== 'eua') {
+    const prov = await getTelnyxProviderCliente(uid)
+    if (prov) {
+      const vc = await getTelnyxVoiceConfig()
+      // BYO usa a key do cliente; a connection precisa existir na conta dele (configurada na integração).
+      return { cfg: { apiKey: prov.apiKey, connectionId: prov.voiceConnectionId || vc.connectionId, from: prov.from }, propria: true }
+    }
+    if (forcar === 'api') return { erro: 'Conecte sua conta Telnyx para ligar por aqui.' }
+  }
+  const vc = await getTelnyxVoiceConfig()
+  if (!vc.apiKey || !vc.connectionId) return { erro: 'A Ligação IA ainda não foi ativada pela plataforma.' }
+  const num = await getTelnyxNumeroCliente(uid)
+  if (num) return { cfg: { apiKey: vc.apiKey, connectionId: vc.connectionId, from: num.number }, propria: false }
+  const base = await getTelnyxConfig()
+  if (ehAdmin && base.from) return { cfg: { apiKey: vc.apiKey, connectionId: vc.connectionId, from: base.from }, propria: false }
+  return { erro: 'Você ainda não tem um número (EUA). Vá em Call → Integração e ative a voz no seu chip.' }
+}
+
+/** Grok escreve um roteiro curto e natural pra ser FALADO na ligação (não é texto pra ler). */
+async function gerarRoteiroCallGrok({ produto, nome, objetivo, tom }) {
+  const sys = 'Você escreve roteiros CURTOS de ligação telefônica em português do Brasil, para serem FALADOS por uma voz de IA. Regras: soe humano e caloroso; frases curtas; sem emojis; sem markdown; sem links falados por extenso; no máximo 60 palavras; comece cumprimentando pelo primeiro nome se houver; uma única chamada pra ação clara no fim.'
+  const usr = `Escreva o roteiro da ligação.\nObjetivo: ${objetivo || 'recuperar uma compra abandonada'}\nProduto: ${produto || 'nosso produto'}\nNome do cliente: ${nome || '(desconhecido)'}\nTom: ${tom || 'amigável e direto'}\nResponda APENAS com o roteiro falado, sem aspas.`
+  const content = await callGrok([{ role: 'system', content: sys }, { role: 'user', content: usr }])
+  return String(content || '').trim().slice(0, 600)
+}
+
+/** Monta o SSML aplicando a velocidade (1.0–1.5 → prosody rate). */
+function montarSSMLCall(texto, velocidade) {
+  const v = Math.min(1.5, Math.max(0.8, Number(velocidade) || 1))
+  const rate = Math.round(v * 100) + '%'
+  const safe = semAcentosManter(texto)
+  return `<speak><prosody rate="${rate}">${safe}</prosody></speak>`
+}
+
+/** Escapa caracteres de SSML/XML (mantém acentos — TTS PT-BR precisa deles). */
+function semAcentosManter(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+/**
+ * Inicia uma ligação torpedo. Cria a chamada e guarda o contexto em callPending/{ccid}
+ * pro webhook saber o que falar e como debitar. Retorna { ok, ccid } ou lança.
+ */
+async function iniciarLigacaoTorpedo(cfg, to, ctx) {
+  const res = await fetch('https://api.telnyx.com/v2/calls', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connection_id: cfg.connectionId, to, from: cfg.from, timeout_secs: 30, timeout_limit_secs: 180 }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const msg = data?.errors?.[0]?.detail || data?.errors?.[0]?.title || `HTTP ${res.status}`
+    throw new Error(msg)
+  }
+  const ccid = data?.data?.call_control_id
+  if (!ccid) throw new Error('A Telnyx não retornou o identificador da chamada.')
+  await db.doc(`callPending/${ccid}`).set({
+    uid: ctx.uid, apiKey: cfg.apiKey, from: cfg.from, to,
+    texto: ctx.texto, voz: ctx.voz || CALL_VOZ_PADRAO, velocidade: ctx.velocidade || 1,
+    canal: ctx.canal || 'eua', contaPropria: !!ctx.contaPropria,
+    leadId: ctx.leadId || null, produto: ctx.produto || '', nome: ctx.nome || '', agenteNome: ctx.agenteNome || '',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  return { ok: true, ccid }
+}
+
+/** Ação da Telnyx: falar (TTS). */
+async function telnyxSpeak(apiKey, ccid, ssml, voz) {
+  await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/speak`, {
+    method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload: ssml, payload_type: 'ssml', voice: voz || CALL_VOZ_PADRAO, language: 'pt-BR' }),
+  })
+}
+/** Ação da Telnyx: desligar. */
+async function telnyxHangup(apiKey, ccid) {
+  await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/hangup`, {
+    method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: '{}',
+  })
+}
+
+/** Webhook da Telnyx Voice (Call Control). Conduz o torpedo e debita os segundos ao desligar. */
+exports.telnyxVoiceWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
+  try {
+    const evt = req.body?.data || {}
+    const tipo = evt.event_type || ''
+    const ccid = evt.payload?.call_control_id
+    if (!ccid) { res.status(200).json({ ok: true, ignored: 'sem ccid' }); return }
+    const pendRef = db.doc(`callPending/${ccid}`)
+    const pendSnap = await pendRef.get()
+    if (!pendSnap.exists) { res.status(200).json({ ok: true, ignored: 'sem contexto' }); return }
+    const p = pendSnap.data()
+
+    if (tipo === 'call.answered') {
+      await pendRef.set({ answeredAtMs: Date.now(), status: 'atendida' }, { merge: true })
+      const ssml = montarSSMLCall(p.texto || '', p.velocidade)
+      await telnyxSpeak(p.apiKey, ccid, ssml, p.voz)
+      res.status(200).json({ ok: true }); return
+    }
+    if (tipo === 'call.speak.ended') {
+      await telnyxHangup(p.apiKey, ccid) // acabou de falar → desliga (fecha o torpedo)
+      res.status(200).json({ ok: true }); return
+    }
+    if (tipo === 'call.hangup') {
+      const atendida = !!p.answeredAtMs
+      const segundos = atendida ? Math.max(1, Math.round((Date.now() - p.answeredAtMs) / 1000)) : 0
+      const ehAdmin = await ehUidAdmin(p.uid)
+      const tSnap = await db.doc(`tenants/${p.uid}`).get()
+      const tenant = tSnap.exists ? tSnap.data() : {}
+      const deb = await debitarSegundosCall(p.uid, tenant, ehAdmin, p.contaPropria, segundos)
+      await db.collection(`users/${p.uid}/callLogs`).add({
+        canal: p.canal || 'eua', telefone: p.to || '', nome: p.nome || '', produto: p.produto || '',
+        leadId: p.leadId || null, agenteNome: p.agenteNome || '', mensagem: p.texto || '',
+        status: atendida ? 'atendida' : 'nao_atendida',
+        segundos, creditoConsumidoSeg: deb.creditoConsumidoSeg, cotaConsumidaSeg: deb.cotaConsumidaSeg,
+        contaPropria: !!p.contaPropria, ccid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      await pendRef.delete().catch(() => {})
+      res.status(200).json({ ok: true, segundos }); return
+    }
+    res.status(200).json({ ok: true, ignored: tipo }); return
+  } catch (err) {
+    console.error('telnyxVoiceWebhook', err?.message || err)
+    res.status(200).json({ ok: false }) // 200 pra Telnyx não reenfileirar infinito
+  }
+})
+
+/** Builder do Agente IA: Grok escreve o roteiro falado da ligação. */
+exports.callGerarRoteiro = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const d = request.data || {}
+  const texto = await gerarRoteiroCallGrok({ produto: d.produto, nome: d.nome, objetivo: d.objetivo, tom: d.tom })
+  if (!texto) throw new HttpsError('internal', 'Não consegui gerar o roteiro agora. Tente de novo.')
+  return { texto }
+})
+
+/** Ativa a voz no chip EUA do cliente: associa o número à Voice API application (connection). */
+exports.callAtivarVozNoChip = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const vc = await getTelnyxVoiceConfig()
+  if (!vc.apiKey || !vc.connectionId) throw new HttpsError('failed-precondition', 'A Ligação IA ainda não foi ativada pela plataforma.')
+  const snap = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').get()
+  if (snap.empty) throw new HttpsError('failed-precondition', 'Você ainda não tem um número (EUA). Compre um chip em SMS → Integração.')
+  let ativados = 0
+  for (const doc of snap.docs) {
+    const n = doc.data()
+    if (!n.telnyxPhoneId) continue
+    try {
+      const r = await fetch(`https://api.telnyx.com/v2/phone_numbers/${n.telnyxPhoneId}/voice`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${vc.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connection_id: vc.connectionId }),
+      })
+      if (r.ok) { await doc.ref.set({ vozAtiva: true }, { merge: true }); ativados++ }
+    } catch (e) { console.error('callAtivarVozNoChip', e?.message || e) }
+  }
+  if (!ativados) throw new HttpsError('internal', 'Não consegui ativar a voz no número. Tente de novo em instantes.')
+  return { ok: true, ativados }
+})
+
+/** Dispara ligações torpedo pra uma lista de contatos. Retorna { iniciadas, erros, disparoId }. */
+exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  const d = request.data || {}
+  const canal = d.canal === 'api' ? 'api' : 'eua'
+  const contatos = Array.isArray(d.contatos) ? d.contatos.slice(0, 500) : []
+  if (!contatos.length) throw new HttpsError('invalid-argument', 'Nenhum contato para ligar.')
+
+  // Roteiro/voz: do agente salvo ou passado direto.
+  let texto = String(d.texto || '').trim()
+  let voz = d.voz || CALL_VOZ_PADRAO
+  let velocidade = Number(d.velocidade) || 1
+  if (d.agenteId) {
+    const ag = await db.doc(`users/${uid}/callAgents/${d.agenteId}`).get()
+    if (ag.exists) { const a = ag.data(); texto = String(a.texto || texto); voz = a.voz || voz; velocidade = Number(a.velocidade) || velocidade }
+  }
+  if (!texto) throw new HttpsError('invalid-argument', 'Escreva ou gere o roteiro da ligação primeiro.')
+  if (!CALL_VOZES_PTBR.includes(voz)) voz = CALL_VOZ_PADRAO
+
+  const rEnvio = await resolverCallEnvio(uid, ehAdmin, canal)
+  if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
+  const cfg = rEnvio.cfg
+  const contaPropria = !!rEnvio.propria
+
+  // Saldo (crédito + cota). BYO/própria e admin não consomem.
+  if (!ehAdmin && !contaPropria) {
+    const saldo = await callSaldoDisponivel(uid, tenant, ehAdmin)
+    if (saldo.totalSeg <= 0) throw new HttpsError('resource-exhausted', 'Você não tem minutos de Ligação IA. Compre minutos no seu Perfil.')
+  }
+
+  let iniciadas = 0
+  const erros = []
+  for (const c of contatos) {
+    const norm = normalizarE164(c.telefone || c.numero || '', { permitirBR: contaPropria })
+    if (!norm.ok) { erros.push({ telefone: c.telefone, erro: motivoNumeroInvalido(norm.motivo) }); continue }
+    const txt = replaceVariables(texto, { nome: c.nome || '', telefone: norm.e164, email: c.email || '' }, { nome: c.produto || '' })
+    try {
+      await iniciarLigacaoTorpedo(cfg, norm.e164, {
+        uid, texto: txt, voz, velocidade, canal, contaPropria,
+        leadId: c.leadId || null, produto: c.produto || '', nome: c.nome || '', agenteNome: d.agenteNome || '',
+      })
+      iniciadas++
+    } catch (e) { erros.push({ telefone: norm.e164, erro: traduzErroVoz(e.message) }) }
+  }
+
+  const disparoRef = await db.collection(`users/${uid}/callDisparos`).add({
+    canal, total: contatos.length, iniciadas, erros: erros.length, contaPropria,
+    agenteNome: d.agenteNome || '', voz, velocidade,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  return { iniciadas, erros, disparoId: disparoRef.id }
+})
+
+/** Traduz erros comuns da Telnyx Voice pra PT (reaproveita o padrão do SMS). */
+function traduzErroVoz(msg) {
+  const s = String(msg || '')
+  if (/insufficient|balance/i.test(s)) return 'Saldo insuficiente na conta Telnyx.'
+  if (/not.*voice|voice.*not|connection/i.test(s)) return 'Número sem voz habilitada. Ative a voz no chip (Call → Integração).'
+  if (/unauthorized|authentication|api key/i.test(s)) return 'Chave da Telnyx inválida ou sem permissão.'
+  if (/invalid.*number|not a valid/i.test(s)) return 'Número de destino inválido.'
+  return s || 'Falha ao iniciar a ligação.'
+}
+
 // ───────────────── Setor de Risco — auto-pause por reclamação/bounce (conta Resend compartilhada) ─────────────────
 // Limiares (Gmail: reclamação 0,1% perigo / 0,3% crítico; bounce alto = lista ruim). Só avalia com amostra mínima.
 const RISCO_MIN_AMOSTRA = 100
@@ -1651,9 +2014,10 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
   const t = s.exists ? s.data() : {}
   const lim = limitesDoTenant(t)
   const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
-  const [emailsUsados, smsUsados] = await Promise.all([emailsEnviadosNoMes(uid), smsEnviadosNoMes(uid)])
+  const [emailsUsados, smsUsados, callSegUsados] = await Promise.all([emailsEnviadosNoMes(uid), smsEnviadosNoMes(uid), callSegundosUsadosNoMes(uid)])
   const smsCreditos = Number(t.smsCreditos) || 0
   const emailCreditos = Number(t.emailCreditos) || 0
+  const callCreditosSeg = Number(t.callCreditos) || 0
   return {
     plano: lim.plano, isAdmin: isAdm,
     nome: t.nome || (request.auth?.token?.name || '') || '',
@@ -1661,6 +2025,10 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
     fotoURL: t.fotoURL || null,
     emailsUsados, emailsLimite: isAdm ? -1 : (lim.emailsMes || 0), emailCreditos,
     smsUsados, smsLimite: isAdm ? -1 : (lim.smsMes || 0), smsCreditos,
+    // Ligação IA: em minutos pra exibição (usados/limite) + crédito comprado em segundos.
+    callMinUsados: Math.round((callSegUsados / 60) * 10) / 10,
+    callMinLimite: isAdm ? -1 : (Number(lim.callMin) || 0),
+    callCreditosSeg,
     // String discreta no perfil (sem citar spam). Admin com override não vê pausa.
     pausada: emailPausadoPorRisco(t),
   }
@@ -2188,6 +2556,20 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         await db.doc(`tenants/${uidC}`).set({ emailCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
         await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
         res.status(200).json({ ok: true, creditadoEmail: quantidade, uid: uidC }); return
+      }
+
+      // ── Recarga de MINUTOS de Ligação IA (pagamento único) — soma segundos no tenant. ──
+      if (session.metadata?.tipo === 'credito_call') {
+        const uidC = session.metadata.uid
+        let segundos = Number(session.metadata.segundos) || 0
+        if (!segundos) segundos = creditosCallDoPriceStripe((session.line_items?.data?.[0]?.price?.id) || null)
+        if (!uidC || !segundos) { res.status(200).json({ ok: true, ignored: 'credito_call sem uid/segundos' }); return }
+        const recRef = db.doc(`tenants/${uidC}/recargasCall/${session.id}`)
+        const jaRec = await recRef.get()
+        if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
+        await db.doc(`tenants/${uidC}`).set({ callCreditos: admin.firestore.FieldValue.increment(segundos) }, { merge: true })
+        await recRef.set({ segundos, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        res.status(200).json({ ok: true, creditadoCallSeg: segundos, uid: uidC }); return
       }
 
       // ── Fase 2: compra de NÚMERO(S) SMS (não é plano) — compra na Telnyx e salva no cliente. ──
@@ -3622,7 +4004,7 @@ exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) =
     const ov = {}
     if (p.overrides.limites && typeof p.overrides.limites === 'object') {
       ov.limites = {}
-      for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios']) {
+      for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios', 'callMin']) {
         if (p.overrides.limites[k] != null) ov.limites[k] = Math.max(0, Number(p.overrides.limites[k]) || 0)
       }
     }
@@ -3844,6 +4226,10 @@ exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
   // Tem conta Telnyx própria conectada? (pro menu mostrar o subgrupo API de SMS)
   let temSmsApi = false
   try { const p = await db.collection(`users/${uid}/smsProviders`).limit(1).get(); temSmsApi = !p.empty } catch (_) {}
+  // Voz ativada em algum chip? (pro menu do Call mostrar o canal EUA pronto)
+  let temCallVoz = false
+  try { const v = await db.collection(`users/${uid}/smsNumeros`).where('vozAtiva', '==', true).limit(1).get(); temCallVoz = !v.empty } catch (_) {}
+  const lim = limitesDoTenant(t)
   return {
     plano, status: t.status || 'approved', overrides: t.overrides || null,
     mustChangePassword: !!t.mustChangePassword, isAdmin: isAdm,
@@ -3853,6 +4239,7 @@ exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
     email: t.email || (request.auth?.token?.email || '') || '',
     fotoURL: t.fotoURL || null,
     temSmsApi,
+    temCallVoz, callMin: isAdm ? -1 : (Number(lim.callMin) || 0), temCallApi: temSmsApi,
   }
 })
 
