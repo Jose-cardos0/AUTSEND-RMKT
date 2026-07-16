@@ -21,10 +21,24 @@ import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical } from 'lucide-react'
+import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical, Undo2, Redo2, Settings, Layers, Eraser } from 'lucide-react'
 import EmojiPicker from '../../components/EmojiPicker'
 
 const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Arial,sans-serif;color:#666">Arraste blocos aqui para montar seu e-mail…</div>'
+
+/** Botão do dock flutuante (ícone). */
+function DockBtn({ onClick, title, ativo, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`p-2 rounded-xl transition-colors ${ativo ? 'bg-primary-100 text-primary-700' : 'text-stone-600 hover:bg-primary-50 hover:text-primary-700'}`}
+    >
+      {children}
+    </button>
+  )
+}
 
 export default function EmailConstrutor() {
   const [user] = useAuthState(auth)
@@ -49,11 +63,26 @@ export default function EmailConstrutor() {
   const assetsCarregados = useRef(false)
   const dockRef = useRef(null)
   const [dockPos, setDockPos] = useState(null) // {left, top} em px; null = posição padrão (centro-baixo)
+  const [painelAberto, setPainelAberto] = useState(null) // qual painel lateral está aberto (null = escondido)
+  const [arrastando, setArrastando] = useState(false)
 
-  // Abre um painel do editor (blocos/estilo) a partir do dock flutuante.
-  const abrirPainel = (cmd) => { try { editorRef.current?.runCommand(cmd) } catch (_) {} }
+  // Abre/fecha um painel lateral (blocos/estilo/config/camadas) pelo dock flutuante.
+  const togglePainel = (cmd) => {
+    const ed = editorRef.current
+    if (!ed) return
+    if (painelAberto === cmd) { setPainelAberto(null); return }
+    try { ed.runCommand(cmd) } catch (_) {}
+    setPainelAberto(cmd)
+  }
+  const desfazer = () => { try { editorRef.current?.UndoManager.undo() } catch (_) {} }
+  const refazer = () => { try { editorRef.current?.UndoManager.redo() } catch (_) {} }
+  const limparCanvas = async () => {
+    if (!(await confirm({ title: 'Limpar o e-mail?', message: 'Remove tudo do canvas. Não dá pra desfazer depois de salvar.', confirmLabel: 'Limpar' }))) return
+    const ed = editorRef.current
+    if (ed) { ed.setComponents(PLACEHOLDER); ed.setStyle('') }
+  }
 
-  // Arrastar o dock flutuante pela pegada.
+  // Arrastar o dock flutuante pela pegada (com overlay pra não travar sobre o canvas/iframe).
   const iniciarArraste = (e) => {
     e.preventDefault()
     const dock = dockRef.current
@@ -63,6 +92,7 @@ export default function EmailConstrutor() {
     const pr = parent.getBoundingClientRect()
     const offX = e.clientX - r.left
     const offY = e.clientY - r.top
+    setArrastando(true)
     const onMove = (ev) => {
       let left = ev.clientX - pr.left - offX
       let top = ev.clientY - pr.top - offY
@@ -70,7 +100,11 @@ export default function EmailConstrutor() {
       top = Math.max(6, Math.min(top, pr.height - r.height - 6))
       setDockPos({ left, top })
     }
-    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
+    const onUp = () => {
+      setArrastando(false)
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }
@@ -129,11 +163,12 @@ export default function EmailConstrutor() {
 
     // Esconde ícones da barra que confundem/duplicam (view components, preview, fullscreen,
     // código </>, import HTML e o toggle de imagens "imgx").
+    // Tudo vai pro dock flutuante — limpa a barra de cima e as abas laterais.
     ;['sw-visibility', 'preview', 'fullscreen', 'export-template',
       'gjs-open-import-webpage', 'gjs-open-import-template', 'gjs-toggle-images',
+      'undo', 'redo', 'canvas-clear', 'gjs-open-import',
     ].forEach((id) => { try { editor.Panels.removeButton('options', id) } catch (_) {} })
-    // Pincel (estilo) e + (blocos) foram pro dock flutuante — remove do topo.
-    ;['open-sm', 'open-blocks'].forEach((id) => { try { editor.Panels.removeButton('views', id) } catch (_) {} })
+    ;['open-sm', 'open-blocks', 'open-tm', 'open-layers'].forEach((id) => { try { editor.Panels.removeButton('views', id) } catch (_) {} })
 
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
@@ -405,7 +440,7 @@ export default function EmailConstrutor() {
         </div>
 
         {/* Coluna direita: editor */}
-        <div className="flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden relative">
+        <div className={`flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden relative ${painelAberto ? '' : 'gjs-painel-off'}`}>
           {!ready && (
             <div className="absolute inset-0 flex items-center justify-center text-stone-400 text-sm gap-2 bg-white/70 z-10">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando editor…
@@ -413,37 +448,28 @@ export default function EmailConstrutor() {
           )}
           <div ref={containerRef} className="h-full" />
 
-          {/* Dock flutuante e movível: Blocos + Estilo */}
+          {/* Overlay durante o arraste — impede o iframe do canvas de "engolir" o mouse */}
+          {arrastando && <div className="absolute inset-0 z-40 cursor-grabbing" />}
+
+          {/* Dock flutuante e movível: tudo aqui */}
           {ready && (
             <div
               ref={dockRef}
               style={dockPos ? { left: dockPos.left, top: dockPos.top } : { left: '50%', bottom: 18, transform: 'translateX(-50%)' }}
-              className="absolute z-30 flex items-center gap-1 rounded-2xl bg-white/95 backdrop-blur shadow-xl border border-surface-200 p-1.5"
+              className="absolute z-50 flex items-center gap-0.5 rounded-2xl bg-white/95 backdrop-blur shadow-xl border border-surface-200 p-1"
             >
-              <button
-                type="button"
-                onMouseDown={iniciarArraste}
-                title="Arraste pra mover"
-                className="cursor-grab active:cursor-grabbing p-1.5 text-stone-300 hover:text-stone-500"
-              >
+              <button type="button" onMouseDown={iniciarArraste} title="Arraste pra mover" className="cursor-grab active:cursor-grabbing p-1.5 text-stone-300 hover:text-stone-500">
                 <GripVertical className="w-4 h-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => abrirPainel('open-blocks')}
-                title="Blocos"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-stone-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" /> Blocos
-              </button>
-              <button
-                type="button"
-                onClick={() => abrirPainel('open-sm')}
-                title="Estilo"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-stone-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
-              >
-                <Paintbrush className="w-4 h-4" /> Estilo
-              </button>
+              <div className="flex items-center gap-0.5 pr-1 mr-0.5 border-r border-surface-200">
+                <DockBtn onClick={desfazer} title="Desfazer"><Undo2 className="w-4 h-4" /></DockBtn>
+                <DockBtn onClick={refazer} title="Refazer"><Redo2 className="w-4 h-4" /></DockBtn>
+                <DockBtn onClick={limparCanvas} title="Limpar tudo"><Eraser className="w-4 h-4" /></DockBtn>
+              </div>
+              <DockBtn onClick={() => togglePainel('open-blocks')} title="Blocos" ativo={painelAberto === 'open-blocks'}><Plus className="w-4 h-4" /></DockBtn>
+              <DockBtn onClick={() => togglePainel('open-sm')} title="Estilo" ativo={painelAberto === 'open-sm'}><Paintbrush className="w-4 h-4" /></DockBtn>
+              <DockBtn onClick={() => togglePainel('open-tm')} title="Configurações" ativo={painelAberto === 'open-tm'}><Settings className="w-4 h-4" /></DockBtn>
+              <DockBtn onClick={() => togglePainel('open-layers')} title="Camadas" ativo={painelAberto === 'open-layers'}><Layers className="w-4 h-4" /></DockBtn>
             </div>
           )}
         </div>

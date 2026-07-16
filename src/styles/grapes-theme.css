@@ -118,24 +118,31 @@
 /* Remove o "adicionar por URL" (input + botão) */
 .gjs-am-add-asset { display: none !important; }
 
-/* Área de upload grande e convidativa, com ícone de lupa em cima do texto */
+/* Área de upload COMPACTA, com lupa em cima do texto */
 .gjs-am-file-uploader #gjs-am-uploadFile,
 .gjs-am-file-uploader form,
 .gjs-am-dropzone {
   position: relative;
-  border: 2px dashed #c4b5fd !important; border-radius: 16px !important; background-color: #faf5ff !important; color: #7c3aed !important;
-  padding: 44px 24px 40px !important; font-weight: 600 !important; text-align: center;
-  min-height: 220px; display: flex !important; flex-direction: column; align-items: center; justify-content: center;
+  border: 2px dashed #c4b5fd !important; border-radius: 12px !important; background-color: #faf5ff !important; color: #7c3aed !important;
+  padding: 16px !important; font-weight: 600 !important; font-size: 13px !important; text-align: center;
+  min-height: 108px !important; display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
   cursor: pointer; transition: background-color .15s ease, border-color .15s ease;
 }
 .gjs-am-file-uploader form:hover, .gjs-am-dropzone:hover { background-color: #f3e8ff !important; border-color: #a78bfa !important; }
 .gjs-am-file-uploader form::before,
 .gjs-am-dropzone::before {
   content: '';
-  display: block; width: 52px; height: 52px; margin: 0 auto 14px;
+  display: block; width: 30px; height: 30px; margin: 0 auto 2px;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c3aed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 
 .gjs-am-asset { border-radius: 12px !important; overflow: hidden; border: 1px solid #ececec !important; }
 .gjs-am-preview-cont { border-radius: 10px !important; }
 .gjs-btn-prim { background-color: #7c3aed !important; color: #fff !important; border-radius: 8px !important; border: 0 !important; font-weight: 600 !important; }
+
+/* ── Painel lateral escondido por padrão; canvas ocupa tudo. Aparece só ao abrir pelo dock. ── */
+.gjs-painel-off .gjs-pn-views,
+.gjs-painel-off .gjs-pn-views-container { display: none !important; }
+.gjs-painel-off .gjs-cv-canvas { width: 100% !important; right: 0 !important; }
+/* Garante o painel (quando aberto) todo branco */
+.gjs-editor .gjs-pn-views-container { background-color: #ffffff !important; }
