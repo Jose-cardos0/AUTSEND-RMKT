@@ -1,105 +1,110 @@
-/* ───────────────────────────────────────────────────────────
-   Tema do GrapesJS pra combinar com o Autsend (claro, limpo).
-   Tudo prefixado com .gjs-editor + !important pra ganhar do CSS da lib.
-   ─────────────────────────────────────────────────────────── */
-.gjs-editor {
-  --gjs-primary-color: #ffffff;
-  --gjs-secondary-color: #57534e;
-  --gjs-tertiary-color: #7c3aed;
-  --gjs-quaternary-color: #6d28d9;
-  --gjs-font-color: #44403c;
-  --gjs-font-color-active: #7c3aed;
-  --gjs-color-highlight: #7c3aed;
-  font-family: inherit;
-}
+/* ═══════════════════════════════════════════════════════════
+   Tema CLARO do GrapesJS pro Autsend.
+   O GrapesJS pinta tudo com classes semânticas — a gente vira elas:
+     .gjs-one-bg   = fundo (painéis, blocos)      → branco
+     .gjs-two-color= texto/ícones                 → cinza escuro
+     .gjs-three-bg = destaque (ativo)             → violeta
+     .gjs-four-color-h:hover = hover              → violeta
+   ═══════════════════════════════════════════════════════════ */
 
-/* Painéis, containers de blocos, estilos, camadas → fundo claro */
-.gjs-editor .gjs-pn-panel,
+.gjs-editor { font-family: inherit; }
+
+/* ── Vira o tema base pra CLARO ── */
+.gjs-editor .gjs-one-bg { background-color: #ffffff !important; }
+.gjs-editor .gjs-two-color, .gjs-editor .gjs-two-color * { color: #57534e !important; }
+.gjs-editor .gjs-two-bg { background-color: #f5f5f4 !important; }
+.gjs-editor .gjs-three-bg { background-color: #7c3aed !important; }
+.gjs-editor .gjs-four-color,
+.gjs-editor .gjs-color-warn { color: #7c3aed !important; }
+.gjs-editor .gjs-four-color-h:hover { color: #7c3aed !important; }
+
+/* Painéis: bordas suaves, sem sombra pesada */
+.gjs-editor .gjs-pn-panel { border-color: #ececec !important; box-shadow: none !important; }
 .gjs-editor .gjs-pn-views-container,
-.gjs-editor .gjs-blocks-cs,
-.gjs-editor .gjs-blocks-c,
-.gjs-editor .gjs-sm-sectors,
-.gjs-editor .gjs-clm-tags,
-.gjs-editor .gjs-trt-traits,
-.gjs-editor .gjs-layer-manager,
-.gjs-editor .gjs-layers,
-.gjs-editor .gjs-sm-sector {
+.gjs-editor .gjs-pn-views { background-color: #ffffff !important; border-color: #ececec !important; box-shadow: none !important; }
+
+/* ── Barra de topo (comandos) BRANCA ── */
+.gjs-editor .gjs-pn-commands {
   background-color: #ffffff !important;
-  color: #44403c !important;
+  border-bottom: 1px solid #ececec !important;
 }
+.gjs-editor .gjs-pn-commands .gjs-pn-btn { color: #78716c !important; border-radius: 8px; }
+.gjs-editor .gjs-pn-commands .gjs-pn-btn:hover { color: #7c3aed !important; background-color: #faf5ff !important; box-shadow: none !important; }
+.gjs-editor .gjs-pn-commands .gjs-pn-btn.gjs-pn-active { color: #7c3aed !important; background-color: #f3e8ff !important; box-shadow: none !important; }
 
-/* Barra de topo do canvas (comandos) fica escura elegante */
-.gjs-editor .gjs-pn-commands { background-color: #292524 !important; }
-.gjs-editor .gjs-pn-commands .gjs-pn-btn { color: #d6d3d1 !important; border-radius: 8px; }
-.gjs-editor .gjs-pn-commands .gjs-pn-btn:hover,
-.gjs-editor .gjs-pn-commands .gjs-pn-btn.gjs-pn-active { color: #fff !important; background-color: rgba(255,255,255,.14) !important; box-shadow: none !important; }
+/* Abas do painel direito (blocos/estilos/config/camadas) */
+.gjs-editor .gjs-pn-views .gjs-pn-btn { color: #a8a29e !important; }
+.gjs-editor .gjs-pn-views .gjs-pn-btn:hover { color: #7c3aed !important; }
+.gjs-editor .gjs-pn-views .gjs-pn-btn.gjs-pn-active { color: #7c3aed !important; box-shadow: inset 0 -2px 0 #7c3aed !important; }
 
-/* Painel lateral direito (onde ficam os blocos/estilos) */
-.gjs-editor .gjs-pn-views { background-color: #f5f5f4 !important; border-bottom: 1px solid #e7e5e4 !important; }
-.gjs-editor .gjs-pn-views .gjs-pn-btn { color: #78716c !important; }
-.gjs-editor .gjs-pn-views .gjs-pn-btn.gjs-pn-active { color: #7c3aed !important; background: #faf5ff !important; border-radius: 8px; }
-.gjs-editor .gjs-pn-views-container { box-shadow: none !important; border-left: 1px solid #e7e5e4 !important; }
+/* ── Canvas ── */
+.gjs-editor .gjs-cv-canvas { background-color: #f4f4f5 !important; }
+.gjs-editor .gjs-cv-canvas__frames { background-color: #f4f4f5 !important; }
 
-/* Canvas */
-.gjs-editor .gjs-cv-canvas { background-color: #eef0f4 !important; }
-
-/* ── Blocos viram cards claros ── */
-.gjs-editor .gjs-blocks-c { gap: 8px !important; padding: 10px !important; }
+/* ── Blocos viram cards claros e bonitos ── */
+.gjs-editor .gjs-blocks-cs { background-color: #ffffff !important; }
+.gjs-editor .gjs-blocks-c { display: flex !important; flex-wrap: wrap !important; gap: 10px !important; padding: 12px !important; }
 .gjs-editor .gjs-block {
-  width: calc(50% - 8px) !important;
-  min-height: 76px !important;
-  display: flex !important; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px !important;
+  width: calc(50% - 10px) !important;
+  min-height: 78px !important;
+  display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 7px !important;
   border: 1px solid #e7e5e4 !important;
-  border-radius: 12px !important;
-  background-color: #fafaf9 !important;
-  box-shadow: none !important;
+  border-radius: 14px !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03) !important;
   color: #57534e !important;
   transition: all .15s ease;
-  padding: 10px 8px !important;
+  padding: 12px 8px !important;
 }
 .gjs-editor .gjs-block:hover {
   border-color: #c4b5fd !important;
   background-color: #faf5ff !important;
   color: #7c3aed !important;
-  box-shadow: 0 6px 16px -6px rgba(124,58,237,.3) !important;
+  box-shadow: 0 8px 18px -8px rgba(124,58,237,.35) !important;
   transform: translateY(-2px);
 }
-.gjs-editor .gjs-block svg { fill: currentColor !important; }
+.gjs-editor .gjs-block svg { fill: currentColor !important; width: 26px; height: 26px; }
+.gjs-editor .gjs-block__media { color: inherit !important; }
 .gjs-editor .gjs-block-label { font-size: 11px !important; font-weight: 600 !important; line-height: 1.2 !important; color: inherit !important; }
+
+/* Títulos de categoria */
 .gjs-editor .gjs-block-category .gjs-title,
-.gjs-editor .gjs-block-categories .gjs-title {
-  background-color: #fff !important; border: 0 !important; color: #78716c !important;
-  font-size: 10px !important; font-weight: 700 !important; letter-spacing: .08em; text-transform: uppercase;
-  padding: 12px 12px 4px !important;
+.gjs-editor .gjs-title {
+  background-color: #ffffff !important; border-color: #f0f0f0 !important;
+  color: #78716c !important; font-size: 10px !important; font-weight: 700 !important;
+  letter-spacing: .08em; text-transform: uppercase; padding: 12px 14px 6px !important;
 }
 .gjs-editor .gjs-block-categories { border: 0 !important; }
 
-/* Campos do painel de estilos/config */
-.gjs-editor .gjs-field,
-.gjs-editor .gjs-sm-field input,
-.gjs-editor .gjs-clm-field,
-.gjs-editor .gjs-trt-trait input,
-.gjs-editor .gjs-trt-trait select {
-  border-radius: 8px !important; border: 1px solid #e7e5e4 !important; background-color: #fff !important; color: #44403c !important;
-}
+/* ── Painel de estilos/config claro ── */
+.gjs-editor .gjs-sm-sectors,
+.gjs-editor .gjs-trt-traits,
+.gjs-editor .gjs-clm-tags,
+.gjs-editor .gjs-layer-manager,
+.gjs-editor .gjs-sm-sector { background-color: #ffffff !important; }
 .gjs-editor .gjs-sm-sector-title,
 .gjs-editor .gjs-trt-header,
-.gjs-editor .gjs-clm-tags-field { color: #44403c !important; font-weight: 600 !important; }
+.gjs-editor .gjs-layer-title { color: #44403c !important; font-weight: 600 !important; border-color: #f0f0f0 !important; }
+.gjs-editor .gjs-field,
+.gjs-editor .gjs-sm-field input, .gjs-editor .gjs-sm-field select,
+.gjs-editor .gjs-clm-field,
+.gjs-editor .gjs-trt-trait input, .gjs-editor .gjs-trt-trait select {
+  border-radius: 8px !important; border: 1px solid #e7e5e4 !important; background-color: #fff !important; color: #44403c !important;
+}
+.gjs-editor .gjs-layer.gjs-selected .gjs-layer-title { background-color: #f3e8ff !important; color: #7c3aed !important; }
 
-/* Modais (galeria de imagens / código) */
+/* ── Modais (galeria / código) ── */
 .gjs-mdl-dialog { border-radius: 16px !important; overflow: hidden; box-shadow: 0 24px 60px -12px rgba(0,0,0,.4) !important; }
-.gjs-mdl-header { background-color: #fff !important; border-bottom: 1px solid #e7e5e4 !important; }
+.gjs-mdl-header, .gjs-mdl-content { background-color: #fff !important; color: #44403c !important; border-color: #ececec !important; }
 .gjs-mdl-title { font-weight: 700 !important; color: #292524 !important; }
-.gjs-mdl-content { background-color: #fff !important; color: #44403c !important; }
 
-/* Galeria de imagens (asset manager) mais convidativa */
-.gjs-am-assets-cont, .gjs-am-assets { background-color: #fafaf9 !important; }
+/* ── Galeria de imagens (upload) convidativa ── */
+.gjs-am-assets-cont, .gjs-am-assets, .gjs-am-file-uploader { background-color: #fafaf9 !important; }
 .gjs-am-file-uploader #gjs-am-uploadFile,
 .gjs-am-file-uploader form,
 .gjs-am-dropzone {
   border: 2px dashed #c4b5fd !important; border-radius: 14px !important; background-color: #faf5ff !important; color: #7c3aed !important;
-  padding: 28px !important; font-weight: 600 !important;
+  padding: 30px !important; font-weight: 600 !important;
 }
-.gjs-am-asset { border-radius: 12px !important; overflow: hidden; }
+.gjs-am-asset { border-radius: 12px !important; overflow: hidden; border: 1px solid #ececec !important; }
 .gjs-btn-prim { background-color: #7c3aed !important; color: #fff !important; border-radius: 8px !important; border: 0 !important; font-weight: 600 !important; }

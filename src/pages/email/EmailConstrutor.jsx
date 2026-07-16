@@ -13,6 +13,7 @@ import { html as beautifyHtml } from 'js-beautify'
 import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate } from '../../lib/firestore'
 import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../../lib/storageAssets'
+import { registrarBlocosEmail } from '../../lib/emailBlocks'
 import { TEMPLATE_VARIABLES } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import Select from '../../components/Select'
@@ -85,6 +86,9 @@ export default function EmailConstrutor() {
       })],
     })
     editorRef.current = editor
+
+    // Troca os blocos "crus" do preset por blocos bonitos com ícone (Título, Texto, Imagem…).
+    registrarBlocosEmail(editor)
 
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
