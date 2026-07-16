@@ -100,6 +100,12 @@ export default function EmailConstrutor() {
     // Troca os blocos "crus" do preset por blocos bonitos com ícone (Título, Texto, Imagem…).
     registrarBlocosEmail(editor)
 
+    // Esconde ícones da barra que confundem/duplicam (view components, preview, fullscreen,
+    // código </>, import HTML e o toggle de imagens "imgx").
+    ;['sw-visibility', 'preview', 'fullscreen', 'export-template',
+      'gjs-open-import-webpage', 'gjs-open-import-template', 'gjs-toggle-images',
+    ].forEach((id) => { try { editor.Panels.removeButton('options', id) } catch (_) {} })
+
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
       const src = asset?.get?.('src') || asset?.src
