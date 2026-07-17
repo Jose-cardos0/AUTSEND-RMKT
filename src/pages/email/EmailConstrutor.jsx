@@ -349,7 +349,18 @@ export default function EmailConstrutor() {
       })
     })
     setReady(true)
+    // Garante que o × do modal de imagens SEMPRE fecha (às vezes o modal aberto pelo
+    // seletor de "imagem de fundo" não fechava no clique do ×).
+    const fecharModalNoX = (e) => {
+      if (e.target?.closest?.('.gjs-mdl-btn-close')) {
+        try { editor.Modal.close() } catch (_) {}
+        try { editor.AssetManager.close() } catch (_) {}
+      }
+    }
+    document.addEventListener('click', fecharModalNoX, true)
+
     return () => {
+      document.removeEventListener('click', fecharModalNoX, true)
       try { editor.destroy() } catch (_) {}
       editorRef.current = null
     }
