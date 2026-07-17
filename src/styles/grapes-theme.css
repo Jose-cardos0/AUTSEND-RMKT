@@ -132,6 +132,8 @@
 .gjs-am-file-uploader { width: 100% !important; min-height: 0 !important; background: transparent !important; padding: 0 !important; margin: 0 !important; }
 /* Botão de fechar do modal SEMPRE por cima e clicável */
 .gjs-mdl-btn-close { z-index: 50 !important; }
+/* Enquanto as imagens carregam: esconde o modal (só o foguetinho aparece), sem fundo branco */
+body.imgs-carregando .gjs-mdl-dialog { visibility: hidden !important; }
 /* O input de arquivo (invisível) fica CONTIDO no botão — senão cobre o modal todo (inclusive o ×) */
 .gjs-am-file-uploader > form { position: relative !important; overflow: hidden !important; }
 .gjs-am-file-uploader #gjs-am-uploadFile { padding: 0 !important; height: 100% !important; top: 0 !important; left: 0 !important; }

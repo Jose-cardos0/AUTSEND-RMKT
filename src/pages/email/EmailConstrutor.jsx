@@ -392,6 +392,12 @@ export default function EmailConstrutor() {
   // As imagens são carregadas ao ABRIR o gerenciador (handler asset:open na init),
   // checando a coleção real — cobre botão Imagens, imagem de fundo e duplo-clique numa imagem.
 
+  // Enquanto carrega as imagens, marca o body pra ESCONDER o modal (só mostra o foguetinho).
+  useEffect(() => {
+    document.body.classList.toggle('imgs-carregando', carregandoImgs)
+    return () => document.body.classList.remove('imgs-carregando')
+  }, [carregandoImgs])
+
   // Ao selecionar um template (ou ficar pronto), carrega o conteúdo no editor
   useEffect(() => {
     const editor = editorRef.current
@@ -864,9 +870,10 @@ export default function EmailConstrutor() {
         </div>
       )}
 
-      {/* Loading da galeria de imagens (foguetinho) — fica por cima do modal do GrapesJS */}
+      {/* Loading da galeria (foguetinho) — fundo transparente; o modal das imagens
+          fica escondido (via classe no body) até terminar de carregar. */}
       {carregandoImgs && (
-        <div className="fixed inset-0 flex items-center justify-center bg-white/85" style={{ zIndex: 100000 }}>
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 100000 }}>
           <PageLoader label="Carregando suas imagens…" />
         </div>
       )}
