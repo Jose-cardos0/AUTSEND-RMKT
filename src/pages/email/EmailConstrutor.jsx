@@ -172,6 +172,19 @@ export default function EmailConstrutor() {
     // Os painéis viraram containers nossos (appendTo) — remove os painéis de abas do GrapesJS.
     ;['views', 'views-container'].forEach((id) => { try { editor.Panels.removePanel(id) } catch (_) {} })
 
+    // Dica visual "Arraste blocos aqui" nas caixas VAZIAS — só no editor, NÃO vai pro e-mail.
+    editor.on('load', () => {
+      try {
+        const doc = editor.Canvas.getDocument()
+        if (doc && !doc.getElementById('am-editor-helpers')) {
+          const st = doc.createElement('style')
+          st.id = 'am-editor-helpers'
+          st.textContent = '.am-drop:empty{min-height:56px;outline:1px dashed #c4b5fd;outline-offset:-4px;border-radius:8px;position:relative}.am-drop:empty::before{content:"Arraste blocos aqui";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a78bfa;font:500 12px Arial,sans-serif;pointer-events:none}'
+          doc.head.appendChild(st)
+        }
+      } catch (_) {}
+    })
+
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
       const src = asset?.get?.('src') || asset?.src

@@ -58,14 +58,14 @@ const BLOCOS = [
   {
     id: 'e-secao', label: '1 Coluna', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/>'),
-    content: '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td style="padding:20px;font-family:Arial,Helvetica,sans-serif;color:#4b5563;">Seção de 1 coluna. Arraste blocos aqui dentro.</td></tr></table>',
+    content: '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td class="am-drop" valign="top" style="padding:16px;"></td></tr></table>',
   },
   {
     id: 'e-2col', label: '2 Colunas', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'),
     content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
-      <td width="50%" valign="top" style="padding:16px;font-family:Arial,Helvetica,sans-serif;color:#4b5563;">Coluna esquerda</td>
-      <td width="50%" valign="top" style="padding:16px;font-family:Arial,Helvetica,sans-serif;color:#4b5563;">Coluna direita</td>
+      <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
+      <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
     </tr></table>`,
   },
 
