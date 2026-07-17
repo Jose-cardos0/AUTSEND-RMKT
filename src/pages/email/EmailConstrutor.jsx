@@ -366,9 +366,17 @@ export default function EmailConstrutor() {
     // Garante que o × do modal de imagens SEMPRE fecha (às vezes o modal aberto pelo
     // seletor de "imagem de fundo" não fechava no clique do ×).
     const fecharModalNoX = (e) => {
+      // Botão × → fecha o modal
       if (e.target?.closest?.('.gjs-mdl-btn-close')) {
         try { editor.Modal.close() } catch (_) {}
         try { editor.AssetManager.close() } catch (_) {}
+        return
+      }
+      // Clicou numa imagem da galeria (não no botão de excluir) → aplica e FECHA sozinho.
+      // setTimeout deixa o GrapesJS aplicar a imagem primeiro, depois fecha.
+      const asset = e.target?.closest?.('.gjs-am-asset')
+      if (asset && !e.target.closest?.('.gjs-am-close')) {
+        setTimeout(() => { try { editor.Modal.close() } catch (_) {} }, 40)
       }
     }
     document.addEventListener('click', fecharModalNoX, true)
