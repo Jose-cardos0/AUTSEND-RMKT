@@ -118,23 +118,18 @@
 /* Remove o "adicionar por URL" (input + botão) */
 .gjs-am-add-asset { display: none !important; }
 
-/* Modal precisa ser relativo pra ancorar o botão de upload no header */
-.gjs-mdl-dialog { position: relative !important; }
-/* UPLOAD vira um BOTÃO pequeno no topo, ao lado do X */
-.gjs-am-file-uploader {
-  position: absolute !important; top: 12px; right: 46px; z-index: 10;
-  width: auto !important; min-height: 0 !important; background: transparent !important; padding: 0 !important; margin: 0 !important;
-}
-.gjs-am-assets-header { min-height: 0 !important; padding: 0 !important; border: 0 !important; }
-.gjs-am-file-uploader #gjs-am-uploadFile,
+/* ── Modal "Suas imagens" ── */
+/* Header centraliza o botão de upload (pequeno) */
+.gjs-am-assets-header { display: flex !important; justify-content: center !important; padding: 14px !important; border: 0 !important; min-height: 0 !important; }
+.gjs-am-file-uploader { width: auto !important; min-height: 0 !important; background: transparent !important; padding: 0 !important; margin: 0 !important; }
 .gjs-am-file-uploader form,
 .gjs-am-dropzone {
-  min-height: 0 !important; height: 34px; padding: 0 14px !important;
-  border: 0 !important; border-radius: 9px !important;
-  background-color: #7c3aed !important; color: #fff !important;
-  font-size: 13px !important; font-weight: 600 !important; text-align: center;
-  display: inline-flex !important; flex-direction: row !important; align-items: center; justify-content: center; gap: 7px; white-space: nowrap;
-  cursor: pointer; transition: background-color .15s ease;
+  display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important;
+  height: 40px !important; min-height: 0 !important; width: auto !important; padding: 0 20px !important;
+  border: 0 !important; border-radius: 10px !important;
+  background-color: #7c3aed !important; color: #ffffff !important;
+  font-size: 13px !important; font-weight: 600 !important; white-space: nowrap !important; cursor: pointer;
+  transition: background-color .15s ease;
 }
 .gjs-am-file-uploader form:hover, .gjs-am-dropzone:hover { background-color: #6d28d9 !important; }
 .gjs-am-file-uploader form::before,
@@ -143,11 +138,10 @@
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 
-/* Galeria ocupa o modal inteiro, em grade */
+/* Galeria em grade, mostrando as imagens */
 .gjs-am-assets-cont { width: 100% !important; }
-.gjs-am-assets { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 10px !important; padding: 6px !important; max-height: 60vh; overflow-y: auto; }
-.gjs-am-asset { border-radius: 12px !important; overflow: hidden; border: 1px solid #ececec !important; }
-.gjs-am-asset .gjs-am-name { display: none !important; }
+.gjs-am-assets { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)) !important; gap: 10px !important; padding: 0 14px 14px !important; max-height: 62vh; overflow-y: auto; }
+.gjs-am-asset { border-radius: 10px !important; overflow: hidden !important; border: 1px solid #ececec !important; }
 .gjs-am-preview-cont { border-radius: 10px !important; }
 .gjs-btn-prim { background-color: #7c3aed !important; color: #fff !important; border-radius: 8px !important; border: 0 !important; font-weight: 600 !important; }
 

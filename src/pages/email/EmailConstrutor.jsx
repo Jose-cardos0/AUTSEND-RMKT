@@ -21,7 +21,9 @@ import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical, Undo2, Redo2, Settings, Layers, Eraser } from 'lucide-react'
+import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical, Undo2, Redo2, Settings, Layers, Eraser, X } from 'lucide-react'
+
+const TITULOS_PAINEL = { blocos: 'Blocos', estilo: 'Estilo', config: 'Configurações', camadas: 'Camadas' }
 import EmojiPicker from '../../components/EmojiPicker'
 
 const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Arial,sans-serif;color:#666">Arraste blocos aqui para montar seu e-mail…</div>'
@@ -66,14 +68,8 @@ export default function EmailConstrutor() {
   const [painelAberto, setPainelAberto] = useState(null) // qual painel lateral está aberto (null = escondido)
   const [arrastando, setArrastando] = useState(false)
 
-  // Abre/fecha um painel lateral (blocos/estilo/config/camadas) pelo dock flutuante.
-  const togglePainel = (cmd) => {
-    const ed = editorRef.current
-    if (!ed) return
-    if (painelAberto === cmd) { setPainelAberto(null); return }
-    try { ed.runCommand(cmd) } catch (_) {}
-    setPainelAberto(cmd)
-  }
+  // Abre/fecha um painel lateral (mostra só o container escolhido; um por vez).
+  const togglePainel = (key) => setPainelAberto((p) => (p === key ? null : key))
   const desfazer = () => { try { editorRef.current?.UndoManager.undo() } catch (_) {} }
   const refazer = () => { try { editorRef.current?.UndoManager.redo() } catch (_) {} }
   const limparCanvas = async () => {
@@ -120,6 +116,11 @@ export default function EmailConstrutor() {
       height: '100%',
       width: 'auto',
       storageManager: false,
+      // Cada painel é renderizado no NOSSO container (controlamos qual aparece).
+      blockManager: { appendTo: '#am-blocks' },
+      styleManager: { appendTo: '#am-styles' },
+      traitManager: { appendTo: '#am-traits' },
+      layerManager: { appendTo: '#am-layers' },
       assetManager: {
         // O usuário sobe a imagem → vai pro NOSSO Storage (pasta dele) → entra na galeria.
         upload: false,
@@ -168,8 +169,8 @@ export default function EmailConstrutor() {
       'gjs-open-import-webpage', 'gjs-open-import-template', 'gjs-toggle-images',
       'undo', 'redo', 'canvas-clear', 'gjs-open-import',
     ].forEach((id) => { try { editor.Panels.removeButton('options', id) } catch (_) {} })
-    // As abas laterais (open-sm/blocks/tm/layers) NÃO são removidas — o dock aciona os comandos delas.
-    // A barra de abas é escondida via CSS (.gjs-pn-views), mas os comandos continuam funcionando.
+    // Os painéis viraram containers nossos (appendTo) — remove os painéis de abas do GrapesJS.
+    ;['views', 'views-container'].forEach((id) => { try { editor.Panels.removePanel(id) } catch (_) {} })
 
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
@@ -440,8 +441,10 @@ export default function EmailConstrutor() {
           </div>
         </div>
 
-        {/* Coluna direita: editor */}
-        <div className="flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden relative">
+        {/* Coluna direita: editor (canvas + painel lateral custom) */}
+        <div className="flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden relative flex">
+          {/* Área do canvas */}
+          <div className="flex-1 min-w-0 relative">
           {!ready && (
             <div className="absolute inset-0 flex items-center justify-center text-stone-400 text-sm gap-2 bg-white/70 z-10">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando editor…
@@ -467,12 +470,27 @@ export default function EmailConstrutor() {
                 <DockBtn onClick={refazer} title="Refazer"><Redo2 className="w-4 h-4" /></DockBtn>
                 <DockBtn onClick={limparCanvas} title="Limpar tudo"><Eraser className="w-4 h-4" /></DockBtn>
               </div>
-              <DockBtn onClick={() => togglePainel('open-blocks')} title="Blocos" ativo={painelAberto === 'open-blocks'}><Plus className="w-4 h-4" /></DockBtn>
-              <DockBtn onClick={() => togglePainel('open-sm')} title="Estilo" ativo={painelAberto === 'open-sm'}><Paintbrush className="w-4 h-4" /></DockBtn>
-              <DockBtn onClick={() => togglePainel('open-tm')} title="Configurações" ativo={painelAberto === 'open-tm'}><Settings className="w-4 h-4" /></DockBtn>
-              <DockBtn onClick={() => togglePainel('open-layers')} title="Camadas" ativo={painelAberto === 'open-layers'}><Layers className="w-4 h-4" /></DockBtn>
+              <DockBtn onClick={() => togglePainel('blocos')} title="Blocos" ativo={painelAberto === 'blocos'}><Plus className="w-4 h-4" /></DockBtn>
+              <DockBtn onClick={() => togglePainel('estilo')} title="Estilo" ativo={painelAberto === 'estilo'}><Paintbrush className="w-4 h-4" /></DockBtn>
+              <DockBtn onClick={() => togglePainel('config')} title="Configurações" ativo={painelAberto === 'config'}><Settings className="w-4 h-4" /></DockBtn>
+              <DockBtn onClick={() => togglePainel('camadas')} title="Camadas" ativo={painelAberto === 'camadas'}><Layers className="w-4 h-4" /></DockBtn>
             </div>
           )}
+          </div>{/* fim área do canvas */}
+
+          {/* Painel lateral custom — cada manager no seu container; um por vez; some quando nada aberto */}
+          <div className={`gjs-editor am-panel shrink-0 flex flex-col border-l border-surface-200 bg-white ${painelAberto ? 'w-72 xl:w-80' : 'w-0 overflow-hidden border-l-0'}`}>
+            <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-surface-100">
+              <span className="text-sm font-semibold text-stone-800">{TITULOS_PAINEL[painelAberto] || ''}</span>
+              <button onClick={() => setPainelAberto(null)} title="Fechar" className="p-1 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div id="am-blocks" style={{ display: painelAberto === 'blocos' ? 'block' : 'none' }} />
+              <div id="am-styles" style={{ display: painelAberto === 'estilo' ? 'block' : 'none' }} />
+              <div id="am-traits" style={{ display: painelAberto === 'config' ? 'block' : 'none' }} />
+              <div id="am-layers" style={{ display: painelAberto === 'camadas' ? 'block' : 'none' }} />
+            </div>
+          </div>
         </div>
       </div>
 
