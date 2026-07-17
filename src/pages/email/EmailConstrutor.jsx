@@ -3,7 +3,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import { EmailEditor, EmailEditorProvider } from 'easy-email-editor'
 import { StandardLayout } from 'easy-email-extensions'
-import { BlockManager, BasicType, JsonToMjml } from 'easy-email-core'
+import { BlockManager, BasicType, AdvancedType, JsonToMjml } from 'easy-email-core'
 import mjml from 'mjml-browser'
 import 'easy-email-editor/lib/style.css'
 import 'easy-email-extensions/lib/style.css'
@@ -26,6 +26,33 @@ const MERGE_TAGS = {
   email_cliente: 'cliente@email.com',
   nome_produto: 'Seu produto',
 }
+
+// Blocos disponíveis no painel esquerdo (senão o painel fica VAZIO).
+const CATEGORIES = [
+  {
+    label: 'Conteúdo',
+    active: true,
+    blocks: [
+      { type: AdvancedType.TEXT },
+      { type: AdvancedType.IMAGE, payload: { attributes: { padding: '0px 0px 0px 0px' } } },
+      { type: AdvancedType.BUTTON },
+      { type: AdvancedType.DIVIDER },
+      { type: AdvancedType.SPACER },
+      { type: AdvancedType.HERO },
+      { type: AdvancedType.SOCIAL },
+    ],
+  },
+  {
+    label: 'Layout',
+    active: true,
+    displayType: 'column',
+    blocks: [
+      { title: '1 coluna', payload: [['100%']] },
+      { title: '2 colunas', payload: [['50%', '50%'], ['33%', '67%'], ['67%', '33%']] },
+      { title: '3 colunas', payload: [['33.33%', '33.33%', '33.33%']] },
+    ],
+  },
+]
 
 /** Página em branco do Easy Email. */
 function paginaVazia() {
@@ -191,7 +218,7 @@ export default function EmailConstrutor() {
               {({ values }) => {
                 valuesRef.current = values
                 return (
-                  <StandardLayout showSourceCode>
+                  <StandardLayout showSourceCode categories={CATEGORIES}>
                     <EmailEditor />
                   </StandardLayout>
                 )
