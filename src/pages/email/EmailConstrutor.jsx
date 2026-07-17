@@ -260,24 +260,6 @@ export default function EmailConstrutor() {
       } catch (_) {}
     })
 
-    // Sempre que o gerenciador de imagens ABRIR (botão Imagens, imagem de fundo, etc.),
-    // carrega as imagens do Storage do usuário (uma vez), com loading do foguetinho.
-    editor.on('asset:open', async () => {
-      if (assetsCarregados.current) return
-      const uid = uidRef.current
-      if (!uid) return
-      setCarregandoImgs(true)
-      try {
-        const assets = await listEmailAssets(uid)
-        if (assets.length) editor.AssetManager.add(assets)
-        assetsCarregados.current = true
-      } catch (_) {
-        toast.error('Não consegui carregar suas imagens. Tente de novo.')
-      } finally {
-        setCarregandoImgs(false)
-      }
-    })
-
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
       const src = asset?.get?.('src') || asset?.src
@@ -350,7 +332,23 @@ export default function EmailConstrutor() {
     })
   }, [user?.uid])
 
-  // A galeria carrega as imagens de forma lazy (ao abrir), com loading — ver abrirImagens().
+  // Pré-carrega as imagens do usuário na coleção do editor assim que ele fica pronto.
+  // Assim elas aparecem em QUALQUER abertura do gerenciador (botão Imagens, imagem de
+  // fundo de div/section/body, etc.). Mostra o loading do foguetinho enquanto puxa.
+  useEffect(() => {
+    if (!ready || !user?.uid || assetsCarregados.current) return
+    let vivo = true
+    setCarregandoImgs(true)
+    listEmailAssets(user.uid)
+      .then((assets) => {
+        const ed = editorRef.current
+        if (vivo && ed && assets.length) ed.AssetManager.add(assets)
+        assetsCarregados.current = true
+      })
+      .catch(() => { if (vivo) toast.error('Não consegui carregar suas imagens. Tente de novo.') })
+      .finally(() => { if (vivo) setCarregandoImgs(false) })
+    return () => { vivo = false }
+  }, [ready, user?.uid])
 
   // Ao selecionar um template (ou ficar pronto), carrega o conteúdo no editor
   useEffect(() => {
@@ -802,7 +800,7 @@ export default function EmailConstrutor() {
 
       {/* Loading da galeria de imagens (foguetinho) — fica por cima do modal do GrapesJS */}
       {carregandoImgs && (
-        <div className="fixed inset-0 flex items-center justify-center bg-white/85 backdrop-blur-sm" style={{ zIndex: 100000 }}>
+        <div className="fixed inset-0 flex items-center justify-center bg-white/85" style={{ zIndex: 100000 }}>
           <PageLoader label="Carregando suas imagens…" />
         </div>
       )}
