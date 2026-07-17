@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
-import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, criarCheckoutCreditoCall, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_EMAIL, PACOTES_CREDITO_CALL } from '../lib/perfil'
+import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, criarCheckoutCreditoCall, criarCheckoutInstancia, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_EMAIL, PACOTES_CREDITO_CALL } from '../lib/perfil'
 import { usePlano } from '../lib/PlanoContext'
 import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck, Globe, Phone } from 'lucide-react'
 import img500 from '../assets/chip/emailautsend.png'
@@ -20,6 +20,8 @@ import globoIcon from '../assets/global.png'
 import euaFlag from '../assets/flags/euaflaglarge.png'
 import Bandeira from '../components/Bandeira'
 import CheckoutModal from '../components/CheckoutModal'
+import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
+import instanciaWhats from '../assets/whtatsicons/instancia-whats.png'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
 const PACOTE_IMG = { 500: img500, 1000: img1000, 2500: img2500 }
@@ -100,12 +102,14 @@ function FaixaPopular({ tema = 'red' }) {
 
 export default function Perfil() {
   const [user] = useAuthState(auth)
-  const { setFotoURL } = usePlano()
+  const { setFotoURL, limiteDe, isAdmin: isAdminCtx } = usePlano()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [comprando, setComprando] = useState(null) // key do pacote em compra
   const [enviandoFoto, setEnviandoFoto] = useState(false)
   const [checkoutSecret, setCheckoutSecret] = useState(null) // client_secret do checkout embutido
+  const [instModalOpen, setInstModalOpen] = useState(false) // modal de comprar instância
+  const [comprandoInst, setComprandoInst] = useState(false)
   const fileRef = useRef(null)
 
   const escolherFoto = async (e) => {
@@ -169,6 +173,19 @@ export default function Perfil() {
       toast.error(err?.message || 'Falha ao iniciar a recarga.')
     } finally {
       setComprando(null)
+    }
+  }
+
+  const comprarInstancia = async (quantidade) => {
+    setComprandoInst(true)
+    try {
+      const r = await criarCheckoutInstancia(quantidade)
+      if (r?.clientSecret) setCheckoutSecret(r.clientSecret)
+      else toast.error('Não consegui abrir o checkout. Tente de novo.')
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao iniciar a compra.')
+    } finally {
+      setComprandoInst(false)
     }
   }
 
@@ -245,6 +262,32 @@ export default function Perfil() {
               Cota do plano: {(stats?.emailsLimite || 0).toLocaleString('pt-BR')} e-mails · {(stats?.smsLimite || 0).toLocaleString('pt-BR')} SMS{(stats?.emailCreditos > 0 || stats?.smsCreditos > 0) ? ` + créditos (${(stats?.emailCreditos || 0).toLocaleString('pt-BR')} e-mail / ${(stats?.smsCreditos || 0).toLocaleString('pt-BR')} SMS)` : ''}. Os limites do plano renovam todo mês; os créditos não expiram.
             </p>
           )}
+        </Panel>
+
+        {/* Comprar instância de WhatsApp (assinatura mensal) */}
+        <Panel title="Instâncias de WhatsApp" icon={MessageSquare}>
+          <div className="flex flex-col sm:flex-row items-center gap-5 rounded-2xl border-2 border-emerald-200 bg-emerald-50/40 p-5">
+            <img src={instanciaWhats} alt="" className="h-24 w-auto object-contain shrink-0 drop-shadow-sm" />
+            <div className="flex-1 text-center sm:text-left">
+              <div className="flex items-center justify-center sm:justify-start gap-2">
+                <h3 className="text-lg font-bold text-stone-800">Instância de WhatsApp</h3>
+                <Bandeira code="BR" className="w-5 h-auto rounded-sm" />
+              </div>
+              <p className="text-sm text-stone-600 mt-1">
+                Cada instância é um número de WhatsApp a mais pra conectar nas automações e disparos.
+              </p>
+              <p className="text-lg font-bold text-emerald-600 mt-1">R$ 29,90<span className="text-sm font-medium text-stone-500">/mês cada</span></p>
+              {!isAdminCtx && Number.isFinite(limiteDe('instancias')) && (
+                <p className="text-xs text-stone-400 mt-1">Seu plano hoje permite <b>{limiteDe('instancias')}</b> instância(s) no total.</p>
+              )}
+            </div>
+            <button
+              onClick={() => setInstModalOpen(true)}
+              className="w-full sm:w-auto min-h-[44px] px-6 inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition"
+            >
+              <Check className="w-4 h-4" /> Comprar instância
+            </button>
+          </div>
         </Panel>
 
         {/* Recarga de e-mail */}
@@ -349,13 +392,22 @@ export default function Perfil() {
         </Panel>
       </div>
 
+      {instModalOpen && (
+        <ComprarInstanciaModal
+          comprando={comprandoInst}
+          onConfirm={comprarInstancia}
+          onClose={() => setInstModalOpen(false)}
+        />
+      )}
+
       {checkoutSecret && (
         <CheckoutModal
           clientSecret={checkoutSecret}
           onClose={() => setCheckoutSecret(null)}
           onComplete={() => {
             setCheckoutSecret(null)
-            toast.success('Pagamento concluído! Seus créditos são adicionados em instantes.')
+            setInstModalOpen(false)
+            toast.success('Pagamento concluído! Em instantes você já pode criar a nova instância.')
             setTimeout(carregar, 2500)
           }}
         />

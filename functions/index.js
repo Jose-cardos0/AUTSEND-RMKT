@@ -59,7 +59,10 @@ const PLAN_LIMITS = {
 function limitesDoTenant(t) {
   const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
   const ov = (t && t.overrides && t.overrides.limites) || {}
-  return { plano, ...PLAN_LIMITS[plano], ...ov }
+  const merged = { plano, ...PLAN_LIMITS[plano], ...ov }
+  // Instâncias avulsas compradas (assinatura R$29,90/mês cada) somam ao limite do plano/override.
+  merged.instancias = (Number(merged.instancias) || 0) + (Number(t && t.instanciasExtras) || 0)
+  return merged
 }
 
 /**
@@ -1178,6 +1181,39 @@ exports.smsCriarCheckoutNumero = onCall({ region: 'us-central1', timeoutSeconds:
     return { clientSecret: session.client_secret }
   } catch (e) {
     console.error('smsCriarCheckoutNumero', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+/**
+ * Cria o checkout Stripe EMBUTIDO (assinatura R$29,90/mês por instância) pra COMPRAR instâncias
+ * avulsas de WhatsApp. Ao pagar, o webhook soma em `tenant.instanciasExtras` (aumenta o limite).
+ */
+exports.instanciaCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const qtd = Math.max(1, Math.min(20, Number(request.data?.quantidade) || 1))
+  const key = process.env.STRIPE_SECRET_KEY
+  const priceInst = process.env.STRIPE_PRICE_INSTANCIA_WA || 'price_1TuEmRLvVsGXtCnT0e7d2gm2'
+  if (!key) throw new HttpsError('failed-precondition', 'A compra de instância ainda não foi configurada.')
+  const stripe = require('stripe')(key)
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'instancia_wa', uid, quantidade: String(qtd) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      ui_mode: 'embedded_page',
+      mode: 'subscription',
+      line_items: [{ price: priceInst, quantity: qtd }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      subscription_data: { metadata: meta },
+      redirect_on_completion: 'never',
+    })
+    return { clientSecret: session.client_secret }
+  } catch (e) {
+    console.error('instanciaCriarCheckout', e)
     throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
   }
 })
@@ -2867,6 +2903,21 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         res.status(200).json({ ok: true, creditadoCallSeg: segundos, uid: uidC }); return
       }
 
+      // ── Compra de INSTÂNCIA(S) de WhatsApp (assinatura) — soma ao limite via instanciasExtras. ──
+      if (session.metadata?.tipo === 'instancia_wa') {
+        const uidC = session.metadata.uid
+        const qtd = Math.max(1, Number(session.metadata.quantidade) || 1)
+        const subId = session.subscription || null
+        if (!uidC) { res.status(200).json({ ok: true, ignored: 'instancia_wa sem uid' }); return }
+        // Idempotência por sessão de checkout.
+        const recRef = db.doc(`tenants/${uidC}/instanciaSubs/${session.id}`)
+        const jaRec = await recRef.get()
+        if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
+        await db.doc(`tenants/${uidC}`).set({ instanciasExtras: admin.firestore.FieldValue.increment(qtd) }, { merge: true })
+        await recRef.set({ quantidade: qtd, stripeSubscriptionId: subId, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        res.status(200).json({ ok: true, instanciasExtras: qtd, uid: uidC }); return
+      }
+
       // ── Fase 2: compra de NÚMERO(S) SMS (não é plano) — compra na Telnyx e salva no cliente. ──
       if (session.metadata?.tipo === 'numero_sms') {
         const uidN = session.metadata.uid
@@ -2958,6 +3009,20 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
           if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
         }
         res.status(200).json({ ok: true, numerosLiberados: numSnap.size }); return
+      }
+
+      // 1.5) Assinatura de INSTÂNCIA(S) WhatsApp? Tira do instanciasExtras e sai — não mexe no plano.
+      const instSnap = await db.collectionGroup('instanciaSubs').where('stripeSubscriptionId', '==', subId).get()
+      if (!instSnap.empty) {
+        let revogadas = 0
+        for (const doc of instSnap.docs) {
+          const uidI = doc.ref.path.split('/')[1] // tenants/{uid}/instanciaSubs/{id}
+          const qtd = Math.max(0, Number(doc.data().quantidade) || 0)
+          if (qtd > 0) await db.doc(`tenants/${uidI}`).set({ instanciasExtras: admin.firestore.FieldValue.increment(-qtd) }, { merge: true })
+          await doc.ref.delete()
+          revogadas += qtd
+        }
+        res.status(200).json({ ok: true, instanciasRevogadas: revogadas }); return
       }
 
       // 2) Assinatura de PLANO → volta pro Free (só se for mesmo a assinatura do plano do tenant).
@@ -4601,6 +4666,7 @@ exports.getMeuPlano = onCall({ region: 'us-central1' }, async (request) => {
     fotoURL: t.fotoURL || null,
     temSmsApi,
     temCallVoz, callMin: isAdm ? -1 : (Number(lim.callMin) || 0), temCallApi: temSmsApi,
+    instanciasExtras: Number(t.instanciasExtras) || 0,
   }
 })
 

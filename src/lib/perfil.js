@@ -53,3 +53,11 @@ export async function criarCheckoutCreditoCall(pacote) {
   const r = await call('callCriarCheckoutCredito')({ pacote })
   return r.data // { url }
 }
+
+export const PRECO_INSTANCIA = 'R$ 29,90/mês'
+
+/** Cria o checkout Stripe embutido (assinatura R$29,90/mês por instância) pra comprar instâncias de WhatsApp. */
+export async function criarCheckoutInstancia(quantidade) {
+  const r = await call('instanciaCriarCheckout')({ quantidade })
+  return r.data // { clientSecret }
+}
