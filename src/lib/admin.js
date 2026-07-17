@@ -48,6 +48,7 @@ export async function adminResetTermos(uid) { return (await call('adminResetTerm
 export async function adminGetSecurityReport() { return (await call('adminGetSecurityReport')()).data }
 export async function adminRunSecurityScan() { return (await call('adminRunSecurityScan')()).data }
 export async function adminMarkSecuritySeen() { return (await call('adminMarkSecuritySeen')()).data }
+export async function adminGetSecurityLogs(page = 1, pageSize = 20) { return (await call('adminGetSecurityLogs')({ page, pageSize })).data }
 
 // Saúde do cliente pelo % de reclamação/bounce (limiares dos provedores).
 export function healthDoCliente(c) {

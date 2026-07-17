@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, adminGetClienteGastos, adminGetClienteConectados, adminResetTermos, adminGetSecurityReport, adminRunSecurityScan, adminMarkSecuritySeen, ADMIN_EMAIL } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, adminGetClienteGastos, adminGetClienteConectados, adminResetTermos, adminGetSecurityReport, adminRunSecurityScan, adminMarkSecuritySeen, adminGetSecurityLogs, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 
 // Limites editáveis no admin (espelho do whitelist do backend adminUpdateCliente).
@@ -69,12 +69,15 @@ const NIVEL_META = {
   medio: { label: 'MÉDIO', cls: 'bg-amber-100 text-amber-700 border-amber-300', dot: 'bg-amber-500', icon: AlertTriangle },
 }
 
-// Página LOGS SECURITY: fiscalização de risco (financeiro/jurídico/abuso) por cliente.
-function SecurityView({ report, carregando, onScan, onAbrirCliente }) {
-  const alertas = report?.alertas || []
+// Página LOGS SECURITY: fiscalização de risco (financeiro/jurídico/abuso/conteúdo) por cliente.
+// Log PERSISTENTE (nunca apagado) com paginação; div na altura da tela.
+function SecurityView({ report, carregando, onScan, onAbrirCliente, logs, carregandoLogs, onPage }) {
+  const lista = logs?.logs || []
+  const totalPag = Math.max(1, Math.ceil((logs?.total || 0) / (logs?.pageSize || 20)))
+  const page = logs?.page || 1
   return (
-    <div className="app-panel rounded-2xl overflow-hidden">
-      <div className="px-4 sm:px-5 py-3 border-b border-surface-100 flex items-center justify-between gap-3 flex-wrap">
+    <div className="app-panel rounded-2xl overflow-hidden flex flex-col lg:h-[calc(100vh-9rem)]">
+      <div className="px-4 sm:px-5 py-3 border-b border-surface-100 flex items-center justify-between gap-3 flex-wrap shrink-0">
         <span className="flex items-center gap-2 text-sm font-semibold text-stone-800">
           <ShieldAlertIcon className="w-4 h-4 text-rose-600" /> Logs Security — fiscalização de risco
         </span>
@@ -86,40 +89,53 @@ function SecurityView({ report, carregando, onScan, onAbrirCliente }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 p-4">
+      <div className="grid grid-cols-4 gap-2 p-4 shrink-0">
         <div className="rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-2 text-center"><span className="block text-2xl font-bold text-rose-700 tabular-nums">{report?.criticos ?? 0}</span><span className="block text-[10px] uppercase text-rose-700/70">Críticos</span></div>
         <div className="rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-2 text-center"><span className="block text-2xl font-bold text-orange-700 tabular-nums">{report?.altos ?? 0}</span><span className="block text-[10px] uppercase text-orange-700/70">Altos</span></div>
         <div className="rounded-xl border border-amber-200 bg-amber-50/40 px-3 py-2 text-center"><span className="block text-2xl font-bold text-amber-700 tabular-nums">{report?.medios ?? 0}</span><span className="block text-[10px] uppercase text-amber-700/70">Médios</span></div>
+        <div className="rounded-xl border border-surface-200 bg-white px-3 py-2 text-center"><span className="block text-2xl font-bold text-stone-700 tabular-nums">{logs?.total ?? 0}</span><span className="block text-[10px] uppercase text-stone-400">Logs</span></div>
       </div>
 
-      <div className="px-4 pb-4 space-y-2">
-        {carregando && alertas.length === 0 ? (
-          <p className="text-xs text-stone-400 py-8 text-center">Analisando clientes…</p>
-        ) : alertas.length === 0 ? (
-          <p className="text-sm text-emerald-600 py-8 text-center flex items-center justify-center gap-2"><ShieldCheck className="w-5 h-5" /> Nenhum cliente em risco no momento. Tudo limpo.</p>
-        ) : alertas.map((a) => {
-          const m = NIVEL_META[a.nivel] || NIVEL_META.medio
+      {/* Log persistente, rolável, ocupando o resto da altura */}
+      <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft px-4 space-y-2">
+        {carregandoLogs && lista.length === 0 ? (
+          <p className="text-xs text-stone-400 py-8 text-center">Carregando logs…</p>
+        ) : lista.length === 0 ? (
+          <p className="text-sm text-emerald-600 py-8 text-center flex items-center justify-center gap-2"><ShieldCheck className="w-5 h-5" /> Nenhum log de segurança ainda. Tudo limpo.</p>
+        ) : lista.map((l) => {
+          if (l.tipo === 'conteudo') {
+            return (
+              <button key={l.id} onClick={() => onAbrirCliente(l.uid)} className="w-full text-left rounded-xl border border-violet-200 bg-violet-50/40 p-3 hover:ring-2 hover:ring-primary-200 transition">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="flex items-center gap-2 min-w-0"><FileText className="w-4 h-4 text-violet-600 shrink-0" /><span className="font-semibold text-stone-800 truncate">{l.nome || l.email || l.uid}</span><span className="text-[11px] text-stone-500 hidden sm:inline truncate">{l.email}</span></span>
+                  <span className="flex items-center gap-2 shrink-0"><span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">{l.canal === 'sms' ? 'SMS' : 'E-mail'} · conteúdo</span><span className="text-[10px] text-stone-400">{fmtDateMs(l.emMs)}</span></span>
+                </div>
+                <p className="text-[11px] text-stone-600"><b>Palavras:</b> {(l.palavras || []).join(', ')}</p>
+                {l.amostra && <p className="text-[10px] text-stone-400 mt-0.5 line-clamp-2 italic">"{l.amostra}"</p>}
+              </button>
+            )
+          }
+          const m = NIVEL_META[l.nivel] || NIVEL_META.medio
           const Icon = m.icon
           return (
-            <button key={a.uid} onClick={() => onAbrirCliente(a.uid)} className={`w-full text-left rounded-xl border p-3 hover:ring-2 hover:ring-primary-200 transition ${m.cls}`}>
+            <button key={l.id} onClick={() => onAbrirCliente(l.uid)} className={`w-full text-left rounded-xl border p-3 hover:ring-2 hover:ring-primary-200 transition ${m.cls}`}>
               <div className="flex items-center justify-between gap-2 mb-1.5">
-                <span className="flex items-center gap-2 min-w-0">
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="font-semibold text-stone-800 truncate">{a.nome || a.email || a.uid}</span>
-                  <span className="text-[11px] text-stone-500 truncate hidden sm:inline">{a.email}</span>
-                </span>
-                <span className="flex items-center gap-2 shrink-0">
-                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-white/70 capitalize">{a.plano}</span>
-                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${m.cls}`}>{m.label} · {a.score}</span>
-                </span>
+                <span className="flex items-center gap-2 min-w-0"><Icon className="w-4 h-4 shrink-0" /><span className="font-semibold text-stone-800 truncate">{l.nome || l.email || l.uid}</span><span className="text-[11px] text-stone-500 truncate hidden sm:inline">{l.email}</span></span>
+                <span className="flex items-center gap-2 shrink-0"><span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${m.cls}`}>{m.label} · {l.score}</span><span className="text-[10px] text-stone-400">{fmtDateMs(l.emMs)}</span></span>
               </div>
-              <ul className="text-[11px] text-stone-600 space-y-0.5 list-disc list-inside">
-                {(a.motivos || []).map((mo, i) => <li key={i}>{mo}</li>)}
-              </ul>
-              <p className="text-[10px] text-stone-500 mt-1.5">Mês: custo {fmtBRL(a.custoMes)} · receita {fmtBRL(a.receitaMes)} · <span className={a.receitaMes - a.custoMes < 0 ? 'text-rose-600 font-semibold' : ''}>lucro {fmtBRL(a.receitaMes - a.custoMes)}</span></p>
+              <ul className="text-[11px] text-stone-600 space-y-0.5 list-disc list-inside">{(l.motivos || []).map((mo, i) => <li key={i}>{mo}</li>)}</ul>
             </button>
           )
         })}
+      </div>
+
+      {/* Paginação */}
+      <div className="px-4 py-3 border-t border-surface-100 flex items-center justify-between gap-3 shrink-0">
+        <span className="text-[11px] text-stone-500">Página {page} de {totalPag} · {logs?.total || 0} log(s)</span>
+        <div className="flex items-center gap-2">
+          <button onClick={() => onPage(page - 1)} disabled={page <= 1 || carregandoLogs} className="px-2 py-1.5 rounded-lg border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-40"><ChevronLeft className="w-3.5 h-3.5" /></button>
+          <button onClick={() => onPage(page + 1)} disabled={page >= totalPag || carregandoLogs} className="px-2 py-1.5 rounded-lg border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-40"><ChevronRight className="w-3.5 h-3.5" /></button>
+        </div>
       </div>
     </div>
   )
@@ -140,6 +156,8 @@ export default function Admin() {
   const [view, setView] = useState('clientes') // 'clientes' | 'security'
   const [secReport, setSecReport] = useState(null)
   const [carregandoSec, setCarregandoSec] = useState(false)
+  const [secLogs, setSecLogs] = useState({ logs: [], total: 0, page: 1, pageSize: 20 })
+  const [carregandoLogs, setCarregandoLogs] = useState(false)
   const [pagina, setPagina] = useState(1)
   const [sel, setSel] = useState(null) // cliente aberto
   const [detalhe, setDetalhe] = useState(null) // { tenant, disparos, leadsCount, reclamacoes }
@@ -237,9 +255,15 @@ export default function Admin() {
   }
   useEffect(() => { if (user?.uid) adminGetSecurityReport().then(setSecReport).catch(() => {}) }, [user?.uid])
 
+  const carregarLogs = (page = 1) => {
+    setCarregandoLogs(true)
+    adminGetSecurityLogs(page, secLogs.pageSize).then((r) => setSecLogs(r)).catch(() => {}).finally(() => setCarregandoLogs(false))
+  }
+
   const abrirSecurity = () => {
     setView('security')
     if (!secReport || secReport.geradoEmMs == null) carregarSec(false)
+    carregarLogs(1)
     adminMarkSecuritySeen().then(() => setSecReport((r) => (r ? { ...r, naoVisto: false } : r))).catch(() => {})
   }
 
@@ -520,7 +544,7 @@ export default function Admin() {
       )}
 
       {view === 'security' ? (
-        <SecurityView report={secReport} carregando={carregandoSec} onScan={() => carregarSec(true)} onAbrirCliente={(uid) => { const c = clientes.find((x) => x.uid === uid); if (c) abrir(c) }} />
+        <SecurityView report={secReport} carregando={carregandoSec} onScan={() => { carregarSec(true); setTimeout(() => carregarLogs(1), 2000) }} onAbrirCliente={(uid) => { const c = clientes.find((x) => x.uid === uid); if (c) abrir(c) }} logs={secLogs} carregandoLogs={carregandoLogs} onPage={carregarLogs} />
       ) : (
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
       {/* Lateral esquerda */}

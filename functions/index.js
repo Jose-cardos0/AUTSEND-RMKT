@@ -134,6 +134,40 @@ async function registrarFaturamento(uid, entry) {
     else await db.collection(`tenants/${uid}/faturamento`).add(doc)
   } catch (e) { console.error('registrarFaturamento', e) }
 }
+
+/**
+ * Palavras que sinalizam GOLPE/phishing/impersonação em disparos. Dual-use (marketing usa algumas),
+ * por isso NÃO bloqueia — só registra em securityLogs pro admin conferir manualmente. Ajustável.
+ */
+const SCAM_WORDS = [
+  'conta bloqueada', 'conta suspensa', 'conta sera suspensa', 'regularize', 'regularizar', 'recadastr',
+  'atualize seus dados', 'confirme seus dados', 'confirmar dados', 'dados bancarios', 'sua senha', 'informe a senha',
+  'codigo de verificacao', 'codigo de seguranca', 'numero do cartao', 'cvv', 'validade do cartao',
+  'cpf bloqueado', 'cpf suspenso', 'cpf irregular', 'cpf na justica', 'serasa', 'spc brasil', 'receita federal',
+  'banco central', 'pix premiado', 'voce ganhou', 'voce foi contemplado', 'voce foi sorteado', 'resgate seu premio',
+  'ultima chance', 'clique aqui agora', 'clique imediatamente', 'verifique sua conta', 'emprestimo aprovado',
+  'renda extra garantida', 'investimento garantido', 'lucro garantido', 'dobre seu dinheiro', 'multiplique seu',
+  'indenizacao', 'beneficio liberado', 'saque liberado', 'fgts liberado', 'auxilio liberado',
+  'nubank', 'caixa economica', 'bradesco', 'itau', 'santander', 'mercado pago', 'banco do brasil', 'whatsapp premiado',
+]
+
+/**
+ * Varre o conteúdo de um disparo por palavras de golpe/phishing. NÃO bloqueia — se achar, grava em
+ * securityLogs pro admin revisar (tato humano). @param canal 'email' | 'sms'
+ */
+async function scanConteudoRisco(uid, tenant, canal, texto, meta = {}) {
+  try {
+    const t = String(texto || '').toLowerCase()
+    if (!t) return
+    const achadas = SCAM_WORDS.filter((w) => t.includes(w))
+    if (achadas.length === 0) return
+    await db.collection('securityLogs').add({
+      tipo: 'conteudo', uid, nome: tenant?.nome || '', email: tenant?.email || '',
+      canal, palavras: achadas.slice(0, 20), amostra: String(texto).slice(0, 240),
+      ref: meta.ref || null, em: admin.firestore.FieldValue.serverTimestamp(),
+    })
+  } catch (e) { console.error('scanConteudoRisco', e) }
+}
 async function emailsEnviadosNoMes(uid) {
   const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
   let total = 0
@@ -634,6 +668,15 @@ exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, mem
     await db.doc(`tenants/${uid}`).set({ emailCreditos: admin.firestore.FieldValue.increment(-creditoAConsumir) }, { merge: true })
   }
 
+  // Contador server-only de cota (à prova de adulteração — o cliente não escreve em tenants/).
+  const quotaConsumida = usaContaCompartilhada && !ehAdminEmail ? Math.max(0, validos.length - creditoAConsumir) : 0
+  if (quotaConsumida > 0) {
+    await db.doc(`tenants/${uid}`).set({ emailUso: { [mesAtualStr()]: admin.firestore.FieldValue.increment(quotaConsumida) } }, { merge: true })
+  }
+
+  // Fiscalização de conteúdo (não bloqueia — só registra pro admin).
+  await scanConteudoRisco(uid, tenant, 'email', `${baseSubject} ${htmlToText(tpl.inlined || tpl.html || '')}`, { ref: dispRef.id })
+
   const ctx = { apiKey: cfg.apiKey, from, tplHtml: tpl.inlined || tpl.html || '', subjectBase: baseSubject, footer, unsub, disparoId: dispRef.id }
 
   // 1º lote na hora
@@ -923,7 +966,11 @@ async function quotaSMSUsadaNoMes(uid) {
       }
     })
   } catch (_) {}
-  return quota
+  try {
+    const s = await db.doc(`tenants/${uid}`).get()
+    const contador = Number((s.exists ? s.data() : {})?.smsUso?.[mesAtualStr()]) || 0
+    return Math.max(quota, contador)
+  } catch (_) { return quota }
 }
 
 /** Envia 1 SMS via API da Telnyx. Retorna { ok, id } ou lança. */
@@ -1046,6 +1093,15 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   if (creditoAConsumir > 0) {
     await db.doc(`tenants/${uid}`).set({ smsCreditos: admin.firestore.FieldValue.increment(-creditoAConsumir) }, { merge: true })
   }
+
+  // Contador server-only de cota SMS (à prova de adulteração).
+  const quotaConsumidaSms = !ehAdmin && !contaPropria ? Math.max(0, validos.length - creditoAConsumir) : 0
+  if (quotaConsumidaSms > 0) {
+    await db.doc(`tenants/${uid}`).set({ smsUso: { [mesAtualStr()]: admin.firestore.FieldValue.increment(quotaConsumidaSms) } }, { merge: true })
+  }
+
+  // Fiscalização de conteúdo (não bloqueia — só registra pro admin).
+  await scanConteudoRisco(uid, tenant, 'sms', mensagem, { ref: dispRef.id })
 
   const ctx = { cfg, mensagem, disparoId: dispRef.id, permitirBR: contaPropria }
   const r0 = await enviarLoteSMS(uid, ctx, lotes[0] || [])
@@ -1743,7 +1799,12 @@ async function quotaEmailUsadaNoMes(uid) {
       }
     })
   } catch (_) {}
-  return quota
+  // Piso à prova de adulteração: contador server-only em tenants/ (cliente não pode apagar disparos p/ zerar).
+  try {
+    const s = await db.doc(`tenants/${uid}`).get()
+    const contador = Number((s.exists ? s.data() : {})?.emailUso?.[mesAtualStr()]) || 0
+    return Math.max(quota, contador)
+  } catch (_) { return quota }
 }
 
 /** Cria o checkout Stripe (pagamento único) pra recarregar créditos de e-mail. */
@@ -4799,6 +4860,18 @@ async function rodarSecurityScan() {
     medios: alertas.filter((a) => a.nivel === 'medio').length,
     alertas: alertas.slice(0, 100),
   })
+  // Grava LOG PERSISTENTE (nunca apagado) dos críticos/altos ainda não logados nas últimas 20h (evita repetir toda hora).
+  try {
+    const desde = admin.firestore.Timestamp.fromMillis(Date.now() - 20 * 3600 * 1000)
+    const recentes = await db.collection('securityLogs').where('em', '>=', desde).get()
+    const jaLogado = new Set(recentes.docs.filter((d) => d.data().tipo === 'risco').map((d) => d.data().uid))
+    for (const a of alertas) {
+      if ((a.nivel === 'critico' || a.nivel === 'alto') && !jaLogado.has(a.uid)) {
+        await db.collection('securityLogs').add({ tipo: 'risco', uid: a.uid, nome: a.nome, email: a.email, nivel: a.nivel, score: a.score, motivos: a.motivos, em: admin.firestore.FieldValue.serverTimestamp() })
+        jaLogado.add(a.uid)
+      }
+    }
+  } catch (e) { console.error('securityLogs risco', e) }
   return alertas.length
 }
 
@@ -4831,6 +4904,24 @@ exports.adminMarkSecuritySeen = onCall({ region: 'us-central1' }, async (request
   assertAdmin(request)
   await db.doc('config/securityMeta').set({ lastSeenAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
   return { ok: true }
+})
+
+/** Admin: log PERSISTENTE de segurança (conteúdo suspeito + risco), paginado. Nunca é apagado. */
+exports.adminGetSecurityLogs = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  assertAdmin(request)
+  const page = Math.max(1, Number(request.data?.page) || 1)
+  const pageSize = Math.min(50, Math.max(5, Number(request.data?.pageSize) || 20))
+  let total = 0
+  try { total = (await db.collection('securityLogs').count().get()).data().count } catch (_) {}
+  let logs = []
+  try {
+    const s = await db.collection('securityLogs').orderBy('em', 'desc').offset((page - 1) * pageSize).limit(pageSize).get()
+    logs = s.docs.map((d) => {
+      const x = d.data()
+      return { id: d.id, tipo: x.tipo, uid: x.uid, nome: x.nome || '', email: x.email || '', canal: x.canal || null, nivel: x.nivel || null, score: x.score ?? null, palavras: x.palavras || null, motivos: x.motivos || null, amostra: x.amostra || null, ref: x.ref || null, emMs: x.em?.toMillis ? x.em.toMillis() : 0 }
+    })
+  } catch (_) {}
+  return { logs, total, page, pageSize }
 })
 
 /** Kill switch global: pausa/religa TODOS os envios. */
