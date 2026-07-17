@@ -21,7 +21,7 @@ import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical, Undo2, Redo2, Settings, Layers, Eraser, X } from 'lucide-react'
+import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical, Undo2, Redo2, Settings, Layers, Eraser, X, Eye } from 'lucide-react'
 
 const TITULOS_PAINEL = { blocos: 'Blocos', estilo: 'Estilo', config: 'Configurações', camadas: 'Camadas' }
 import EmojiPicker from '../../components/EmojiPicker'
@@ -273,6 +273,18 @@ export default function EmailConstrutor() {
     }
   }
 
+  // Pré-visualização do e-mail renderizado
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewHtml, setPreviewHtml] = useState('')
+  const abrirPreview = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    const html = editor.getHtml()
+    const css = editor.getCss()
+    setPreviewHtml(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:24px;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif}${css}</style></head><body>${html}</body></html>`)
+    setShowPreview(true)
+  }
+
   // Abre a galeria de imagens (upload direto pro Storage do usuário)
   const abrirImagens = () => {
     const editor = editorRef.current
@@ -348,6 +360,9 @@ export default function EmailConstrutor() {
           </button>
           <button onClick={abrirImagens} title="Imagens" className="btn-secondary min-h-[40px] min-w-[40px] justify-center px-2.5">
             <ImagePlus className="w-4 h-4" />
+          </button>
+          <button onClick={abrirPreview} title="Pré-visualizar" className="btn-secondary min-h-[40px] min-w-[40px] justify-center px-2.5">
+            <Eye className="w-4 h-4" />
           </button>
           <button onClick={() => setShowTest(true)} title="Enviar teste" className="btn-secondary min-h-[40px] min-w-[40px] justify-center px-2.5">
             <Send className="w-4 h-4" />
@@ -491,6 +506,19 @@ export default function EmailConstrutor() {
           </div>
         </div>
       </div>
+
+      {/* Modal: pré-visualização */}
+      {showPreview && (
+        <div className="fixed inset-0 z-50 flex flex-col p-4 bg-stone-900/60 backdrop-blur-sm" onClick={() => setShowPreview(false)}>
+          <div className="mx-auto w-full max-w-2xl flex-1 min-h-0 flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-surface-100">
+              <h3 className="font-semibold text-stone-800 flex items-center gap-2"><Eye className="w-4 h-4 text-primary-600" /> Prévia do e-mail</h3>
+              <button onClick={() => setShowPreview(false)} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
+            </div>
+            <iframe title="Prévia do e-mail" srcDoc={previewHtml} className="flex-1 min-h-0 w-full border-0 bg-[#f4f4f5]" />
+          </div>
+        </div>
+      )}
 
       {/* Modal: enviar e-mail de teste */}
       {showTest && (
