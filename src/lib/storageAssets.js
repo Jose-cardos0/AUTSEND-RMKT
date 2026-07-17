@@ -19,24 +19,27 @@ function carregarImagem(file) {
   })
 }
 
-/** Desenha a imagem num canvas no tamanho dado e devolve um Blob no formato/qualidade pedidos. */
+/** Desenha a imagem num canvas no tamanho dado e devolve um Blob no formato/qualidade pedidos.
+ *  Pra JPEG (sem transparência) pinta o fundo de BRANCO antes — senão áreas transparentes viram PRETO. */
 function paraBlob(img, w, h, mime, quality) {
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(w))
   canvas.height = Math.max(1, Math.round(h))
   const ctx = canvas.getContext('2d')
+  if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height) }
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b), mime, quality))
 }
 
 /**
  * Comprime a imagem no navegador pra ficar abaixo de ~1 MB (só se precisar).
- * JPEG/outros → reduz qualidade e, se preciso, dimensão. PNG (transparência) → só reduz dimensão.
+ * Preserva TRANSPARÊNCIA: tudo que não é JPEG (PNG/WEBP/GIF) sai como PNG (só reduz dimensão).
+ * JPEG reduz qualidade (e dimensão) e ganha fundo branco.
  */
 async function comprimirSePreciso(file) {
   if (file.size <= UM_MB) return file // já está ok
-  const isPng = /png/i.test(file.type)
-  const mime = isPng ? 'image/png' : 'image/jpeg'
+  const preservaAlfa = !/jpe?g/i.test(file.type) // PNG/WEBP/GIF podem ter transparência
+  const mime = preservaAlfa ? 'image/png' : 'image/jpeg'
   const img = await carregarImagem(file)
   let w = img.naturalWidth || img.width
   let h = img.naturalHeight || img.height
@@ -45,13 +48,13 @@ async function comprimirSePreciso(file) {
     const r = DIM_MAX / Math.max(w, h)
     w *= r; h *= r
   }
-  let quality = isPng ? undefined : 0.85
+  let quality = preservaAlfa ? undefined : 0.85
   let blob = await paraBlob(img, w, h, mime, quality)
-  // vai reduzindo até caber: JPEG baixa qualidade; PNG (ou JPEG no talo) baixa dimensão
+  // vai reduzindo até caber: JPEG baixa qualidade; PNG (transparente) baixa dimensão
   let tentativas = 0
   while (blob && blob.size > ALVO && tentativas < 15) {
     tentativas++
-    if (!isPng && quality > 0.4) {
+    if (!preservaAlfa && quality > 0.4) {
       quality = Math.max(0.4, quality - 0.1)
     } else {
       w *= 0.85; h *= 0.85
@@ -60,7 +63,7 @@ async function comprimirSePreciso(file) {
   }
   if (!blob) return file // fallback: se algo falhar, mantém o original (a regra do Storage barra se passar)
   const baseNome = (file.name || 'imagem').replace(/\.[^.]+$/, '')
-  return new File([blob], `${baseNome}.${isPng ? 'png' : 'jpg'}`, { type: mime })
+  return new File([blob], `${baseNome}.${preservaAlfa ? 'png' : 'jpg'}`, { type: mime })
 }
 
 /** Sobe uma imagem pro Storage do usuário (comprimindo pra <1 MB antes) e devolve { src, name }. */
