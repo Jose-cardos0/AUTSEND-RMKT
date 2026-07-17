@@ -193,11 +193,13 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
 
               {/* Salvar + input */}
               <div className="shrink-0 p-3 border-t border-surface-100 space-y-2">
-                {iaUso && iaUso.limite > 0 && (
-                  <p className={`text-[11px] text-center ${iaUso.usados >= iaUso.limite ? 'text-amber-600 font-medium' : 'text-stone-400'}`}>
-                    {iaUso.usados >= iaUso.limite
-                      ? `Você usou suas ${iaUso.limite} criações com IA deste mês.`
-                      : `${iaUso.usados}/${iaUso.limite} criações com IA usadas este mês`}
+                {iaUso && (
+                  <p className={`text-[11px] text-center ${iaUso.limite > 0 && iaUso.usados >= iaUso.limite ? 'text-amber-600 font-medium' : 'text-stone-400'}`}>
+                    {iaUso.limite === -1
+                      ? `${iaUso.usados} gerados este mês · ∞ ilimitado (admin)`
+                      : iaUso.usados >= iaUso.limite
+                        ? `Você usou suas ${iaUso.limite} criações com IA deste mês.`
+                        : `${iaUso.usados}/${iaUso.limite} criações com IA usadas este mês`}
                   </p>
                 )}
                 {htmlAtual && (

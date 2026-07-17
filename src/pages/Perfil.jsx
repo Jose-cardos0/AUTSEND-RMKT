@@ -58,6 +58,7 @@ function BarraUso({ icon: Icon, titulo, usados, limite, cor = 'primary' }) {
     primary: 'bg-primary-500',
     violet: 'bg-violet-500',
     emerald: 'bg-emerald-500',
+    amber: 'bg-amber-500',
   }
   return (
     <div className="p-4 rounded-xl border border-surface-200 bg-surface-50/60">
@@ -180,6 +181,7 @@ export default function Perfil() {
   const smsLimiteEfetivo = isAdmin ? -1 : ((stats?.smsLimite || 0) + (stats?.smsCreditos || 0))
   const callLimiteEfetivo = isAdmin ? -1 : ((stats?.callMinLimite || 0) + Math.floor((stats?.callCreditosSeg || 0) / 60))
   const emailLimiteEfetivo = isAdmin ? -1 : ((stats?.emailsLimite || 0) + (stats?.emailCreditos || 0))
+  const iaLimiteEfetivo = isAdmin ? -1 : (stats?.iaLimite || 0)
   const pausada = !!stats?.pausada
 
   return (
@@ -232,6 +234,7 @@ export default function Perfil() {
             <BarraUso icon={Mail} titulo="E-mails" usados={stats?.emailsUsados || 0} limite={emailLimiteEfetivo} cor="primary" />
             <BarraUso icon={MessageSquare} titulo="SMS" usados={stats?.smsUsados || 0} limite={smsLimiteEfetivo} cor="violet" />
             <BarraUso icon={Phone} titulo="Ligação IA (min)" usados={stats?.callMinUsados || 0} limite={callLimiteEfetivo} cor="emerald" />
+            <BarraUso icon={Sparkles} titulo="IA Construtor" usados={stats?.iaUsados || 0} limite={iaLimiteEfetivo} cor="amber" />
           </div>
           {isAdmin ? (
             <p className="text-xs text-stone-400 mt-2">Conta de administrador — envios ilimitados.</p>

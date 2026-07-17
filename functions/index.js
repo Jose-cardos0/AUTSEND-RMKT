@@ -3929,10 +3929,9 @@ exports.iaGerarEmailHtml = onCall({ region: 'us-central1', timeoutSeconds: 180 }
   mensagem = mensagem.replace(/```/g, '').trim() || 'Prontinho! Olha aqui do lado 🚀'
 
   // Conta o uso SÓ depois de gerar com sucesso (contador mensal no tenant).
-  let usados = usada
-  if (!isAdm) {
-    try { await tRef.set({ iaUso: { [mes]: admin.firestore.FieldValue.increment(1) } }, { merge: true }); usados = usada + 1 } catch (_) {}
-  }
+  // Sempre incrementa (pro contador refletir o real) — o admin só não é BLOQUEADO.
+  let usados = usada + 1
+  try { await tRef.set({ iaUso: { [mes]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) { usados = usada }
   return { mensagem, html, usados, limite: isAdm ? -1 : limite }
 })
 
