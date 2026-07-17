@@ -24,7 +24,7 @@
     "js-beautify": "^2.0.3",
     "libphonenumber-js": "^1.13.8",
     "lucide-react": "^0.303.0",
-    "mjml-browser": "^5.4.0",
+    "mjml-browser": "^4.15.3",
     "prismjs": "^1.30.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
