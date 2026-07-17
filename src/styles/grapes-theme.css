@@ -127,13 +127,13 @@
 .gjs-am-add-asset { display: none !important; }
 
 /* ── Modal "Suas imagens" ── */
-/* Header centraliza o botão de upload (pequeno) */
-.gjs-am-assets-header { display: flex !important; justify-content: center !important; padding: 14px !important; border: 0 !important; min-height: 0 !important; }
-.gjs-am-file-uploader { width: auto !important; min-height: 0 !important; background: transparent !important; padding: 0 !important; margin: 0 !important; }
+/* Header: botão de upload ocupa a largura toda (sem sobra/div vazia ao lado) */
+.gjs-am-assets-header { display: block !important; padding: 14px 16px !important; border: 0 !important; min-height: 0 !important; margin: 0 !important; }
+.gjs-am-file-uploader { width: 100% !important; min-height: 0 !important; background: transparent !important; padding: 0 !important; margin: 0 !important; }
 .gjs-am-file-uploader form,
 .gjs-am-dropzone {
-  display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important;
-  height: 40px !important; min-height: 0 !important; width: auto !important; padding: 0 20px !important;
+  display: flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important;
+  height: 40px !important; min-height: 0 !important; width: 100% !important; padding: 0 20px !important;
   border: 0 !important; border-radius: 10px !important;
   background-color: #7c3aed !important; color: #ffffff !important;
   font-size: 13px !important; font-weight: 600 !important; white-space: nowrap !important; cursor: pointer;
@@ -217,6 +217,14 @@
 .am-panel input, .am-panel select, .am-panel textarea { border-radius: 0 !important; }
 /* Borda cinza no fim dos setores de estilo (ex.: fim do "Borda") — remover */
 .gjs-sm-sector, .gjs-sm-properties, .gjs-sm-sector .gjs-sm-title { border-bottom: 0 !important; }
+/* Sem contorno/ring de foco nos campos do painel (vinha do select:focus global do app) */
+.gjs-field:focus, .gjs-field:focus-within, .gjs-field-select:focus-within, .gjs-field-integer:focus-within,
+.gjs-field select:focus, .gjs-field input:focus, .gjs-sm-field select:focus, .gjs-sm-field input:focus,
+.gjs-trt-trait select:focus, .gjs-trt-trait input:focus,
+.am-panel select:focus, .am-panel input:focus, .am-panel textarea:focus {
+  outline: none !important; box-shadow: none !important; border-color: #d6d3d1 !important;
+  --tw-ring-shadow: 0 0 #0000 !important; --tw-ring-offset-shadow: 0 0 #0000 !important; --tw-ring-color: transparent !important;
+}
 .gjs-editor select, .am-panel select { background-color: #ffffff !important; color: #44403c !important; }
 .gjs-editor select option, .am-panel select option { background-color: #ffffff !important; color: #44403c !important; }
 
