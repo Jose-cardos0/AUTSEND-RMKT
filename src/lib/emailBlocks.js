@@ -56,6 +56,23 @@ const BLOCOS = [
     content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}"><tr><td class="am-drop" valign="top" style="padding:16px;"></td></tr></table>`,
   },
   {
+    id: 'e-2colunas', label: '2 Colunas', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}"><tr>
+      <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
+      <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
+    </tr></table>`,
+  },
+  {
+    id: 'e-3colunas', label: '3 Colunas', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}"><tr>
+      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
+      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
+      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
+    </tr></table>`,
+  },
+  {
     id: 'e-2blocos', label: '2 Blocos', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/>'),
     content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}">

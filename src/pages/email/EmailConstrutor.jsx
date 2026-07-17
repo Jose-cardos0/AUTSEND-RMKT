@@ -67,8 +67,6 @@ export default function EmailConstrutor() {
   const editorRef = useRef(null)
   const subjectRef = useRef(null)
   const uidRef = useRef(null)
-  const assetsCarregados = useRef(false)
-  const assetsPromiseRef = useRef(null) // promessa do pré-carregamento das imagens
   const dockRef = useRef(null)
   const [dockPos, setDockPos] = useState(null) // {left, top} em px; null = posição padrão (centro-baixo)
   const [painelAberto, setPainelAberto] = useState(null) // qual painel lateral está aberto (null = escondido)
@@ -261,13 +259,23 @@ export default function EmailConstrutor() {
       } catch (_) {}
     })
 
-    // Ao ABRIR o gerenciador (botão Imagens OU imagem de fundo): se as imagens ainda
-    // não terminaram de pré-carregar, mostra o foguetinho até ficarem prontas.
+    // Ao ABRIR o gerenciador (botão Imagens, imagem de fundo OU duplo-clique numa imagem):
+    // se a coleção estiver VAZIA, carrega as imagens do Storage (com o foguetinho).
+    // Checa a coleção real (não um flag) — funciona por qualquer caminho de abertura.
     editor.on('asset:open', async () => {
-      if (assetsCarregados.current) return
+      const am = editor.AssetManager
+      if (am.getAll().length > 0) return // já tem imagens
+      const uid = uidRef.current
+      if (!uid) return
       setCarregandoImgs(true)
-      try { await assetsPromiseRef.current } catch (_) {}
-      finally { setCarregandoImgs(false) }
+      try {
+        const assets = await listEmailAssets(uid)
+        if (assets.length) am.add(assets)
+      } catch (_) {
+        toast.error('Não consegui carregar suas imagens. Tente de novo.')
+      } finally {
+        setCarregandoImgs(false)
+      }
     })
 
     // Ao remover um asset da galeria, apaga do Storage também.
@@ -375,19 +383,8 @@ export default function EmailConstrutor() {
     })
   }, [user?.uid])
 
-  // Pré-carrega as imagens do usuário na coleção do editor assim que ele fica pronto —
-  // SILENCIOSO (sem loader no mount). O foguetinho só aparece ao ABRIR o gerenciador
-  // (ver handler asset:open na init). Assim as imagens aparecem em qualquer caminho.
-  useEffect(() => {
-    if (!ready || !user?.uid || assetsCarregados.current) return
-    assetsPromiseRef.current = listEmailAssets(user.uid)
-      .then((assets) => {
-        const ed = editorRef.current
-        if (ed && assets.length) ed.AssetManager.add(assets)
-        assetsCarregados.current = true
-      })
-      .catch(() => {})
-  }, [ready, user?.uid])
+  // As imagens são carregadas ao ABRIR o gerenciador (handler asset:open na init),
+  // checando a coleção real — cobre botão Imagens, imagem de fundo e duplo-clique numa imagem.
 
   // Ao selecionar um template (ou ficar pronto), carrega o conteúdo no editor
   useEffect(() => {
