@@ -196,6 +196,10 @@
 /* ── Selects/inputs do editor: renderiza CLARO (fim das listas escuras) ── */
 .gjs-editor select, .gjs-editor input, .gjs-editor textarea,
 .am-panel select, .am-panel input, .am-panel textarea { color-scheme: light !important; }
+/* Campos do painel de estilo: cantos RETOS (sem arredondado) */
+.gjs-editor .gjs-field, .gjs-editor .gjs-sm-field, .gjs-editor .gjs-input-holder,
+.gjs-editor input, .gjs-editor select, .gjs-editor textarea,
+.gjs-editor .gjs-field-integer, .gjs-editor .gjs-field-select { border-radius: 0 !important; }
 .gjs-editor select, .am-panel select { background-color: #ffffff !important; color: #44403c !important; }
 .gjs-editor select option, .am-panel select option { background-color: #ffffff !important; color: #44403c !important; }
 

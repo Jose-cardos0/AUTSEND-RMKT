@@ -136,6 +136,9 @@ export default function EmailConstrutor() {
       height: '100%',
       width: 'auto',
       storageManager: false,
+      // Estiliza SEMPRE o elemento selecionado (por id), NUNCA a classe compartilhada —
+      // senão mudar a cor/largura de uma div mudava todas que têm a classe am-drop.
+      selectorManager: { componentFirst: true },
       // Cada painel é renderizado no NOSSO container (controlamos qual aparece).
       blockManager: { appendTo: '#am-blocks' },
       styleManager: { appendTo: '#am-styles' },
@@ -209,10 +212,10 @@ export default function EmailConstrutor() {
       try {
         editor.StyleManager.getSectors().reset([
           { id: 'am-texto', name: 'Texto', open: true, properties: [
-            { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px'], default: '15px' },
+            { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px', '%'], default: '15px' },
             { property: 'color', name: 'Cor do texto', type: 'color' },
             { property: 'font-weight', name: 'Peso', type: 'select', default: '400', options: [{ id: '300', name: 'Fino' }, { id: '400', name: 'Normal' }, { id: '600', name: 'Semi' }, { id: '700', name: 'Negrito' }] },
-            { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['px'] },
+            { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['px', '%'] },
           ] },
           { id: 'am-align', name: 'Alinhamento', open: true, properties: [
             { property: 'text-align', name: 'Horizontal', type: 'radio', default: 'left', options: [{ id: 'left', name: 'Esq.' }, { id: 'center', name: 'Centro' }, { id: 'right', name: 'Dir.' }] },
@@ -220,11 +223,15 @@ export default function EmailConstrutor() {
           ] },
           { id: 'am-fundo', name: 'Fundo', open: true, properties: [
             { property: 'background-color', name: 'Cor de fundo', type: 'color' },
+            { property: 'background-image', name: 'Imagem de fundo', type: 'file', functionName: 'url', full: true },
+            { property: 'background-size', name: 'Tamanho', type: 'select', default: 'auto', options: [{ id: 'auto', name: 'Auto' }, { id: 'cover', name: 'Cobrir' }, { id: 'contain', name: 'Conter' }] },
+            { property: 'background-repeat', name: 'Repetir', type: 'select', default: 'no-repeat', options: [{ id: 'no-repeat', name: 'Não' }, { id: 'repeat', name: 'Sim' }, { id: 'repeat-x', name: 'Horizontal' }, { id: 'repeat-y', name: 'Vertical' }] },
+            { property: 'background-position', name: 'Posição', type: 'select', default: 'center center', options: [{ id: 'center center', name: 'Centro' }, { id: 'top center', name: 'Topo' }, { id: 'bottom center', name: 'Base' }, { id: 'left center', name: 'Esquerda' }, { id: 'right center', name: 'Direita' }] },
           ] },
           { id: 'am-dim', name: 'Dimensão', open: false, properties: [
-            { property: 'width', name: 'Largura', type: 'number', units: ['px'] },
-            { property: 'max-width', name: 'Largura máx.', type: 'number', units: ['px'] },
-            { property: 'height', name: 'Altura', type: 'number', units: ['px'] },
+            { property: 'width', name: 'Largura', type: 'number', units: ['px', '%'] },
+            { property: 'max-width', name: 'Largura máx.', type: 'number', units: ['px', '%'] },
+            { property: 'height', name: 'Altura', type: 'number', units: ['px', '%'] },
           ] },
           { id: 'am-espaco', name: 'Espaçamento', open: false, properties: [
             { property: 'padding', name: 'Interno', type: 'composite', properties: [
@@ -246,10 +253,10 @@ export default function EmailConstrutor() {
         ])
       } catch (_) {}
 
-      // Body (wrapper): libera text-align pra poder ALINHAR/centralizar os blocos, divs e sections dentro dele.
+      // Body (wrapper): libera fundo (cor/imagem) + text-align pra alinhar/centralizar o conteúdo dentro dele.
       try {
         const wrapper = editor.getWrapper()
-        wrapper.set('stylable', ['background', 'background-color', 'background-image', 'text-align'])
+        wrapper.set('stylable', ['background', 'background-color', 'background-image', 'background-size', 'background-repeat', 'background-position', 'text-align'])
       } catch (_) {}
     })
 
@@ -281,10 +288,17 @@ export default function EmailConstrutor() {
       if (!val) return
       propagandoAlign = true
       try {
+        // margin p/ centralizar o PRÓPRIO bloco (quando tem largura definida < 100%)
+        const marginPorAlinhamento = val === 'center'
+          ? { 'margin-left': 'auto', 'margin-right': 'auto' }
+          : val === 'right'
+            ? { 'margin-left': 'auto', 'margin-right': '0' }
+            : { 'margin-left': '0', 'margin-right': 'auto' }
         const aplicarFundo = (comp) => {
           comp.components?.().forEach((child) => {
             try {
-              child.addStyle({ 'text-align': val })
+              // 1) alinha o CONTEÚDO (texto/inline) do filho
+              child.addStyle({ 'text-align': val, ...marginPorAlinhamento })
               const at = child.getAttributes ? child.getAttributes() : {}
               if (at && at.style && /text-align/i.test(at.style)) {
                 child.addAttributes({ style: at.style.replace(/text-align\s*:\s*[^;]+;?/gi, `text-align:${val};`) })
