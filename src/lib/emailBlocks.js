@@ -8,6 +8,11 @@ const CAT_BASICO = 'Básico'
 const CAT_LAYOUT = 'Estrutura'
 const CAT_AVANCADO = 'Avançado'
 
+// Estilo que deixa o elemento CENTRALIZÁVEL: vira inline-block, então responde ao
+// text-align do pai (Body/coluna). Com largura 100% (padrão) ele empilha normal;
+// ao reduzir a largura (Estilo › Dimensão) + alinhar o pai no centro, ele centraliza.
+const CENTRAVEL = 'display:inline-block;vertical-align:top;width:100%;box-sizing:border-box;'
+
 const BLOCOS = [
   // ── Básico ──
   {
@@ -48,12 +53,12 @@ const BLOCOS = [
   {
     id: 'e-secao', label: '1 Bloco', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/>'),
-    content: '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td class="am-drop" valign="top" style="padding:16px;"></td></tr></table>',
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}"><tr><td class="am-drop" valign="top" style="padding:16px;"></td></tr></table>`,
   },
   {
     id: 'e-2blocos', label: '2 Blocos', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/>'),
-    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}">
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
     </table>`,
@@ -61,7 +66,7 @@ const BLOCOS = [
   {
     id: 'e-3blocos', label: '3 Blocos', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.3h18M3 14.6h18"/>'),
-    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}">
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
@@ -70,11 +75,28 @@ const BLOCOS = [
   {
     id: 'e-4blocos', label: '4 Blocos', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 8h18M3 12h18M3 16h18"/>'),
-    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}">
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
       <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+    </table>`,
+  },
+  {
+    id: 'e-grade22', label: 'Grade 2×2', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 12h18"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}">
+      <tr><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td></tr>
+      <tr><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td></tr>
+    </table>`,
+  },
+  {
+    id: 'e-grade23', label: 'Grade 2×3', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M3 9.3h18M3 14.6h18"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="${CENTRAVEL}">
+      <tr><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td></tr>
+      <tr><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td></tr>
+      <tr><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td><td class="am-drop" width="50%" valign="top" style="padding:10px;"></td></tr>
     </table>`,
   },
 
@@ -82,12 +104,12 @@ const BLOCOS = [
   {
     id: 'e-div', label: 'Div', category: CAT_AVANCADO,
     media: ic('<rect x="3" y="5" width="18" height="14" rx="2"/>'),
-    content: '<div class="am-drop" style="padding:16px;"></div>',
+    content: `<div class="am-drop" style="padding:16px;${CENTRAVEL}"></div>`,
   },
   {
     id: 'e-section', label: 'Section', category: CAT_AVANCADO,
     media: ic('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 10h18"/>'),
-    content: '<section class="am-drop" style="padding:16px;"></section>',
+    content: `<section class="am-drop" style="padding:16px;${CENTRAVEL}"></section>`,
   },
   {
     id: 'e-html', label: 'HTML', category: CAT_AVANCADO,

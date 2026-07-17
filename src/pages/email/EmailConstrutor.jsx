@@ -245,6 +245,12 @@ export default function EmailConstrutor() {
           ] },
         ])
       } catch (_) {}
+
+      // Body (wrapper): libera text-align pra poder ALINHAR/centralizar os blocos, divs e sections dentro dele.
+      try {
+        const wrapper = editor.getWrapper()
+        wrapper.set('stylable', ['background', 'background-color', 'background-image', 'text-align'])
+      } catch (_) {}
     })
 
     // Ao remover um asset da galeria, apaga do Storage também.
