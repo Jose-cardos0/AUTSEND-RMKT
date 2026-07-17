@@ -91,6 +91,10 @@
   letter-spacing: .08em; text-transform: uppercase; padding: 12px 14px 6px !important;
 }
 .gjs-editor .gjs-block-categories { border: 0 !important; }
+/* Tira a linha/borda no fim das categorias de blocos (embaixo do HTML) */
+.gjs-editor .gjs-block-category,
+.gjs-editor .gjs-blocks-c,
+.gjs-editor .gjs-blocks-cs { border-bottom: 0 !important; }
 
 /* ── Painel de estilos/config claro ── */
 .gjs-editor .gjs-sm-sectors,
