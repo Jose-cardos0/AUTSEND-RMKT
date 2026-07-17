@@ -1265,6 +1265,19 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
   return { id: ref.id, base64, hash, instanceId }
 })
 
+/** Checa (no servidor, sem cache) se o cliente ainda pode criar instância. Usado antes de abrir o form. */
+exports.instanciaPodeCriar = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const s = await db.doc(`tenants/${uid}`).get()
+  const t = s.exists ? s.data() : {}
+  const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  const snap = await db.collection(`users/${uid}/instances`).get()
+  const atual = snap.size
+  const limite = isAdm ? -1 : (Number(limitesDoTenant(t).instancias) || 0)
+  return { pode: isAdm || atual < limite, atual, limite }
+})
+
 /**
  * Cria um Tracker (webhook custom) com TRAVA de plano no servidor (limite `trackers`).
  * Conta os webhooks 'custom' existentes; cria o doc no Firestore (server-side) e devolve id + URL.

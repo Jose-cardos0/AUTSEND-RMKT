@@ -25,6 +25,13 @@ export async function criarInstancia(nomeInstancia, numeroWhatsapp = '') {
   return r.data // { id, base64, hash, instanceId }
 }
 
+/** Checa no servidor (sem cache) se o cliente ainda pode criar instância. */
+export async function podeCriarInstancia() {
+  const call = httpsCallable(functions, 'instanciaPodeCriar')
+  const r = await call()
+  return r.data // { pode, atual, limite }
+}
+
 export async function verificarStatus(nomeInstancia, getParticipants = false, numeroWhatsapp = '') {
   const payload = {
     tipoAcao: 'verificar_status',

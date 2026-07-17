@@ -13,10 +13,11 @@ import {
   updateWebhook,
   deleteWebhook,
 } from '../lib/firestore'
-import { criarInstancia, verificarStatus, buscarGrupos } from '../lib/evolutionApi'
+import { criarInstancia, podeCriarInstancia, verificarStatus, buscarGrupos } from '../lib/evolutionApi'
 import { criarCheckoutInstancia } from '../lib/perfil'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
 import CheckoutModal from '../components/CheckoutModal'
+import instanciaWhats from '../assets/whtatsicons/instancia-whats.png'
 import {
   QrCode,
   Plus,
@@ -71,6 +72,8 @@ export default function Integracoes() {
   const [instModalOpen, setInstModalOpen] = useState(false) // modal de comprar instância
   const [comprandoInst, setComprandoInst] = useState(false)
   const [checkoutSecret, setCheckoutSecret] = useState(null)
+  const [checandoLimite, setChecandoLimite] = useState(false) // loading do "Nova instância"
+  const [limiteEstourado, setLimiteEstourado] = useState(false)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [instances, setInstances] = useState([])
   const [selectedInstanceId, setSelectedInstanceId] = useState(null)
@@ -173,15 +176,7 @@ export default function Integracoes() {
 
   const handleCriarInstancia = async () => {
     if (!user?.uid) return
-    const limite = limiteDe('instancias')
-    if (instances.length >= limite) {
-      toast.error(limite === 0
-        ? 'Seu plano não inclui instâncias de WhatsApp. Faça upgrade pra ativar.'
-        : `Seu plano permite ${limite} instância${limite === 1 ? '' : 's'} de WhatsApp. Faça upgrade pra criar mais.`)
-      setShowNovaInst(false)
-      setUpgradeOpen(true)
-      return
-    }
+    // O limite é checado no servidor (abrirNovaInstancia + trava do waCriarInstancia), sem depender de cache.
     const nome = nomeInstancia.trim() || `instancia_${Date.now()}`
     const num = (numeroWhatsapp || '').replace(/\D/g, '')
     setCriando(true)
@@ -213,6 +208,24 @@ export default function Integracoes() {
       toast.error(err.message || 'Erro ao criar instância')
     } finally {
       setCriando(false)
+    }
+  }
+
+  // Clica em "Nova instância": abre o popup, checa no servidor se ainda cabe. Se lotou, mostra o card de compra.
+  const abrirNovaInstancia = async () => {
+    setNomeInstancia('')
+    setNumeroWhatsapp('')
+    setLimiteEstourado(false)
+    setShowNovaInst(true)
+    setChecandoLimite(true)
+    try {
+      const r = await podeCriarInstancia()
+      setLimiteEstourado(!r?.pode)
+    } catch (err) {
+      toast.error(err?.message || 'Não consegui verificar seu limite. Tente de novo.')
+      setShowNovaInst(false)
+    } finally {
+      setChecandoLimite(false)
     }
   }
 
@@ -506,39 +519,61 @@ export default function Integracoes() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><WhatsAppIcon className="w-5 h-5" /></span>
-              <h3 className="text-base font-semibold text-stone-800">Nova instância</h3>
+              <h3 className="text-base font-semibold text-stone-800">{limiteEstourado ? 'Limite de instâncias atingido' : 'Nova instância'}</h3>
               <button onClick={() => setShowNovaInst(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">Nome da instância</label>
-              <input
-                type="text"
-                value={nomeInstancia}
-                onChange={(e) => setNomeInstancia(e.target.value)}
-                placeholder="minha_instancia"
-                autoFocus
-                className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px]"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">Número do WhatsApp</label>
-              <input
-                type="text"
-                value={numeroWhatsapp}
-                onChange={(e) => setNumeroWhatsapp(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !criando) handleCriarInstancia() }}
-                placeholder="5511999999999"
-                className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px]"
-              />
-            </div>
-            <button
-              onClick={handleCriarInstancia}
-              disabled={criando}
-              className="btn-primary w-full min-h-[44px] touch-manipulation"
-            >
-              {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
-              {criando ? 'Criando...' : 'Criar instância'}
-            </button>
+
+            {checandoLimite ? (
+              <div className="py-10 flex flex-col items-center justify-center gap-2 text-stone-400">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <p className="text-sm">Verificando seu limite…</p>
+              </div>
+            ) : limiteEstourado ? (
+              <div className="text-center">
+                <img src={instanciaWhats} alt="" className="h-24 w-auto mx-auto object-contain drop-shadow-sm" />
+                <p className="text-sm text-stone-600 mt-2">Você já usou todas as instâncias do seu plano. Compre uma instância avulsa pra conectar mais um número.</p>
+                <p className="text-lg font-bold text-emerald-600 mt-2">R$ 29,90<span className="text-sm font-medium text-stone-500">/mês cada</span></p>
+                <button
+                  onClick={() => { setShowNovaInst(false); setInstModalOpen(true) }}
+                  className="w-full mt-4 min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition"
+                >
+                  <ShoppingCart className="w-4 h-4" /> Comprar instância
+                </button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Nome da instância</label>
+                  <input
+                    type="text"
+                    value={nomeInstancia}
+                    onChange={(e) => setNomeInstancia(e.target.value)}
+                    placeholder="minha_instancia"
+                    autoFocus
+                    className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Número do WhatsApp</label>
+                  <input
+                    type="text"
+                    value={numeroWhatsapp}
+                    onChange={(e) => setNumeroWhatsapp(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !criando) handleCriarInstancia() }}
+                    placeholder="5511999999999"
+                    className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px]"
+                  />
+                </div>
+                <button
+                  onClick={handleCriarInstancia}
+                  disabled={criando}
+                  className="btn-primary w-full min-h-[44px] touch-manipulation"
+                >
+                  {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+                  {criando ? 'Criando...' : 'Criar instância'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -583,28 +618,13 @@ export default function Integracoes() {
         open={secoes.whatsapp}
         onToggle={() => toggleSecao('whatsapp')}
         action={
-          (() => {
-            const lim = limiteDe('instancias')
-            const noLimite = Number.isFinite(lim) && instances.length >= lim
-            return noLimite ? (
-              <button
-                type="button"
-                onClick={() => setInstModalOpen(true)}
-                className="text-xs sm:text-sm min-h-[38px] px-3 shrink-0 inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-white bg-emerald-500 hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition"
-                title="Você atingiu o limite de instâncias do seu plano"
-              >
-                <ShoppingCart className="w-4 h-4" /> Comprar instância
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => { setNomeInstancia(''); setNumeroWhatsapp(''); setShowNovaInst(true) }}
-                className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
-              >
-                <Plus className="w-4 h-4" /> Nova instância
-              </button>
-            )
-          })()
+          <button
+            type="button"
+            onClick={abrirNovaInstancia}
+            className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Nova instância
+          </button>
         }
       >
           <div className="space-y-4">
