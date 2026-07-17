@@ -17,7 +17,7 @@ import Select from '../../components/Select'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Loader2, Save, Send, Trash2, Plus } from 'lucide-react'
+import { Loader2, Save, Trash2, Plus, ArrowLeft, Mail, Pencil } from 'lucide-react'
 
 // Variáveis do nosso backend. O Easy Email insere como {{tag}}; convertemos pra {tag} ao salvar.
 const MERGE_TAGS = {
@@ -78,37 +78,53 @@ export default function EmailConstrutor() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   const [templates, setTemplates] = useState([])
+  const [carregando, setCarregando] = useState(true)
+  const [editando, setEditando] = useState(false) // false = lista; true = editor tela cheia
   const [selectedId, setSelectedId] = useState(null)
   const [nome, setNome] = useState('')
   const [subject, setSubject] = useState('')
-  const [dados, setDados] = useState(null) // dados do Easy Email do template atual
+  const [dados, setDados] = useState(null) // dados do Easy Email do template em edição
   const [salvando, setSalvando] = useState(false)
   const valuesRef = useRef(null) // valores atuais do editor (pra salvar)
 
   // Carrega templates
+  const recarregar = async () => {
+    if (!user?.uid) return []
+    const list = await getEmailTemplates(user.uid)
+    setTemplates(list)
+    return list
+  }
   useEffect(() => {
     if (!user?.uid) return
-    getEmailTemplates(user.uid).then((list) => {
-      setTemplates(list)
-      if (list.length > 0) setSelectedId((cur) => cur ?? list[0].id)
-      else setDados(paginaVazia())
-    })
+    setCarregando(true)
+    recarregar().finally(() => setCarregando(false))
   }, [user?.uid])
 
-  // Ao trocar de template, carrega o conteúdo (json do Easy Email)
-  useEffect(() => {
-    const tpl = templates.find((t) => t.id === selectedId)
-    setNome(tpl?.nome || '')
-    setSubject(tpl?.subject || '')
-    if (tpl?.easyEmail?.content) setDados({ subject: tpl.subject || '', subTitle: '', content: tpl.easyEmail.content })
-    else setDados(paginaVazia())
-  }, [selectedId, templates])
+  // Abre o editor tela cheia para um template existente
+  const abrirTemplate = (tpl) => {
+    setSelectedId(tpl.id)
+    setNome(tpl.nome || '')
+    setSubject(tpl.subject || '')
+    setDados(
+      tpl?.easyEmail?.content
+        ? { subject: tpl.subject || '', subTitle: '', content: tpl.easyEmail.content }
+        : paginaVazia()
+    )
+    setEditando(true)
+  }
 
+  // Abre o editor tela cheia em branco
   const novoTemplate = () => {
     setSelectedId(null)
     setNome('')
     setSubject('')
     setDados(paginaVazia())
+    setEditando(true)
+  }
+
+  const fecharEditor = () => {
+    setEditando(false)
+    valuesRef.current = null
   }
 
   const onUploadImage = async (blob) => {
@@ -140,8 +156,7 @@ export default function EmailConstrutor() {
         inlined: html, // MJML já sai email-safe (estilos inline)
         easyEmail: { content: values.content }, // pra reabrir/editar depois
       })
-      const list = await getEmailTemplates(user.uid)
-      setTemplates(list)
+      await recarregar()
       setSelectedId(id)
       toast.success('Template salvo.')
     } catch (err) {
@@ -151,15 +166,16 @@ export default function EmailConstrutor() {
     }
   }
 
-  const handleExcluir = async () => {
-    if (!user?.uid || !selectedId) { toast.error('Selecione um template salvo para excluir.'); return }
-    if (!(await confirm({ title: `Excluir o template "${nome}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir' }))) return
+  // Exclui um template (a partir do card na lista OU do topo do editor)
+  const handleExcluir = async (tpl) => {
+    const alvoId = tpl?.id || selectedId
+    const alvoNome = tpl?.nome || nome
+    if (!user?.uid || !alvoId) { toast.error('Selecione um template salvo para excluir.'); return }
+    if (!(await confirm({ title: `Excluir o template "${alvoNome}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir' }))) return
     try {
-      await deleteEmailTemplate(user.uid, selectedId)
-      const list = await getEmailTemplates(user.uid)
-      setTemplates(list)
-      if (list.length === 0) novoTemplate()
-      else setSelectedId(list[0].id)
+      await deleteEmailTemplate(user.uid, alvoId)
+      await recarregar()
+      if (editando && alvoId === selectedId) fecharEditor()
       toast.success('Template excluído.')
     } catch (err) {
       toast.error(err.message || 'Erro ao excluir')
@@ -168,43 +184,38 @@ export default function EmailConstrutor() {
 
   const initialValues = useMemo(() => dados, [dados])
 
-  return (
-    <PageShell
-      fill
-      badge="E-mail · Construtor"
-      title="Construtor de e-mail"
-      right={
-        <div className="flex flex-wrap gap-2">
-          <button onClick={novoTemplate} className="btn-secondary text-sm min-h-[40px]"><Plus className="w-4 h-4" /> Novo</button>
-          {selectedId && <button onClick={handleExcluir} className="btn-secondary text-sm min-h-[40px] text-red-600"><Trash2 className="w-4 h-4" /></button>}
-          <button onClick={handleSalvar} disabled={salvando} className="btn-primary text-sm min-h-[40px]">
-            {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar
+  // ─────────────────────────────────────────────────────────────
+  // TELA 2 — Editor em tela cheia (overlay que escapa do PageShell)
+  // O Easy Email precisa da tela inteira; espremer quebra o CSS.
+  // ─────────────────────────────────────────────────────────────
+  if (editando) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-white">
+        <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+        {/* Barra superior do editor */}
+        <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 border-b border-surface-200 bg-white">
+          <button onClick={fecharEditor} className="btn-secondary text-sm min-h-[38px]" title="Voltar">
+            <ArrowLeft className="w-4 h-4" /> Voltar
           </button>
-        </div>
-      }
-    >
-      <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
-      <div className="flex flex-col flex-1 min-h-0 gap-2 overflow-hidden">
-        {/* Faixa de topo: template + nome + assunto (compacto) */}
-        <div className="shrink-0 app-panel rounded-2xl p-2.5 flex flex-wrap items-center gap-2">
-          <Select
-            value={selectedId || ''}
-            onChange={(v) => setSelectedId(v || null)}
-            compact
-            className="w-44"
-            options={[{ value: '', label: 'Novo template' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
-          />
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do template" className="w-48 px-3 h-9 rounded-lg border border-surface-200 text-sm" />
           <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Assunto do e-mail (ex.: {nome_cliente}, volte!)" className="flex-1 min-w-[180px] px-3 h-9 rounded-lg border border-surface-200 text-sm" />
           <div className="flex items-center gap-1">
             {Object.keys(MERGE_TAGS).map((k) => (
-              <button key={k} type="button" title={`Inserir no assunto`} onClick={() => setSubject((s) => `${s || ''}{${k}}`)} className="px-2 py-1 rounded-md bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200/70 text-[10px] font-medium">{`{${k}}`}</button>
+              <button key={k} type="button" title="Inserir no assunto" onClick={() => setSubject((s) => `${s || ''}{${k}}`)} className="px-2 py-1 rounded-md bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200/70 text-[10px] font-medium">{`{${k}}`}</button>
             ))}
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {selectedId && (
+              <button onClick={() => handleExcluir()} className="btn-secondary text-sm min-h-[38px] text-red-600" title="Excluir template"><Trash2 className="w-4 h-4" /></button>
+            )}
+            <button onClick={handleSalvar} disabled={salvando} className="btn-primary text-sm min-h-[38px]">
+              {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar
+            </button>
           </div>
         </div>
 
-        {/* Editor Easy Email — largura total */}
-        <div className="flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden">
+        {/* Editor Easy Email — tela cheia */}
+        <div className="flex-1 min-h-0 min-w-0">
           {initialValues ? (
             <EmailEditorProvider
               key={selectedId || 'novo'}
@@ -231,6 +242,54 @@ export default function EmailConstrutor() {
           )}
         </div>
       </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // TELA 1 — Lista de templates
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <PageShell
+      badge="E-mail · Construtor"
+      title="Construtor de e-mail"
+      right={
+        <button onClick={novoTemplate} className="btn-primary text-sm min-h-[40px]"><Plus className="w-4 h-4" /> Novo template</button>
+      }
+    >
+      <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+      {carregando ? (
+        <div className="flex items-center justify-center py-24 text-stone-400 text-sm gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> Carregando templates…
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* Card "novo" */}
+          <button
+            onClick={novoTemplate}
+            className="app-panel rounded-2xl p-5 flex flex-col items-center justify-center gap-2 min-h-[150px] border-2 border-dashed border-surface-200 hover:border-primary-300 hover:bg-primary-50/40 transition text-stone-500 hover:text-primary-600"
+          >
+            <div className="w-11 h-11 rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center"><Plus className="w-5 h-5" /></div>
+            <span className="text-sm font-medium">Criar novo template</span>
+          </button>
+
+          {/* Cards dos templates */}
+          {templates.map((tpl) => (
+            <div key={tpl.id} className="app-panel rounded-2xl p-5 flex flex-col min-h-[150px] group">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center shrink-0"><Mail className="w-5 h-5" /></div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-stone-800 truncate">{tpl.nome || 'Sem nome'}</h3>
+                  <p className="text-xs text-stone-400 truncate mt-0.5">{tpl.subject || 'Sem assunto'}</p>
+                </div>
+              </div>
+              <div className="mt-auto pt-4 flex items-center gap-2">
+                <button onClick={() => abrirTemplate(tpl)} className="btn-secondary text-xs min-h-[34px] flex-1"><Pencil className="w-3.5 h-3.5" /> Editar</button>
+                <button onClick={() => handleExcluir(tpl)} className="btn-secondary text-xs min-h-[34px] px-2.5 text-red-600" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </PageShell>
   )
 }
