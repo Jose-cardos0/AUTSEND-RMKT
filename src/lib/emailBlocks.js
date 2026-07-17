@@ -7,6 +7,7 @@ const ic = (paths) =>
 const CAT_BASICO = 'Básico'
 const CAT_LAYOUT = 'Estrutura'
 const CAT_AVANCADO = 'Avançado'
+const CAT_PRONTO = 'Pré-pronto'
 
 // Sem largura inline (senão ela ganha da regra e o usuário não consegue mudar).
 // Tabelas já são 100% pelo atributo width="100%"; divs/sections são block-level (100% natural).
@@ -132,6 +133,13 @@ const BLOCOS = [
     id: 'e-html', label: 'HTML', category: CAT_AVANCADO,
     media: ic('<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>'),
     content: { type: 'text', content: '<div style="font-family:Arial,Helvetica,sans-serif;color:#4b5563;padding:8px 0;">Bloco de HTML livre — edite pelo botão de código.</div>' },
+  },
+
+  // ── Pré-pronto ── (ao soltar, abre um popup pra escolher um bloco DTC pronto)
+  {
+    id: 'e-dtc', label: 'DTC', category: CAT_PRONTO,
+    media: ic('<rect x="3" y="4" width="4.5" height="16" rx="1"/><rect x="9.75" y="4" width="4.5" height="16" rx="1"/><rect x="16.5" y="4" width="4.5" height="16" rx="1"/>'),
+    content: '<div class="am-drop" style="padding:20px;text-align:center;font-family:Arial,sans-serif;color:#7c3aed;">Escolha um bloco DTC…</div>',
   },
 ]
 

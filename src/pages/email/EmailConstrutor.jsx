@@ -14,6 +14,7 @@ import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate, getEmailProviders, getEmailConfig } from '../../lib/firestore'
 import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../../lib/storageAssets'
 import { registrarBlocosEmail } from '../../lib/emailBlocks'
+import { DTC_PRESETS } from '../../lib/dtcPresets'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
@@ -62,7 +63,9 @@ export default function EmailConstrutor() {
   const [showHtmlBlock, setShowHtmlBlock] = useState(false) // popup do bloco HTML
   const [htmlBlockCode, setHtmlBlockCode] = useState('')
   const [carregandoImgs, setCarregandoImgs] = useState(false) // loading da galeria de imagens
+  const [showDtc, setShowDtc] = useState(false) // popup de blocos DTC pré-prontos
   const htmlTargetRef = useRef(null) // componente HTML solto (pra substituir pelo HTML digitado)
+  const dtcTargetRef = useRef(null) // componente DTC solto (placeholder a substituir)
   const containerRef = useRef(null)
   const editorRef = useRef(null)
   const subjectRef = useRef(null)
@@ -284,7 +287,7 @@ export default function EmailConstrutor() {
       if (src && /firebasestorage|storage\.googleapis/.test(src)) deleteEmailAsset(src)
     })
 
-    // Ao soltar o bloco "HTML", abre um popup pra digitar o HTML (renderiza no e-mail).
+    // Ao soltar o bloco "HTML" abre popup pra digitar; ao soltar "DTC" abre popup dos pré-prontos.
     editor.on('block:drag:stop', (component, block) => {
       try {
         const bid = block?.id || block?.get?.('id')
@@ -292,6 +295,9 @@ export default function EmailConstrutor() {
           htmlTargetRef.current = component
           setHtmlBlockCode('')
           setShowHtmlBlock(true)
+        } else if (bid === 'e-dtc' && component) {
+          dtcTargetRef.current = component
+          setShowDtc(true)
         }
       } catch (_) {}
     })
@@ -544,6 +550,30 @@ export default function EmailConstrutor() {
     htmlTargetRef.current = null
     setShowHtmlBlock(false)
     setHtmlBlockCode('')
+  }
+
+  // Insere o DTC pré-pronto escolhido no lugar do placeholder solto.
+  const inserirDtc = (preset) => {
+    const comp = dtcTargetRef.current
+    if (!comp) { setShowDtc(false); return }
+    try {
+      const parent = comp.parent()
+      const idx = comp.index()
+      comp.remove()
+      if (parent) parent.append(preset.html, { at: idx })
+    } catch (_) {
+      try { comp.remove() } catch (_) {}
+    }
+    dtcTargetRef.current = null
+    setShowDtc(false)
+    toast.success('Bloco DTC inserido! Ajuste os links/imagens e clique em Salvar.')
+  }
+
+  // Cancela o DTC (remove o placeholder que foi solto).
+  const cancelarDtc = () => {
+    try { dtcTargetRef.current?.remove() } catch (_) {}
+    dtcTargetRef.current = null
+    setShowDtc(false)
   }
 
   const enviarTeste = async () => {
@@ -838,6 +868,43 @@ export default function EmailConstrutor() {
       {carregandoImgs && (
         <div className="fixed inset-0 flex items-center justify-center bg-white/85" style={{ zIndex: 100000 }}>
           <PageLoader label="Carregando suas imagens…" />
+        </div>
+      )}
+
+      {/* Modal: blocos DTC pré-prontos (escolher um pra inserir) */}
+      {showDtc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={cancelarDtc}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[86vh] overflow-y-auto p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-semibold text-stone-800 flex items-center gap-2"><Layers className="w-5 h-5 text-primary-600" /> Blocos prontos — DTC</h3>
+              <button onClick={cancelarDtc} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-stone-500 mb-4">Escolha um bloco DTC pré-pronto pra inserir no e-mail. Depois é só trocar os links, preços e imagens.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {DTC_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => inserirDtc(preset)}
+                  className="text-left rounded-xl border border-surface-200 hover:border-primary-400 hover:shadow-md transition overflow-hidden group"
+                >
+                  <div className="bg-white overflow-hidden border-b border-surface-100" style={{ height: 200 }}>
+                    <iframe
+                      title={preset.nome}
+                      scrolling="no"
+                      tabIndex={-1}
+                      srcDoc={`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=1140"></head><body style="margin:0;background:#fff">${preset.html}</body></html>`}
+                      style={{ width: 1140, height: 640, border: 0, transformOrigin: 'top left', transform: 'scale(0.3)', pointerEvents: 'none' }}
+                    />
+                  </div>
+                  <div className="p-3">
+                    <p className="text-sm font-semibold text-stone-800">{preset.nome}</p>
+                    {preset.descricao && <p className="text-xs text-stone-400 mt-0.5">{preset.descricao}</p>}
+                    <span className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-primary-600 group-hover:text-primary-700">Usar este bloco →</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
