@@ -138,10 +138,24 @@
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 
-/* Galeria em grade, mostrando as imagens */
+/* Galeria: 4 colunas de miniaturas QUADRADAS (só a imagem, sem nome do lado) */
 .gjs-am-assets-cont { width: 100% !important; }
-.gjs-am-assets { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)) !important; gap: 10px !important; padding: 0 14px 14px !important; max-height: 62vh; overflow-y: auto; }
-.gjs-am-asset { border-radius: 10px !important; overflow: hidden !important; border: 1px solid #ececec !important; }
+.gjs-am-assets {
+  display: grid !important; grid-template-columns: repeat(4, 1fr) !important;
+  gap: 12px !important; padding: 0 16px 16px !important;
+  max-height: 58vh; overflow-y: auto;
+}
+.gjs-am-asset {
+  aspect-ratio: 1 / 1 !important; width: 100% !important;
+  border-radius: 12px !important; overflow: hidden !important; border: 1px solid #ececec !important;
+  position: relative; padding: 0 !important; margin: 0 !important; cursor: pointer;
+}
+.gjs-am-asset:hover { border-color: #c4b5fd !important; box-shadow: 0 6px 16px -8px rgba(124,58,237,.35) !important; }
+.gjs-am-asset .gjs-am-preview-cont { width: 100% !important; height: 100% !important; border: 0 !important; border-radius: 0 !important; }
+.gjs-am-asset .gjs-am-preview { width: 100% !important; height: 100% !important; background-size: cover !important; background-position: center !important; }
+.gjs-am-asset .gjs-am-meta,
+.gjs-am-asset .gjs-am-name,
+.gjs-am-asset .gjs-am-dimensions { display: none !important; }
 .gjs-am-preview-cont { border-radius: 10px !important; }
 .gjs-btn-prim { background-color: #7c3aed !important; color: #fff !important; border-radius: 8px !important; border: 0 !important; font-weight: 600 !important; }
 
