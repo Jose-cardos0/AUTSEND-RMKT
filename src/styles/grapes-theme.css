@@ -162,3 +162,5 @@
 .gjs-editor .gjs-cv-canvas__frames,
 .gjs-editor .gjs-cv-canvas__spots,
 .gjs-editor .gjs-frame-wrapper { background-color: #f4f4f5 !important; }
+/* Canvas ocupa TODA a largura (não sobra vão branco onde ficava o painel de abas removido) */
+.gjs-editor .gjs-cv-canvas { left: 0 !important; right: 0 !important; width: 100% !important; }
