@@ -50,10 +50,11 @@ async function assertTermosAceito(request, tenant) {
 // Limites por plano (espelho do src/lib/plans.js)
 const PLAN_LIMITS = {
   // callMin = minutos de Ligação IA grátis por mês (pagos por nós, isca). Editável via overrides.
-  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, callMin: 0 },
-  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, callMin: 5 },
-  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, callMin: 10 },
-  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, callMin: 15 },
+  // iaMes = criações/edições de e-mail com IA (Grok) no construtor, por mês.
+  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, callMin: 0, iaMes: 0 },
+  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, callMin: 5, iaMes: 30 },
+  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, callMin: 10, iaMes: 100 },
+  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, callMin: 15, iaMes: 200 },
 }
 function limitesDoTenant(t) {
   const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
@@ -2217,6 +2218,8 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
     fotoURL: t.fotoURL || null,
     emailsUsados, emailsLimite: isAdm ? -1 : (lim.emailsMes || 0), emailCreditos,
     smsUsados, smsLimite: isAdm ? -1 : (lim.smsMes || 0), smsCreditos,
+    // IA do construtor de e-mail (criações/edições no mês).
+    iaUsados: Number(t?.iaUso?.[mesAtualStr()] || 0), iaLimite: isAdm ? -1 : (Number(lim.iaMes) || 0),
     // Ligação IA: em minutos pra exibição (usados/limite) + crédito comprado em segundos.
     callMinUsados: Math.round((callSegUsados / 60) * 10) / 10,
     callMinLimite: isAdm ? -1 : (Number(lim.callMin) || 0),
@@ -3876,6 +3879,20 @@ exports.iaGerarEmailHtml = onCall({ region: 'us-central1', timeoutSeconds: 180 }
   const mensagens = request.data?.mensagens
   if (!Array.isArray(mensagens) || !mensagens.length) throw new HttpsError('invalid-argument', 'Sem mensagem pra IA.')
 
+  // ── TRAVA DE SEGURANÇA: limite de criações com IA por mês (por plano) ──
+  const tRef = db.doc(`tenants/${uid}`)
+  const tSnap = await tRef.get()
+  const t = tSnap.exists ? tSnap.data() : {}
+  const lim = limitesDoTenant(t)
+  const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+  const mes = mesAtualStr()
+  const limite = Number(lim.iaMes) || 0
+  const usada = Number(t?.iaUso?.[mes] || 0)
+  if (!isAdm) {
+    if (limite <= 0) throw new HttpsError('permission-denied', 'Seu plano não inclui criar e-mails com IA. Faça upgrade do plano pra liberar.')
+    if (usada >= limite) throw new HttpsError('resource-exhausted', `Você já usou suas ${limite} criações com IA deste mês. Faça upgrade do plano pra ter mais.`)
+  }
+
   const sys = [
     'Você é um assistente que cria e-mails de marketing em HTML e conversa com o usuário em português.',
     'FORMATO OBRIGATÓRIO DA RESPOSTA (exatamente assim, sem markdown, sem crases):',
@@ -3910,7 +3927,13 @@ exports.iaGerarEmailHtml = onCall({ region: 'us-central1', timeoutSeconds: 180 }
   }
   html = html.replace(/^```(?:html)?\s*/i, '').replace(/```\s*$/i, '').trim()
   mensagem = mensagem.replace(/```/g, '').trim() || 'Prontinho! Olha aqui do lado 🚀'
-  return { mensagem, html }
+
+  // Conta o uso SÓ depois de gerar com sucesso (contador mensal no tenant).
+  let usados = usada
+  if (!isAdm) {
+    try { await tRef.set({ iaUso: { [mes]: admin.firestore.FieldValue.increment(1) } }, { merge: true }); usados = usada + 1 } catch (_) {}
+  }
+  return { mensagem, html, usados, limite: isAdm ? -1 : limite }
 })
 
 /** IA: analisa uma amostra de webhook e sugere fieldMap + eventRules. */

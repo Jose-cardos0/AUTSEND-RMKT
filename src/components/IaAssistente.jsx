@@ -45,6 +45,7 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
   const [salvandoNome, setSalvandoNome] = useState(false)
   const [nomeModelo, setNomeModelo] = useState('')
   const [editandoId, setEditandoId] = useState(null) // id do bloco sendo editado (null = novo)
+  const [iaUso, setIaUso] = useState(null) // {usados, limite} do plano (limite -1 = admin/ilimitado)
   const fileRef = useRef(null)
   const fimRef = useRef(null)
 
@@ -90,13 +91,16 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
       const res = await iaGerar({ mensagens: novoApi })
       const html = res?.data?.html || ''
       const mensagem = res?.data?.mensagem || 'Prontinho! Olha aqui do lado 🚀'
+      if (typeof res?.data?.limite !== 'undefined') setIaUso({ usados: res.data.usados, limite: res.data.limite })
       if (!html) throw new Error('A IA não retornou o e-mail. Tente de novo.')
       setHtmlAtual(html)
       setConversa((c) => [...c, { de: 'ia', texto: mensagem }])
       setHistoricoApi([...novoApi, { role: 'assistant', content: html }])
     } catch (err) {
-      setConversa((c) => [...c, { de: 'ia', texto: 'Ops, deu erro aqui 😅 tenta de novo?' }])
-      toast.error(err?.message || 'Erro na IA')
+      const limite = err?.code === 'functions/resource-exhausted' || err?.code === 'functions/permission-denied'
+      const msg = err?.message || 'Erro na IA'
+      setConversa((c) => [...c, { de: 'ia', texto: limite ? `${msg}` : 'Ops, deu erro aqui 😅 tenta de novo?' }])
+      toast.error(msg)
     } finally {
       setGerando(false)
     }
@@ -189,6 +193,13 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
 
               {/* Salvar + input */}
               <div className="shrink-0 p-3 border-t border-surface-100 space-y-2">
+                {iaUso && iaUso.limite > 0 && (
+                  <p className={`text-[11px] text-center ${iaUso.usados >= iaUso.limite ? 'text-amber-600 font-medium' : 'text-stone-400'}`}>
+                    {iaUso.usados >= iaUso.limite
+                      ? `Você usou suas ${iaUso.limite} criações com IA deste mês.`
+                      : `${iaUso.usados}/${iaUso.limite} criações com IA usadas este mês`}
+                  </p>
+                )}
                 {htmlAtual && (
                   salvandoNome ? (
                     <div className="flex gap-2">
