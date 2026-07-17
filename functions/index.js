@@ -105,14 +105,17 @@ const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.iacodenx
  * email = Resend por e-mail · sms = Telnyx por SMS · callMin = Telnyx por min de ligação ·
  * ia = Grok (grok-code-fast-1) por uso do construtor · instanciaMes = R$2,00 por instância/mês.
  */
-// Valores pesquisados (jul/2026, câmbio ~R$5,15/USD):
-// Resend ~$0,0009/e-mail · Telnyx SMS toll-free ~$0,008 · Telnyx voz ~$0,007/min · Grok 4.1-fast ~$0,0015/uso.
-// ⚠️ callMin é SÓ Telnyx: se a ligação IA usar ElevenLabs (TTS) + Grok (cérebro), somar ~R$0,50/min a mais.
+// Valores reais (jul/2026, câmbio ~R$5,15/USD) cruzados com nossos cálculos anteriores:
+// - Resend ~$0,0009/e-mail → R$0,004
+// - Telnyx SMS toll-free ~$0,008 → R$0,045
+// - Ligação IA all-in ~R$0,12/min: Telnyx voz (~R$0,04) + ElevenLabs multilingual_v2 (~R$0,34/300chars,
+//   mas com cache de MP3 por frase cai p/ ~R$0,06/ligação) + Grok roteiro. Margem ~92% a R$1,50/min.
+// - Grok IA construtor (chat multi-turn, grok-4.1-fast) → R$0,04/uso.
 const CUSTOS_UNIT = {
   email: Number(process.env.CUSTO_EMAIL) || 0.004,
   sms: Number(process.env.CUSTO_SMS) || 0.045,
-  callMin: Number(process.env.CUSTO_CALL_MIN) || 0.04,
-  ia: Number(process.env.CUSTO_IA) || 0.02,
+  callMin: Number(process.env.CUSTO_CALL_MIN) || 0.12,
+  ia: Number(process.env.CUSTO_IA) || 0.04,
   instanciaMes: Number(process.env.CUSTO_INSTANCIA_MES) || 2.0,
 }
 
@@ -4673,6 +4676,36 @@ exports.adminGetClienteGastos = onCall({ region: 'us-central1', timeoutSeconds: 
   const atual = lista.find((x) => x.mes === mesAtual) || { mes: mesAtual, emails: 0, sms: 0, callMin: 0, ia: 0, custoResend: 0, custoSms: 0, custoCall: 0, custoGrok: 0, custoInst: custoInstanciaMes, custoTotal: custoInstanciaMes, receita: 0, mensalidade: 0, produtos: 0, lucro: -custoInstanciaMes }
 
   return { custos: CUSTOS_UNIT, instanciasQtd, custoInstanciaMes, mesAtual: atual, meses: lista }
+})
+
+/** Inventário de tudo que o cliente tem CONECTADO no app (monitoramento de risco/custo). */
+exports.adminGetClienteConectados = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  const listar = async (path) => { try { return (await db.collection(path).get()).docs.map((d) => ({ id: d.id, ...d.data() })) } catch (_) { return [] } }
+  const [dom, inst, chips, telnyx, resend, wh] = await Promise.all([
+    listar(`users/${uid}/emailDomains`), listar(`users/${uid}/instances`), listar(`users/${uid}/smsNumeros`),
+    listar(`users/${uid}/smsProviders`), listar(`users/${uid}/emailProviders`), listar(`users/${uid}/webhooks`),
+  ])
+  return {
+    dominios: dom.map((d) => ({ nome: d.name || d.dominio || '—', status: d.status || d.dnsStatus || (d.verified ? 'verificado' : 'pendente') })),
+    instancias: inst.map((d) => ({ nome: d.nomeInstancia || d.nome || '—', numero: d.numeroWhatsapp || d.numeroWhatsApp || '', conectado: !!d.conectado })),
+    chips: chips.map((d) => ({ numero: d.number || '—', status: d.status || 'active', principal: !!d.principal, voz: !!d.vozAtiva })),
+    telnyxApi: telnyx.map((d) => ({ nome: d.nome || '—', from: d.from || d.numeroPrincipal || '', principal: !!d.principal })),
+    resendApi: resend.map((d) => ({ nome: d.nome || d.fromName || '—', from: d.fromEmail || d.from || '', principal: !!d.principal })),
+    trackers: wh.filter((d) => d.tipo === 'custom').map((d) => ({ nome: d.nome || '—', loja: d.loja || '', status: d.status || '' })),
+  }
+})
+
+/** Reenvia o Termo de Uso: zera a aceitação, obrigando o cliente a aceitar de novo no próximo acesso. */
+exports.adminResetTermos = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  if (uid === request.auth?.uid) throw new HttpsError('permission-denied', 'A conta admin não usa termo.')
+  await db.doc(`tenants/${uid}`).set({ termos: { aceito: false, resetEm: admin.firestore.FieldValue.serverTimestamp(), resetPor: (request.auth?.token?.email || 'admin') } }, { merge: true })
+  return { ok: true }
 })
 
 /** Kill switch global: pausa/religa TODOS os envios. */

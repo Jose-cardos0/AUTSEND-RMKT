@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, adminGetClienteGastos, ADMIN_EMAIL } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, adminGetClienteGastos, adminGetClienteConectados, adminResetTermos, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 
 // Limites editáveis no admin (espelho do whitelist do backend adminUpdateCliente).
@@ -18,7 +18,7 @@ import CollapsibleSearch from '../components/CollapsibleSearch'
 import { useConfirm } from '../components/ConfirmDialog'
 import {
   Users, ShieldCheck, ShieldAlert, Pause, Ban, CheckCircle2, Power, RefreshCw, Filter,
-  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink, Wallet, Receipt,
+  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink, Wallet, Receipt, Plug, Send,
 } from 'lucide-react'
 
 const POR_PAGINA = 12
@@ -79,6 +79,9 @@ export default function Admin() {
   const [carregandoCredito, setCarregandoCredito] = useState(false)
   const [gastos, setGastos] = useState(null) // CRM de margem (lazy)
   const [carregandoGastos, setCarregandoGastos] = useState(false)
+  const [conectados, setConectados] = useState(null) // inventário de recursos conectados (lazy)
+  const [carregandoConectados, setCarregandoConectados] = useState(false)
+  const [reenviandoTermo, setReenviandoTermo] = useState(false)
   const [instExp, setInstExp] = useState('') // instância expandida
   const [hoverTpl, setHoverTpl] = useState(null) // template de e-mail em hover (preview)
   const [hoverRect, setHoverRect] = useState(null)
@@ -202,8 +205,31 @@ export default function Admin() {
     if (!gastos && sel?.uid) carregarGastos(sel.uid)
   }
 
+  const carregarConectados = async (uid) => {
+    setCarregandoConectados(true)
+    try { setConectados(await adminGetClienteConectados(uid)) }
+    catch (e) { toast.error(e?.message || 'Erro ao carregar conectados.') }
+    finally { setCarregandoConectados(false) }
+  }
+
+  const abrirTabConectados = () => {
+    setDetTab('conectados'); setDetPage(1)
+    if (!conectados && sel?.uid) carregarConectados(sel.uid)
+  }
+
+  const reenviarTermo = async () => {
+    if (!sel?.uid) return
+    if (!(await confirm({ title: 'Reenviar Termo de Uso?', message: `O cliente "${sel.nome || sel.email}" vai precisar ACEITAR o termo de novo no próximo acesso pra continuar usando o app.`, confirmLabel: 'Reenviar termo' }))) return
+    setReenviandoTermo(true)
+    try {
+      await adminResetTermos(sel.uid)
+      setDetalhe((d) => d ? { ...d, tenant: { ...d.tenant, termos: { ...(d.tenant?.termos || {}), aceito: false } } } : d)
+      toast.success('Termo reenviado. O cliente vai reaceitar no próximo acesso.')
+    } catch (e) { toast.error(e?.message || 'Erro ao reenviar o termo.') } finally { setReenviandoTermo(false) }
+  }
+
   const abrir = async (c) => {
-    setSel(c); setDetalhe(null); setCredito(null); setGastos(null); setCarregandoDet(true); setDetTab('disparos'); setDetPage(1)
+    setSel(c); setDetalhe(null); setCredito(null); setGastos(null); setConectados(null); setCarregandoDet(true); setDetTab('disparos'); setDetPage(1)
     const ef = planoEfetivo({ plano: c.plano || 'free' })
     setForm({ plano: c.plano || 'free', notas: c.notas || '', limites: { ...ef.limites } })
     try {
@@ -617,6 +643,14 @@ export default function Admin() {
                             </div>
                           )
                         })()}
+                        <button
+                          onClick={reenviarTermo}
+                          disabled={reenviandoTermo}
+                          className="w-full mt-1 inline-flex items-center justify-center gap-2 text-xs font-semibold rounded-lg px-3 min-h-[38px] border border-amber-200 bg-amber-50/60 text-amber-700 hover:bg-amber-100/60 transition-colors disabled:opacity-50"
+                        >
+                          {reenviandoTermo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                          Reenviar termo (obrigar a reaceitar)
+                        </button>
                       </div>
 
                       {/* Reembolso */}
@@ -633,8 +667,8 @@ export default function Admin() {
                 {/* ─── Coluna direita: relatórios com abas ─── */}
                 <div className="rounded-2xl border border-surface-200 bg-surface-50/40 p-3 flex flex-col lg:min-h-[calc(90vh-9rem)]">
                   <div className="flex flex-wrap gap-0.5 rounded-xl bg-surface-100 p-0.5 self-start mb-3">
-                    {[['credito', 'Crédito', Wallet], ['gastos', 'Gastos', Receipt], ['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
-                      <button key={k} onClick={() => { if (k === 'credito') abrirTabCredito(); else if (k === 'gastos') abrirTabGastos(); else { setDetTab(k); setDetPage(1) } }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+                    {[['credito', 'Crédito', Wallet], ['gastos', 'Gastos', Receipt], ['conectados', 'Conectados', Plug], ['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
+                      <button key={k} onClick={() => { if (k === 'credito') abrirTabCredito(); else if (k === 'gastos') abrirTabGastos(); else if (k === 'conectados') abrirTabConectados(); else { setDetTab(k); setDetPage(1) } }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
                         <span className="inline-flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /> {lbl}</span>
                       </button>
                     ))}
@@ -823,6 +857,49 @@ export default function Admin() {
                           </div>
 
                           <p className="text-[10px] text-stone-400">Custos estimados por uso: e-mail {fmtBRL(gastos.custos.email)} · SMS {fmtBRL(gastos.custos.sms)} · min ligação {fmtBRL(gastos.custos.callMin)} · IA {fmtBRL(gastos.custos.ia)} · instância {fmtBRL(gastos.custos.instanciaMes)}/mês. Ajuste conforme suas faturas reais. Custo de instância só entra no mês atual.</p>
+                        </div>
+                      )
+                    })()
+                  ) : detTab === 'conectados' ? (
+                    carregandoConectados ? (
+                      <p className="text-xs text-stone-400 py-8 text-center">Carregando conectados…</p>
+                    ) : !conectados ? (
+                      <p className="text-xs text-stone-400 py-8 text-center">Sem dados.</p>
+                    ) : (() => {
+                      const secoes = [
+                        { t: 'Domínios de e-mail (nossa conta Resend)', arr: conectados.dominios, linha: (d) => d.nome, tag: (d) => d.status },
+                        { t: 'Instâncias WhatsApp', arr: conectados.instancias, linha: (d) => `${d.nome}${d.numero ? ` · ${d.numero}` : ''}`, tag: (d) => (d.conectado ? 'conectado' : 'offline') },
+                        { t: 'Chips SMS (nossa conta)', arr: conectados.chips, linha: (d) => d.numero, tag: (d) => `${d.status}${d.principal ? ' · principal' : ''}${d.voz ? ' · voz' : ''}` },
+                        { t: 'Telnyx API (conta do cliente / BYO)', arr: conectados.telnyxApi, linha: (d) => `${d.nome}${d.from ? ` · ${d.from}` : ''}`, tag: (d) => (d.principal ? 'principal' : '') },
+                        { t: 'Resend API (conta do cliente / BYO)', arr: conectados.resendApi, linha: (d) => `${d.nome}${d.from ? ` · ${d.from}` : ''}`, tag: (d) => (d.principal ? 'principal' : '') },
+                        { t: 'Trackers', arr: conectados.trackers, linha: (d) => `${d.nome}${d.loja ? ` · ${d.loja}` : ''}`, tag: (d) => d.status },
+                      ]
+                      return (
+                        <div className="space-y-3">
+                          {/* Contadores */}
+                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
+                            {[['Domínios', conectados.dominios.length], ['Instâncias', conectados.instancias.length], ['Chips SMS', conectados.chips.length], ['Telnyx API', conectados.telnyxApi.length], ['Resend API', conectados.resendApi.length], ['Trackers', conectados.trackers.length]].map(([lbl, n]) => (
+                              <div key={lbl} className="rounded-xl border border-surface-200 bg-white px-2 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{n}</span><span className="block text-[10px] text-stone-400">{lbl}</span></div>
+                            ))}
+                          </div>
+                          {/* Listas por tipo */}
+                          {secoes.map((s) => (
+                            <div key={s.t}>
+                              <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">{s.t} ({s.arr.length})</p>
+                              {s.arr.length === 0 ? (
+                                <p className="text-xs text-stone-400">Nenhum.</p>
+                              ) : (
+                                <div className="space-y-1">
+                                  {s.arr.map((d, i) => (
+                                    <div key={i} className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-xs">
+                                      <span className="min-w-0 truncate text-stone-700">{s.linha(d)}</span>
+                                      {s.tag(d) && <span className="shrink-0 text-[10px] text-stone-400">{s.tag(d)}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )
                     })()
