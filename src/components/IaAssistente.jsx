@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { functions } from '../lib/firebase'
-import { getIaBlocks, saveIaBlock, deleteIaBlock } from '../lib/firestore'
+import { getIaBlocks, saveIaBlock, deleteIaBlock, getCheckoutStores } from '../lib/firestore'
+import { lojaByKey } from '../lib/lojas'
 import { uploadEmailAsset } from '../lib/storageAssets'
-import { X, Plus, Sparkles, ArrowUp, Loader2, Save, Trash2, ArrowLeft, User, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
+import { X, Plus, Sparkles, ArrowUp, Loader2, Save, Trash2, ArrowLeft, User, Pencil, ChevronLeft, ChevronRight, Link2, ShoppingBag } from 'lucide-react'
 import foguete from '../assets/foguetes/foguete1.png'
 import CollapsibleSearch from './CollapsibleSearch'
 
@@ -46,6 +47,9 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
   const [nomeModelo, setNomeModelo] = useState('')
   const [editandoId, setEditandoId] = useState(null) // id do bloco sendo editado (null = novo)
   const [iaUso, setIaUso] = useState(null) // {usados, limite} do plano (limite -1 = admin/ilimitado)
+  const [showCheckouts, setShowCheckouts] = useState(false)
+  const [lojas, setLojas] = useState([])
+  const [carregandoLojas, setCarregandoLojas] = useState(false)
   const fileRef = useRef(null)
   const fimRef = useRef(null)
 
@@ -118,6 +122,22 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
     } finally {
       setSubindoImg(false)
     }
+  }
+
+  const abrirCheckouts = async () => {
+    setShowCheckouts(true)
+    if (lojas.length || !uid) return
+    setCarregandoLojas(true)
+    try {
+      const list = await getCheckoutStores(uid)
+      setLojas(list.filter((s) => s.ativo && (s.produtos || []).length > 0))
+    } catch (_) {} finally { setCarregandoLojas(false) }
+  }
+
+  // Insere o link do checkout no texto (o Grok usa como CTA/botão).
+  const inserirLink = (produto) => {
+    setInput((s) => `${s ? s + ' ' : ''}${produto.nome ? produto.nome + ': ' : ''}${produto.link} `)
+    setShowCheckouts(false)
   }
 
   const confirmarSalvar = async () => {
@@ -235,9 +255,14 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
                     className="w-full resize-none border-0 outline-none focus:ring-0 focus:border-transparent text-sm px-1 bg-transparent placeholder:text-stone-400"
                   />
                   <div className="flex items-center justify-between mt-1">
-                    <button onClick={() => fileRef.current?.click()} disabled={subindoImg} title="Enviar imagem" className="w-8 h-8 flex items-center justify-center rounded-full text-stone-500 hover:bg-surface-100 disabled:opacity-50">
-                      {subindoImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => fileRef.current?.click()} disabled={subindoImg} title="Enviar imagem" className="w-8 h-8 flex items-center justify-center rounded-full text-stone-500 hover:bg-surface-100 disabled:opacity-50">
+                        {subindoImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                      </button>
+                      <button onClick={abrirCheckouts} title="Inserir link de checkout" className="w-8 h-8 flex items-center justify-center rounded-full text-stone-500 hover:bg-surface-100">
+                        <Link2 className="w-4 h-4" />
+                      </button>
+                    </div>
                     <button onClick={enviar} disabled={gerando || (!input.trim() && !imgs.length)} className="w-9 h-9 rounded-full bg-primary-600 text-white flex items-center justify-center disabled:opacity-40 hover:bg-primary-700 transition">
                       {gerando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
                     </button>
@@ -260,6 +285,48 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
             </div>
           </div>
         </div>
+
+        {/* Popup: escolher um checkout pra inserir o link no texto */}
+        {showCheckouts && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={() => setShowCheckouts(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto p-4 sm:p-5" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-stone-800 flex items-center gap-2"><Link2 className="w-4 h-4 text-primary-600" /> Inserir link de checkout</h4>
+                <button onClick={() => setShowCheckouts(false)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
+              </div>
+              {carregandoLojas ? (
+                <div className="flex items-center justify-center py-10 text-stone-400 gap-2 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Carregando…</div>
+              ) : lojas.length === 0 ? (
+                <p className="text-sm text-stone-400 text-center py-8">Nenhum checkout cadastrado. Adicione em <b className="text-stone-600">Geral · Checkouts</b>.</p>
+              ) : (
+                <div className="space-y-4">
+                  {lojas.map((s) => {
+                    const loja = lojaByKey(s.loja)
+                    return (
+                      <div key={s.id}>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          {loja?.logo ? <img src={loja.logo} alt="" className="h-4 max-w-[70px] object-contain" /> : <ShoppingBag className="w-4 h-4 text-stone-400" />}
+                          <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">{loja?.nome || s.loja}</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {(s.produtos || []).map((p) => (
+                            <button key={p.id} onClick={() => inserirLink(p)} className="w-full flex items-center gap-2 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-primary-50/40 px-3 py-2 text-left transition">
+                              <Link2 className="w-3.5 h-3.5 text-primary-500 shrink-0" />
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-medium text-stone-800 truncate">{p.nome}</span>
+                                <span className="block text-[11px] text-stone-400 truncate">{p.link}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     )
   }
