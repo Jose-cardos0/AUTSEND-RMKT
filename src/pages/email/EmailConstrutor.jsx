@@ -870,10 +870,10 @@ export default function EmailConstrutor() {
         </div>
       )}
 
-      {/* Loading da galeria (foguetinho) — fundo transparente; o modal das imagens
-          fica escondido (via classe no body) até terminar de carregar. */}
+      {/* Loading da galeria (foguetinho) — fundo branco, mas começa DEPOIS do menu
+          (offset da sidebar no desktop); o modal fica escondido até carregar. */}
       {carregandoImgs && (
-        <div className="fixed inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 100000 }}>
+        <div className="fixed inset-0 md:left-[15.5rem] flex items-center justify-center bg-white/95" style={{ zIndex: 100000 }}>
           <PageLoader label="Carregando suas imagens…" />
         </div>
       )}
