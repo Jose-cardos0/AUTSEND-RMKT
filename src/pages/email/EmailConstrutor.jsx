@@ -48,7 +48,7 @@ function DockBtn({ onClick, title, ativo, children }) {
 export default function EmailConstrutor() {
   const [user] = useAuthState(auth)
   const confirm = useConfirm()
-  const { limiteDe } = usePlano()
+  const { limiteDe, fotoURL } = usePlano()
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [templates, setTemplates] = useState([])
   const [selectedId, setSelectedId] = useState(null)
@@ -918,7 +918,7 @@ export default function EmailConstrutor() {
 
       {/* Assistente de IA (popup de modelos salvos + chat com o Grok) */}
       {showIa && user?.uid && (
-        <IaAssistente uid={user.uid} fotoUsuario={user?.photoURL} onInsert={inserirIa} onClose={cancelarIa} />
+        <IaAssistente uid={user.uid} fotoUsuario={fotoURL} onInsert={inserirIa} onClose={cancelarIa} />
       )}
 
       {/* Modal: blocos DTC pré-prontos (escolher um pra inserir) */}

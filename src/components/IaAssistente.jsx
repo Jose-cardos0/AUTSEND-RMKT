@@ -129,12 +129,12 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
             <button onClick={onClose} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
           </div>
 
-          {/* Corpo: CHAT (esquerda) + PRÉVIA (direita) no desktop; empilhado no mobile */}
+          {/* Corpo: PRÉVIA (esquerda) + CHAT (direita) no desktop; empilhado no mobile */}
           <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-            {/* CHAT */}
-            <div className="order-2 md:order-1 flex flex-col min-h-0 md:w-[380px] md:border-r border-surface-100 md:h-auto h-[45%]">
+            {/* CHAT (direita no desktop) */}
+            <div className="order-2 flex flex-col min-h-0 md:w-[380px] md:border-l border-surface-100 md:h-auto h-[45%]">
               {/* Balões */}
-              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 scroll-y-soft">
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3 scroll-y-soft no-scrollbar">
                 {conversa.length === 0 && !gerando && (
                   <div className="h-full flex flex-col items-center justify-center text-center text-stone-400 gap-2 px-4">
                     <AvatarIa />
@@ -217,8 +217,8 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
               </div>
             </div>
 
-            {/* PRÉVIA */}
-            <div className="order-1 md:order-2 flex-1 min-h-0 bg-surface-50 relative">
+            {/* PRÉVIA (esquerda no desktop) */}
+            <div className="order-1 flex-1 min-h-0 bg-surface-50 relative">
               {htmlAtual ? (
                 <iframe title="Prévia IA" srcDoc={docPreview(htmlAtual)} className="w-full h-full border-0 bg-white" />
               ) : (
