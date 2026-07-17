@@ -42,6 +42,7 @@ export async function adminReembolsarCliente(uid) { return (await call('adminRee
 // Setor de risco: 'play' (retoma e assume o risco), 'pausar' (manual), 'auto' (volta ao automático).
 export async function adminSetRiscoConta(uid, acao) { return (await call('adminSetRiscoConta')({ uid, acao })).data }
 export async function adminGetClienteCredito(uid) { return (await call('adminGetClienteCredito')({ uid })).data }
+export async function adminGetClienteGastos(uid) { return (await call('adminGetClienteGastos')({ uid })).data }
 
 // Saúde do cliente pelo % de reclamação/bounce (limiares dos provedores).
 export function healthDoCliente(c) {

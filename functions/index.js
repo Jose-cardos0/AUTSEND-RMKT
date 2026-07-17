@@ -99,6 +99,20 @@ const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.iacodenx
  *   tipo: 'credito_sms'|'credito_email'|'credito_call'|'instancia'|'numero'|'plano'|'reembolso'|'chargeback'|'cancelamento'
  *   valor em R$ (NEGATIVO em reembolso/chargeback). stripeId dá idempotência (vira o id do doc).
  */
+/**
+ * CUSTO UNITÁRIO estimado (R$) das ferramentas por uso — usado no CRM de margem (aba Gastos).
+ * ⚠️ São ESTIMATIVAS: ajuste conforme suas faturas reais. Ver memória [[gastos-crm]].
+ * email = Resend por e-mail · sms = Telnyx por SMS · callMin = Telnyx por min de ligação ·
+ * ia = Grok (grok-code-fast-1) por uso do construtor · instanciaMes = R$2,00 por instância/mês.
+ */
+const CUSTOS_UNIT = {
+  email: Number(process.env.CUSTO_EMAIL) || 0.002,
+  sms: Number(process.env.CUSTO_SMS) || 0.05,
+  callMin: Number(process.env.CUSTO_CALL_MIN) || 0.10,
+  ia: Number(process.env.CUSTO_IA) || 0.04,
+  instanciaMes: Number(process.env.CUSTO_INSTANCIA_MES) || 2.0,
+}
+
 async function registrarFaturamento(uid, entry) {
   if (!uid || !entry || !entry.tipo) return
   try {
@@ -4606,6 +4620,56 @@ exports.adminGetClienteCredito = onCall({ region: 'us-central1', timeoutSeconds:
     overrides: (t.overrides && t.overrides.limites) || null,
     totalGasto, totalReembolsado,
   }
+})
+
+/**
+ * CRM de MARGEM por cliente (aba Gastos): quanto o cliente NOS custa (Grok/Telnyx/Resend/instâncias)
+ * vs quanto pagou (mensalidade + produtos). Retorna breakdown do mês atual + histórico mensal p/ gráfico.
+ */
+exports.adminGetClienteGastos = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  const tSnap = await db.doc(`tenants/${uid}`).get()
+  const t = tSnap.exists ? tSnap.data() : {}
+  const toMs = (x) => (x && x.toMillis) ? x.toMillis() : (typeof x === 'number' ? x : (x && x._seconds ? x._seconds * 1000 : 0))
+  const mesDeMs = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
+
+  const meses = {} // 'YYYY-MM' -> agregados
+  const bump = (mes, campo, v) => { if (!mes) return; (meses[mes] = meses[mes] || { emails: 0, sms: 0, callMin: 0, ia: 0, receita: 0, mensalidade: 0, produtos: 0 })[campo] += v }
+
+  try { const s = await db.collection(`users/${uid}/emailDisparos`).get(); s.forEach((d) => { const x = d.data(); const ms = toMs(x.createdAt); if (ms) bump(mesDeMs(ms), 'emails', Number(x.enviados) || 0) }) } catch (_) {}
+  try { const s = await db.collection(`users/${uid}/smsDisparos`).get(); s.forEach((d) => { const x = d.data(); const ms = toMs(x.createdAt); if (ms) bump(mesDeMs(ms), 'sms', Number(x.enviados) || 0) }) } catch (_) {}
+  try { const s = await db.collection(`users/${uid}/callLogs`).get(); s.forEach((d) => { const x = d.data(); const ms = toMs(x.createdAt); if (ms) bump(mesDeMs(ms), 'callMin', (Number(x.segundos) || 0) / 60) }) } catch (_) {}
+  const iaUso = t.iaUso || {}
+  for (const [mes, n] of Object.entries(iaUso)) bump(mes, 'ia', Number(n) || 0)
+  try {
+    const s = await db.collection(`tenants/${uid}/faturamento`).get()
+    s.forEach((d) => { const x = d.data(); const v = Number(x.valor) || 0; if (v <= 0) return; const ms = toMs(x.em); if (!ms) return; const mes = mesDeMs(ms); bump(mes, 'receita', v); bump(mes, x.tipo === 'plano' ? 'mensalidade' : 'produtos', v) })
+  } catch (_) {}
+
+  let instanciasQtd = 0
+  try { const s = await db.collection(`users/${uid}/instances`).get(); instanciasQtd = s.size } catch (_) {}
+  const custoInstanciaMes = instanciasQtd * CUSTOS_UNIT.instanciaMes
+  const mesAtual = mesDeMs(Date.now())
+
+  const lista = Object.entries(meses).map(([mes, m]) => {
+    const custoResend = m.emails * CUSTOS_UNIT.email
+    const custoSms = m.sms * CUSTOS_UNIT.sms
+    const custoCall = m.callMin * CUSTOS_UNIT.callMin
+    const custoGrok = m.ia * CUSTOS_UNIT.ia
+    const custoInst = (mes === mesAtual) ? custoInstanciaMes : 0 // instância só no mês atual (sem histórico de contagem)
+    const custoTotal = custoResend + custoSms + custoCall + custoGrok + custoInst
+    return {
+      mes, emails: m.emails, sms: m.sms, callMin: Math.round(m.callMin), ia: m.ia,
+      custoResend, custoSms, custoCall, custoGrok, custoInst, custoTotal,
+      receita: m.receita, mensalidade: m.mensalidade, produtos: m.produtos, lucro: m.receita - custoTotal,
+    }
+  }).sort((a, b) => (a.mes < b.mes ? 1 : -1))
+
+  const atual = lista.find((x) => x.mes === mesAtual) || { mes: mesAtual, emails: 0, sms: 0, callMin: 0, ia: 0, custoResend: 0, custoSms: 0, custoCall: 0, custoGrok: 0, custoInst: custoInstanciaMes, custoTotal: custoInstanciaMes, receita: 0, mensalidade: 0, produtos: 0, lucro: -custoInstanciaMes }
+
+  return { custos: CUSTOS_UNIT, instanciasQtd, custoInstanciaMes, mesAtual: atual, meses: lista }
 })
 
 /** Kill switch global: pausa/religa TODOS os envios. */

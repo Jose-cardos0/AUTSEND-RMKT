@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, ADMIN_EMAIL } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, adminGetClienteGastos, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 
 // Limites editáveis no admin (espelho do whitelist do backend adminUpdateCliente).
@@ -18,7 +18,7 @@ import CollapsibleSearch from '../components/CollapsibleSearch'
 import { useConfirm } from '../components/ConfirmDialog'
 import {
   Users, ShieldCheck, ShieldAlert, Pause, Ban, CheckCircle2, Power, RefreshCw, Filter,
-  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink, Wallet,
+  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink, Wallet, Receipt,
 } from 'lucide-react'
 
 const POR_PAGINA = 12
@@ -77,6 +77,8 @@ export default function Admin() {
   const [detPage, setDetPage] = useState(1)
   const [credito, setCredito] = useState(null) // histórico financeiro do cliente (lazy)
   const [carregandoCredito, setCarregandoCredito] = useState(false)
+  const [gastos, setGastos] = useState(null) // CRM de margem (lazy)
+  const [carregandoGastos, setCarregandoGastos] = useState(false)
   const [instExp, setInstExp] = useState('') // instância expandida
   const [hoverTpl, setHoverTpl] = useState(null) // template de e-mail em hover (preview)
   const [hoverRect, setHoverRect] = useState(null)
@@ -188,8 +190,20 @@ export default function Admin() {
     if (!credito && sel?.uid) carregarCredito(sel.uid)
   }
 
+  const carregarGastos = async (uid) => {
+    setCarregandoGastos(true)
+    try { setGastos(await adminGetClienteGastos(uid)) }
+    catch (e) { toast.error(e?.message || 'Erro ao carregar os gastos.') }
+    finally { setCarregandoGastos(false) }
+  }
+
+  const abrirTabGastos = () => {
+    setDetTab('gastos'); setDetPage(1)
+    if (!gastos && sel?.uid) carregarGastos(sel.uid)
+  }
+
   const abrir = async (c) => {
-    setSel(c); setDetalhe(null); setCredito(null); setCarregandoDet(true); setDetTab('disparos'); setDetPage(1)
+    setSel(c); setDetalhe(null); setCredito(null); setGastos(null); setCarregandoDet(true); setDetTab('disparos'); setDetPage(1)
     const ef = planoEfetivo({ plano: c.plano || 'free' })
     setForm({ plano: c.plano || 'free', notas: c.notas || '', limites: { ...ef.limites } })
     try {
@@ -619,8 +633,8 @@ export default function Admin() {
                 {/* ─── Coluna direita: relatórios com abas ─── */}
                 <div className="rounded-2xl border border-surface-200 bg-surface-50/40 p-3 flex flex-col lg:min-h-[calc(90vh-9rem)]">
                   <div className="flex flex-wrap gap-0.5 rounded-xl bg-surface-100 p-0.5 self-start mb-3">
-                    {[['credito', 'Crédito', Wallet], ['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
-                      <button key={k} onClick={() => { if (k === 'credito') abrirTabCredito(); else { setDetTab(k); setDetPage(1) } }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+                    {[['credito', 'Crédito', Wallet], ['gastos', 'Gastos', Receipt], ['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
+                      <button key={k} onClick={() => { if (k === 'credito') abrirTabCredito(); else if (k === 'gastos') abrirTabGastos(); else { setDetTab(k); setDetPage(1) } }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
                         <span className="inline-flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /> {lbl}</span>
                       </button>
                     ))}
@@ -710,6 +724,108 @@ export default function Admin() {
                         </div>
                       </div>
                     )
+                  ) : detTab === 'gastos' ? (
+                    carregandoGastos ? (
+                      <p className="text-xs text-stone-400 py-8 text-center">Calculando custos…</p>
+                    ) : !gastos ? (
+                      <p className="text-xs text-stone-400 py-8 text-center">Sem dados.</p>
+                    ) : (() => {
+                      const a = gastos.mesAtual || {}
+                      const gm = (gastos.meses || []).slice(0, 6).reverse()
+                      const maxV = Math.max(1, ...gm.map((m) => Math.max(m.custoTotal, m.receita)))
+                      return (
+                        <div className="space-y-3">
+                          {/* Mês atual: custo x receita x lucro */}
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-rose-700/70">Custo/mês (nós)</span><span className="block text-sm font-bold text-rose-700 tabular-nums">{fmtBRL(a.custoTotal)}</span></div>
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-emerald-700/70">Receita/mês</span><span className="block text-sm font-bold text-emerald-700 tabular-nums">{fmtBRL(a.receita)}</span></div>
+                            <div className={`rounded-xl border px-3 py-2 ${a.lucro >= 0 ? 'border-primary-200 bg-primary-50/50' : 'border-amber-200 bg-amber-50/50'}`}><span className="block text-[10px] uppercase tracking-wide text-stone-500">Lucro/mês</span><span className={`block text-sm font-bold tabular-nums ${a.lucro >= 0 ? 'text-primary-700' : 'text-amber-700'}`}>{fmtBRL(a.lucro)}</span></div>
+                          </div>
+
+                          {/* Gráfico custo (vermelho) x receita (verde) por mês */}
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Custo × Receita por mês</p>
+                            <div className="rounded-xl border border-surface-200 bg-white p-3">
+                              <div className="flex items-end justify-around gap-2 h-32">
+                                {gm.length === 0 ? <p className="text-xs text-stone-400 m-auto">Sem histórico ainda.</p> : gm.map((m) => (
+                                  <div key={m.mes} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                                    <div className="w-full flex items-end justify-center gap-1 h-full">
+                                      <div className="w-1/2 max-w-[16px] bg-rose-400 rounded-t" style={{ height: `${(m.custoTotal / maxV) * 100}%` }} title={`Custo ${fmtBRL(m.custoTotal)}`} />
+                                      <div className="w-1/2 max-w-[16px] bg-emerald-400 rounded-t" style={{ height: `${(m.receita / maxV) * 100}%` }} title={`Receita ${fmtBRL(m.receita)}`} />
+                                    </div>
+                                    <span className="text-[10px] text-stone-400 tabular-nums">{m.mes.slice(5)}/{m.mes.slice(2, 4)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex items-center justify-center gap-4 mt-2 text-[10px] text-stone-500">
+                                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-rose-400" /> Custo</span>
+                                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-400" /> Receita</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Breakdown do mês atual por ferramenta */}
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Custo do mês por ferramenta</p>
+                            <div className="overflow-x-auto rounded-xl border border-surface-200">
+                              <table className="w-full text-xs whitespace-nowrap">
+                                <thead className="bg-surface-100 text-stone-500"><tr>
+                                  <th className="text-left px-3 py-2 font-medium">Resend (e-mail)</th>
+                                  <th className="text-left px-3 py-2 font-medium">Telnyx (SMS)</th>
+                                  <th className="text-left px-3 py-2 font-medium">Telnyx (ligação)</th>
+                                  <th className="text-left px-3 py-2 font-medium">Grok (IA)</th>
+                                  <th className="text-left px-3 py-2 font-medium">Instâncias ({gastos.instanciasQtd})</th>
+                                </tr></thead>
+                                <tbody><tr className="border-t border-surface-100 tabular-nums text-stone-700">
+                                  <td className="px-3 py-2">{fmtBRL(a.custoResend)}</td>
+                                  <td className="px-3 py-2">{fmtBRL(a.custoSms)}</td>
+                                  <td className="px-3 py-2">{fmtBRL(a.custoCall)}</td>
+                                  <td className="px-3 py-2">{fmtBRL(a.custoGrok)}</td>
+                                  <td className="px-3 py-2">{fmtBRL(a.custoInst)}</td>
+                                </tr></tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          {/* Histórico mensal (Excel-like) */}
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Histórico mensal</p>
+                            <div className="overflow-x-auto rounded-xl border border-surface-200">
+                              <table className="w-full text-xs whitespace-nowrap">
+                                <thead className="bg-surface-100 text-stone-500"><tr>
+                                  <th className="text-left px-3 py-2 font-medium">Mês</th>
+                                  <th className="text-right px-3 py-2 font-medium">E-mails</th>
+                                  <th className="text-right px-3 py-2 font-medium">SMS</th>
+                                  <th className="text-right px-3 py-2 font-medium">Min lig.</th>
+                                  <th className="text-right px-3 py-2 font-medium">IA</th>
+                                  <th className="text-right px-3 py-2 font-medium">Custo</th>
+                                  <th className="text-right px-3 py-2 font-medium">Receita</th>
+                                  <th className="text-right px-3 py-2 font-medium">Lucro</th>
+                                </tr></thead>
+                                <tbody>
+                                  {(gastos.meses || []).length === 0 ? (
+                                    <tr><td colSpan={8} className="px-3 py-4 text-center text-stone-400">Sem movimentação ainda.</td></tr>
+                                  ) : gastos.meses.map((m) => (
+                                    <tr key={m.mes} className="border-t border-surface-100 tabular-nums">
+                                      <td className="px-3 py-2 text-stone-600">{m.mes}</td>
+                                      <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.emails)}</td>
+                                      <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.sms)}</td>
+                                      <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.callMin)}</td>
+                                      <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.ia)}</td>
+                                      <td className="px-3 py-2 text-right text-rose-600 font-medium">{fmtBRL(m.custoTotal)}</td>
+                                      <td className="px-3 py-2 text-right text-emerald-700 font-medium">{fmtBRL(m.receita)}</td>
+                                      <td className={`px-3 py-2 text-right font-semibold ${m.lucro >= 0 ? 'text-primary-700' : 'text-amber-700'}`}>{fmtBRL(m.lucro)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-stone-400">Custos estimados por uso: e-mail {fmtBRL(gastos.custos.email)} · SMS {fmtBRL(gastos.custos.sms)} · min ligação {fmtBRL(gastos.custos.callMin)} · IA {fmtBRL(gastos.custos.ia)} · instância {fmtBRL(gastos.custos.instanciaMes)}/mês. Ajuste conforme suas faturas reais. Custo de instância só entra no mês atual.</p>
+                        </div>
+                      )
+                    })()
                   ) : detTab === 'whatsapp' ? (
                     <div className="space-y-2">
                       <p className="text-xs text-stone-500">Instâncias de WhatsApp: <strong className="text-stone-700">{(detalhe?.instances || []).length}</strong></p>
