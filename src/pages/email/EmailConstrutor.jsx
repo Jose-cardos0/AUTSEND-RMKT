@@ -157,40 +157,26 @@ export default function EmailConstrutor() {
       }
     >
       <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
-      <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-3 overflow-hidden">
-        {/* Coluna esquerda: dados do template */}
-        <div className="lg:w-72 shrink-0 flex flex-col gap-3 lg:overflow-y-auto">
-          <div className="app-panel rounded-2xl p-4 space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Template</label>
-              <Select
-                value={selectedId || ''}
-                onChange={(v) => setSelectedId(v || null)}
-                className="w-full"
-                options={[{ value: '', label: 'Novo' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Nome do template</label>
-              <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: E-mail de recuperação" className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Assunto do e-mail</label>
-              <textarea value={subject} onChange={(e) => setSubject(e.target.value)} rows={2} placeholder="Ex: {nome_cliente}, seu carrinho está te esperando!" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 text-sm resize-y" />
-            </div>
-          </div>
-          <div className="app-panel rounded-2xl p-4">
-            <p className="text-xs font-semibold text-stone-600 mb-2">Variáveis</p>
-            <div className="flex flex-wrap gap-1.5">
-              {Object.keys(MERGE_TAGS).map((k) => (
-                <button key={k} type="button" onClick={() => setSubject((s) => `${s || ''}{${k}}`)} className="px-2.5 py-1 rounded-full bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200/70 text-[11px] font-medium">{`{${k}}`}</button>
-              ))}
-            </div>
-            <p className="text-[11px] text-stone-400 mt-2">No corpo do e-mail, use o menu de variáveis do editor (elas viram {'{{...}}'} e convertemos ao salvar).</p>
+      <div className="flex flex-col flex-1 min-h-0 gap-2 overflow-hidden">
+        {/* Faixa de topo: template + nome + assunto (compacto) */}
+        <div className="shrink-0 app-panel rounded-2xl p-2.5 flex flex-wrap items-center gap-2">
+          <Select
+            value={selectedId || ''}
+            onChange={(v) => setSelectedId(v || null)}
+            compact
+            className="w-44"
+            options={[{ value: '', label: 'Novo template' }, ...templates.map((t) => ({ value: t.id, label: t.nome }))]}
+          />
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do template" className="w-48 px-3 h-9 rounded-lg border border-surface-200 text-sm" />
+          <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Assunto do e-mail (ex.: {nome_cliente}, volte!)" className="flex-1 min-w-[180px] px-3 h-9 rounded-lg border border-surface-200 text-sm" />
+          <div className="flex items-center gap-1">
+            {Object.keys(MERGE_TAGS).map((k) => (
+              <button key={k} type="button" title={`Inserir no assunto`} onClick={() => setSubject((s) => `${s || ''}{${k}}`)} className="px-2 py-1 rounded-md bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200/70 text-[10px] font-medium">{`{${k}}`}</button>
+            ))}
           </div>
         </div>
 
-        {/* Coluna direita: editor Easy Email */}
+        {/* Editor Easy Email — largura total */}
         <div className="flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden">
           {initialValues ? (
             <EmailEditorProvider
@@ -205,7 +191,7 @@ export default function EmailConstrutor() {
               {({ values }) => {
                 valuesRef.current = values
                 return (
-                  <StandardLayout compact showSourceCode>
+                  <StandardLayout showSourceCode>
                     <EmailEditor />
                   </StandardLayout>
                 )
