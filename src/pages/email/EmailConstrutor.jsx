@@ -118,7 +118,16 @@ export default function EmailConstrutor() {
       storageManager: false,
       // Cada painel é renderizado no NOSSO container (controlamos qual aparece).
       blockManager: { appendTo: '#am-blocks' },
-      styleManager: { appendTo: '#am-styles' },
+      styleManager: {
+        appendTo: '#am-styles',
+        // Estilos enxutos e relevantes pra e-mail (fundo é só COR, sem o stack de imagem confuso).
+        sectors: [
+          { name: 'Texto', open: true, buildProps: ['font-size', 'color', 'font-weight', 'text-align', 'line-height', 'letter-spacing'] },
+          { name: 'Fundo', open: true, buildProps: ['background-color'] },
+          { name: 'Espaçamento', open: false, buildProps: ['padding', 'margin'] },
+          { name: 'Borda', open: false, buildProps: ['border-radius', 'border'] },
+        ],
+      },
       traitManager: { appendTo: '#am-traits' },
       layerManager: { appendTo: '#am-layers' },
       assetManager: {
