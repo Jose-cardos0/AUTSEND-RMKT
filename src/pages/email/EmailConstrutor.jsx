@@ -213,10 +213,10 @@ export default function EmailConstrutor() {
       try {
         editor.StyleManager.getSectors().reset([
           { id: 'am-texto', name: 'Texto', open: true, properties: [
-            { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px', '%'], default: '15px' },
+            { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px', '%'], unit: 'px', default: '15px' },
             { property: 'color', name: 'Cor do texto', type: 'color' },
             { property: 'font-weight', name: 'Peso', type: 'select', default: '400', options: [{ id: '300', name: 'Fino' }, { id: '400', name: 'Normal' }, { id: '600', name: 'Semi' }, { id: '700', name: 'Negrito' }] },
-            { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['px', '%'] },
+            { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['px', '%'], unit: 'px' },
           ] },
           { id: 'am-align', name: 'Alinhamento', open: true, properties: [
             { property: 'text-align', name: 'Horizontal', type: 'radio', default: 'left', options: [{ id: 'left', name: 'Esq.' }, { id: 'center', name: 'Centro' }, { id: 'right', name: 'Dir.' }] },
@@ -230,26 +230,26 @@ export default function EmailConstrutor() {
             { property: 'background-position', name: 'Posição', type: 'select', default: 'center center', options: [{ id: 'center center', name: 'Centro' }, { id: 'top center', name: 'Topo' }, { id: 'bottom center', name: 'Base' }, { id: 'left center', name: 'Esquerda' }, { id: 'right center', name: 'Direita' }] },
           ] },
           { id: 'am-dim', name: 'Dimensão', open: false, properties: [
-            { property: 'width', name: 'Largura', type: 'number', units: ['px', '%'] },
-            { property: 'max-width', name: 'Largura máx.', type: 'number', units: ['px', '%'] },
-            { property: 'height', name: 'Altura', type: 'number', units: ['px', '%'] },
+            { property: 'width', name: 'Largura', type: 'number', units: ['px', '%'], unit: 'px' },
+            { property: 'max-width', name: 'Largura máx.', type: 'number', units: ['px', '%'], unit: 'px' },
+            { property: 'height', name: 'Altura', type: 'number', units: ['px', '%'], unit: 'px' },
           ] },
           { id: 'am-espaco', name: 'Espaçamento', open: false, properties: [
             { property: 'padding', name: 'Interno', type: 'composite', properties: [
-              { property: 'padding-top', name: 'Cima', type: 'number', units: ['px'] },
-              { property: 'padding-right', name: 'Direita', type: 'number', units: ['px'] },
-              { property: 'padding-bottom', name: 'Baixo', type: 'number', units: ['px'] },
-              { property: 'padding-left', name: 'Esquerda', type: 'number', units: ['px'] },
+              { property: 'padding-top', name: 'Cima', type: 'number', units: ['px'], unit: 'px' },
+              { property: 'padding-right', name: 'Direita', type: 'number', units: ['px'], unit: 'px' },
+              { property: 'padding-bottom', name: 'Baixo', type: 'number', units: ['px'], unit: 'px' },
+              { property: 'padding-left', name: 'Esquerda', type: 'number', units: ['px'], unit: 'px' },
             ] },
             { property: 'margin', name: 'Externo', type: 'composite', properties: [
-              { property: 'margin-top', name: 'Cima', type: 'number', units: ['px'] },
-              { property: 'margin-right', name: 'Direita', type: 'number', units: ['px'] },
-              { property: 'margin-bottom', name: 'Baixo', type: 'number', units: ['px'] },
-              { property: 'margin-left', name: 'Esquerda', type: 'number', units: ['px'] },
+              { property: 'margin-top', name: 'Cima', type: 'number', units: ['px'], unit: 'px' },
+              { property: 'margin-right', name: 'Direita', type: 'number', units: ['px'], unit: 'px' },
+              { property: 'margin-bottom', name: 'Baixo', type: 'number', units: ['px'], unit: 'px' },
+              { property: 'margin-left', name: 'Esquerda', type: 'number', units: ['px'], unit: 'px' },
             ] },
           ] },
           { id: 'am-borda', name: 'Borda', open: false, properties: [
-            { property: 'border-radius', name: 'Cantos', type: 'number', units: ['px'] },
+            { property: 'border-radius', name: 'Cantos', type: 'number', units: ['px'], unit: 'px' },
           ] },
         ])
       } catch (_) {}
@@ -325,6 +325,28 @@ export default function EmailConstrutor() {
       } finally {
         propagandoAlign = false
       }
+    })
+
+    // Renomeia "Table cell" → "Bloco" no editor (nome do componente).
+    try { editor.DomComponents.addType('cell', { model: { defaults: { name: 'Bloco' } } }) } catch (_) {}
+
+    // Largura/altura num BLOCO de célula única (1 Bloco): a tabela é 100%, então
+    // propaga a medida pra própria tabela — senão ela ignora e nada muda.
+    ;['width', 'max-width', 'height'].forEach((prop) => {
+      editor.on(`component:styleUpdate:${prop}`, (component) => {
+        try {
+          const el = component?.getEl?.()
+          if (!el || el.tagName !== 'TD') return
+          // sobe até a TABELA de verdade (td → tr → tbody → table)
+          let table = component.parent?.()
+          while (table && table.getEl?.()?.tagName !== 'TABLE') table = table.parent?.()
+          if (!table) return
+          const cells = table.find ? table.find('td') : []
+          if (cells.length !== 1) return // só bloco simples; multi-coluna resize por célula
+          const val = component.getStyle()?.[prop]
+          if (val) table.addStyle({ [prop]: val })
+        } catch (_) {}
+      })
     })
     setReady(true)
     return () => {

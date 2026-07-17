@@ -8,9 +8,10 @@ const CAT_BASICO = 'Básico'
 const CAT_LAYOUT = 'Estrutura'
 const CAT_AVANCADO = 'Avançado'
 
-// Bloco largura total, block-level (empilha na vertical → drop correto embaixo).
-// A centralização acontece via margin auto (cascata do alinhamento) quando a largura < 100%.
-const CENTRAVEL = 'width:100%;box-sizing:border-box;'
+// Sem largura inline (senão ela ganha da regra e o usuário não consegue mudar).
+// Tabelas já são 100% pelo atributo width="100%"; divs/sections são block-level (100% natural).
+// A CSS de Largura (Dimensão) sobrescreve isso normalmente.
+const CENTRAVEL = 'box-sizing:border-box;'
 
 const BLOCOS = [
   // ── Básico ──
