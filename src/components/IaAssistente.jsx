@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { functions } from '../lib/firebase'
 import { getIaBlocks, saveIaBlock, deleteIaBlock } from '../lib/firestore'
 import { uploadEmailAsset } from '../lib/storageAssets'
-import { X, Plus, Sparkles, ArrowUp, Loader2, Save, Trash2, ArrowLeft, User } from 'lucide-react'
+import { X, Plus, Sparkles, ArrowUp, Loader2, Save, Trash2, ArrowLeft, User, Pencil } from 'lucide-react'
 import foguete from '../assets/foguetes/foguete1.png'
 
 const iaGerar = httpsCallable(functions, 'iaGerarEmailHtml')
@@ -41,6 +41,7 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
   const [htmlAtual, setHtmlAtual] = useState('')
   const [salvandoNome, setSalvandoNome] = useState(false)
   const [nomeModelo, setNomeModelo] = useState('')
+  const [editandoId, setEditandoId] = useState(null) // id do bloco sendo editado (null = novo)
   const fileRef = useRef(null)
   const fimRef = useRef(null)
 
@@ -54,6 +55,19 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
 
   const novoChat = () => {
     setConversa([]); setHistoricoApi([]); setInput(''); setImgs([]); setHtmlAtual(''); setSalvandoNome(false); setNomeModelo('')
+    setEditandoId(null)
+    setModo('chat')
+  }
+
+  // Editar um bloco salvo: abre o chat com o HTML já no contexto pra pedir alterações.
+  const editarBloco = (b, ev) => {
+    ev?.stopPropagation()
+    setHtmlAtual(b.html)
+    setHistoricoApi([{ role: 'assistant', content: b.html }])
+    setConversa([{ de: 'ia', texto: `Abri o "${b.nome}" aqui do lado 👀 O que você quer mudar?` }])
+    setEditandoId(b.id)
+    setNomeModelo(b.nome || '')
+    setInput(''); setImgs([]); setSalvandoNome(false)
     setModo('chat')
   }
 
@@ -104,8 +118,8 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
     if (!nome) { toast.error('Dê um nome ao modelo.'); return }
     if (!htmlAtual) return
     try {
-      await saveIaBlock(uid, { nome, html: htmlAtual })
-      toast.success('Modelo IA salvo!')
+      await saveIaBlock(uid, { id: editandoId || undefined, nome, html: htmlAtual })
+      toast.success(editandoId ? 'Modelo atualizado!' : 'Modelo IA salvo!')
       onInsert(htmlAtual)
     } catch (err) {
       toast.error(err?.message || 'Erro ao salvar')
@@ -180,7 +194,7 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
                       <button onClick={() => setSalvandoNome(false)} className="btn-secondary text-sm min-h-[36px]">✕</button>
                     </div>
                   ) : (
-                    <button onClick={() => setSalvandoNome(true)} className="btn-primary w-full text-sm min-h-[38px]"><Save className="w-4 h-4" /> Salvar modelo</button>
+                    <button onClick={() => setSalvandoNome(true)} className="btn-primary w-full text-sm min-h-[38px]"><Save className="w-4 h-4" /> {editandoId ? 'Atualizar modelo' : 'Salvar modelo'}</button>
                   )
                 )}
 
@@ -266,7 +280,10 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
                     <span className="inline-flex items-center gap-1 mt-1.5 text-xs font-medium text-primary-600 group-hover:text-primary-700">Usar este bloco →</span>
                   </div>
                 </button>
-                <button onClick={(ev) => excluirBloco(b.id, ev)} title="Excluir" className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 border border-surface-200 text-red-500 hover:bg-red-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"><Trash2 className="w-3.5 h-3.5" /></button>
+                <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
+                  <button onClick={(ev) => editarBloco(b, ev)} title="Editar com IA" className="w-7 h-7 rounded-full bg-white/90 border border-surface-200 text-primary-600 hover:bg-primary-50 flex items-center justify-center"><Pencil className="w-3.5 h-3.5" /></button>
+                  <button onClick={(ev) => excluirBloco(b.id, ev)} title="Excluir" className="w-7 h-7 rounded-full bg-white/90 border border-surface-200 text-red-500 hover:bg-red-50 flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
             ))}
           </div>

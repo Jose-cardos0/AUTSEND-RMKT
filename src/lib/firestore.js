@@ -435,7 +435,11 @@ export async function getIaBlocks(uid) {
       return tb - ta
     })
 }
-export async function saveIaBlock(uid, { nome, html }) {
+export async function saveIaBlock(uid, { id, nome, html }) {
+  if (id) {
+    await setDoc(doc(db, 'users', uid, 'iaBlocks', id), removeUndefined({ nome, html, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
   const ref = await addDoc(userIaBlocksRef(uid), removeUndefined({ nome, html, createdAt: serverTimestamp() }))
   return ref.id
 }
