@@ -918,7 +918,7 @@ export default function EmailConstrutor() {
 
       {/* Assistente de IA (popup de modelos salvos + chat com o Grok) */}
       {showIa && user?.uid && (
-        <IaAssistente uid={user.uid} onInsert={inserirIa} onClose={cancelarIa} />
+        <IaAssistente uid={user.uid} fotoUsuario={user?.photoURL} onInsert={inserirIa} onClose={cancelarIa} />
       )}
 
       {/* Modal: blocos DTC pré-prontos (escolher um pra inserir) */}
