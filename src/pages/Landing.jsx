@@ -19,7 +19,6 @@ import astroFoguete from '../assets/astrosend/astro-foguete.png'
 import astroCurioso from '../assets/astrosend/astrocurioso.png'
 import ShootingStars from '../components/ShootingStars'
 import WhatsAppIcon from '../components/WhatsAppIcon'
-import EmbeddedCheckoutInline from '../components/EmbeddedCheckoutInline'
 import CheckoutModal from '../components/CheckoutModal'
 import { PLANOS } from '../lib/plans'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
@@ -123,25 +122,15 @@ export default function Landing() {
   const irLogin = () => navigate('/login')
   const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 
-  // Checkout de plano embutido: desktop expande uma div abaixo dos planos; celular abre popup.
+  // Checkout de plano embutido — sempre em popup (desktop e celular).
   const [assinandoPlano, setAssinandoPlano] = useState(null)
   const [planoCheckout, setPlanoCheckout] = useState(null) // { plano, clientSecret }
-  const [ehMobile, setEhMobile] = useState(false)
-  const checkoutRef = useRef(null)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1023px)')
-    const upd = () => setEhMobile(mq.matches)
-    upd(); mq.addEventListener('change', upd)
-    return () => mq.removeEventListener('change', upd)
-  }, [])
   const assinarPlano = async (k) => {
     setAssinandoPlano(k)
     try {
       const r = await criarCheckoutPlano(k)
-      if (r?.clientSecret) {
-        setPlanoCheckout({ plano: k, clientSecret: r.clientSecret })
-        if (!ehMobile) setTimeout(() => checkoutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120)
-      } else toast.error('Não consegui abrir o checkout. Tente de novo.')
+      if (r?.clientSecret) setPlanoCheckout({ plano: k, clientSecret: r.clientSecret })
+      else toast.error('Não consegui abrir o checkout. Tente de novo.')
     } catch (e) { toast.error(e?.message || 'Falha ao abrir o checkout.') } finally { setAssinandoPlano(null) }
   }
 
@@ -327,24 +316,8 @@ export default function Landing() {
             ))}
           </div>
 
-          {/* Checkout embutido — desktop: expande aqui abaixo dos planos (com smooth scroll). */}
-          {!ehMobile && planoCheckout && (
-            <div ref={checkoutRef} className="mt-6 rounded-2xl border-2 border-primary-300 bg-white shadow-xl overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-3 border-b border-surface-100 bg-primary-50/50">
-                <span className="text-sm font-bold text-stone-800">Assinar {PLANOS[planoCheckout.plano]?.nome} — pagamento seguro</span>
-                <button onClick={() => setPlanoCheckout(null)} className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100" title="Fechar"><ChevronDown className="w-4 h-4" /></button>
-              </div>
-              <div className="p-2 max-h-[80vh] overflow-y-auto scroll-y-soft">
-                <EmbeddedCheckoutInline
-                  clientSecret={planoCheckout.clientSecret}
-                  onComplete={() => { setPlanoCheckout(null); toast.success('Assinatura confirmada! Enviamos os dados de acesso no seu e-mail.') }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Checkout embutido — celular: popup. */}
-          {ehMobile && planoCheckout && (
+          {/* Checkout embutido — popup (desktop e celular). */}
+          {planoCheckout && (
             <CheckoutModal
               clientSecret={planoCheckout.clientSecret}
               onClose={() => setPlanoCheckout(null)}

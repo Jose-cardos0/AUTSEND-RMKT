@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { loadStripe } from '@stripe/stripe-js'
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js'
 import { X } from 'lucide-react'
@@ -14,8 +15,10 @@ const stripePromise = PK ? loadStripe(PK) : null
  * @param {() => void} onClose
  */
 export default function CheckoutModal({ clientSecret, onComplete, onClose }) {
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+  // Portal no body: escapa de qualquer ancestral com transform (ex.: framer-motion do "Melhorar plano"),
+  // que "prende" elementos fixed e bugava a posição do popup.
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-surface-100">
           <h3 className="font-semibold text-stone-800">Pagamento seguro</h3>
@@ -31,6 +34,7 @@ export default function CheckoutModal({ clientSecret, onComplete, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
