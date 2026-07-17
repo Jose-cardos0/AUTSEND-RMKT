@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, ADMIN_EMAIL } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 
 // Limites editáveis no admin (espelho do whitelist do backend adminUpdateCliente).
@@ -18,7 +18,7 @@ import CollapsibleSearch from '../components/CollapsibleSearch'
 import { useConfirm } from '../components/ConfirmDialog'
 import {
   Users, ShieldCheck, ShieldAlert, Pause, Ban, CheckCircle2, Power, RefreshCw, Filter,
-  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink,
+  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink, Wallet,
 } from 'lucide-react'
 
 const POR_PAGINA = 12
@@ -28,6 +28,20 @@ const HEALTH = {
   red: { dot: 'bg-rose-500', label: 'Risco', cls: 'text-rose-600' },
 }
 const fmtNum = (n) => (Number(n) || 0).toLocaleString('pt-BR')
+const fmtBRL = (v) => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+// Rótulo + cor de cada tipo de movimento no histórico de crédito.
+const MOV_META = {
+  credito_sms: { label: 'Créditos SMS', cls: 'text-blue-600' },
+  credito_email: { label: 'Créditos e-mail', cls: 'text-rose-600' },
+  credito_call: { label: 'Minutos ligação', cls: 'text-emerald-600' },
+  instancia: { label: 'Instância WhatsApp', cls: 'text-emerald-700' },
+  numero: { label: 'Número SMS', cls: 'text-indigo-600' },
+  plano: { label: 'Plano', cls: 'text-primary-700' },
+  reembolso: { label: 'Reembolso', cls: 'text-rose-600' },
+  chargeback: { label: 'Chargeback', cls: 'text-rose-700' },
+  cancelamento: { label: 'Cancelamento', cls: 'text-stone-500' },
+  ajuste: { label: 'Ajuste admin', cls: 'text-amber-600' },
+}
 const fmtDate = (v) => { if (!v) return '—'; const d = new Date(v); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR') }
 const fmtDateMs = (ms) => { if (!ms) return '—'; const d = new Date(ms); return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
 
@@ -59,8 +73,10 @@ export default function Admin() {
   const [sel, setSel] = useState(null) // cliente aberto
   const [detalhe, setDetalhe] = useState(null) // { tenant, disparos, leadsCount, reclamacoes }
   const [carregandoDet, setCarregandoDet] = useState(false)
-  const [detTab, setDetTab] = useState('disparos') // 'disparos' | 'reclamacoes' | 'whatsapp' | 'templates'
+  const [detTab, setDetTab] = useState('disparos') // 'disparos' | 'reclamacoes' | 'whatsapp' | 'templates' | 'credito'
   const [detPage, setDetPage] = useState(1)
+  const [credito, setCredito] = useState(null) // histórico financeiro do cliente (lazy)
+  const [carregandoCredito, setCarregandoCredito] = useState(false)
   const [instExp, setInstExp] = useState('') // instância expandida
   const [hoverTpl, setHoverTpl] = useState(null) // template de e-mail em hover (preview)
   const [hoverRect, setHoverRect] = useState(null)
@@ -160,8 +176,20 @@ export default function Admin() {
   const paginaAtual = Math.min(pagina, totalPaginas)
   const pageItems = filtrados.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
 
+  const carregarCredito = async (uid) => {
+    setCarregandoCredito(true)
+    try { setCredito(await adminGetClienteCredito(uid)) }
+    catch (e) { toast.error(e?.message || 'Erro ao carregar o histórico de crédito.') }
+    finally { setCarregandoCredito(false) }
+  }
+
+  const abrirTabCredito = () => {
+    setDetTab('credito'); setDetPage(1)
+    if (!credito && sel?.uid) carregarCredito(sel.uid)
+  }
+
   const abrir = async (c) => {
-    setSel(c); setDetalhe(null); setCarregandoDet(true); setDetTab('disparos'); setDetPage(1)
+    setSel(c); setDetalhe(null); setCredito(null); setCarregandoDet(true); setDetTab('disparos'); setDetPage(1)
     const ef = planoEfetivo({ plano: c.plano || 'free' })
     setForm({ plano: c.plano || 'free', notas: c.notas || '', limites: { ...ef.limites } })
     try {
@@ -591,8 +619,8 @@ export default function Admin() {
                 {/* ─── Coluna direita: relatórios com abas ─── */}
                 <div className="rounded-2xl border border-surface-200 bg-surface-50/40 p-3 flex flex-col lg:min-h-[calc(90vh-9rem)]">
                   <div className="flex flex-wrap gap-0.5 rounded-xl bg-surface-100 p-0.5 self-start mb-3">
-                    {[['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
-                      <button key={k} onClick={() => { setDetTab(k); setDetPage(1) }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+                    {[['credito', 'Crédito', Wallet], ['disparos', 'Disparos', Mail], ['reclamacoes', 'Reclamações', AlertTriangle], ['whatsapp', 'WhatsApp', Smartphone], ['templates', 'Templates', FileText]].map(([k, lbl, Icon]) => (
+                      <button key={k} onClick={() => { if (k === 'credito') abrirTabCredito(); else { setDetTab(k); setDetPage(1) } }} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detTab === k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
                         <span className="inline-flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /> {lbl}</span>
                       </button>
                     ))}
@@ -600,13 +628,89 @@ export default function Admin() {
 
                   {carregandoDet ? (
                     <p className="text-xs text-stone-400 py-8 text-center">Carregando…</p>
+                  ) : detTab === 'credito' ? (
+                    carregandoCredito ? (
+                      <p className="text-xs text-stone-400 py-8 text-center">Carregando histórico…</p>
+                    ) : !credito ? (
+                      <p className="text-xs text-stone-400 py-8 text-center">Sem dados.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {/* Resumo financeiro */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-emerald-700/70">Total gasto</span><span className="block text-sm font-bold text-emerald-700 tabular-nums">{fmtBRL(credito.totalGasto)}</span></div>
+                          <div className="rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-rose-700/70">Reembolso/CB</span><span className="block text-sm font-bold text-rose-700 tabular-nums">{fmtBRL(credito.totalReembolsado)}</span></div>
+                          <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-stone-400">Plano</span><span className="block text-sm font-bold text-stone-700 capitalize">{credito.plano}</span></div>
+                          <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-stone-400">Instâncias extras</span><span className="block text-sm font-bold text-stone-700 tabular-nums">{credito.saldos.instanciasExtras}</span></div>
+                        </div>
+
+                        {/* Saldos de crédito atuais */}
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Saldo de créditos (não expira)</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center">
+                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.saldos.emailCreditos)}</span><span className="block text-[10px] text-stone-400">e-mail</span></div>
+                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.saldos.smsCreditos)}</span><span className="block text-[10px] text-stone-400">SMS</span></div>
+                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.saldos.callMin)}</span><span className="block text-[10px] text-stone-400">min ligação</span></div>
+                          </div>
+                        </div>
+
+                        {/* Uso que gera custo (totais) */}
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Uso total (gera custo pra nós)</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.emailsEnviados)}</span><span className="block text-[10px] text-stone-400">e-mails enviados</span></div>
+                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.smsEnviados)}</span><span className="block text-[10px] text-stone-400">SMS enviados</span></div>
+                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.ligacaoMin)}</span><span className="block text-[10px] text-stone-400">min ligação</span></div>
+                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.iaUsadosTotal)}</span><span className="block text-[10px] text-stone-400">usos de IA</span></div>
+                          </div>
+                        </div>
+
+                        {credito.overrides && Object.keys(credito.overrides).length > 0 && (
+                          <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">⚠ Limites custom (override) neste cliente: {Object.entries(credito.overrides).map(([k, v]) => `${k}=${v}`).join(', ')}</p>
+                        )}
+
+                        {/* Tabela de movimentações (Excel-like) */}
+                        <div>
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Movimentações ({credito.movimentos.length})</p>
+                          {credito.movimentos.length === 0 ? (
+                            <p className="text-xs text-stone-400 py-4 text-center">Nenhuma compra registrada ainda.</p>
+                          ) : (
+                            <div className="rounded-xl border border-surface-200 overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-surface-100 text-stone-500">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-medium whitespace-nowrap">Data</th>
+                                    <th className="text-left px-3 py-2 font-medium">Movimento</th>
+                                    <th className="text-right px-3 py-2 font-medium">Qtd</th>
+                                    <th className="text-right px-3 py-2 font-medium">Valor</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {credito.movimentos.map((m, i) => {
+                                    const meta = MOV_META[m.tipo] || { label: m.tipo, cls: 'text-stone-600' }
+                                    return (
+                                      <tr key={i} className="border-t border-surface-100">
+                                        <td className="px-3 py-2 text-stone-500 whitespace-nowrap">{fmtDateMs(m.emMs)}</td>
+                                        <td className="px-3 py-2"><span className={`font-semibold ${meta.cls}`}>{meta.label}</span>{m.descricao && <span className="block text-[10px] text-stone-400">{m.descricao}</span>}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-stone-500">{m.quantidade ?? '—'}</td>
+                                        <td className={`px-3 py-2 text-right tabular-nums font-semibold ${(m.valor || 0) < 0 ? 'text-rose-600' : 'text-stone-700'}`}>{m.valor != null ? fmtBRL(m.valor) : '—'}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
                   ) : detTab === 'whatsapp' ? (
                     <div className="space-y-2">
                       <p className="text-xs text-stone-500">Instâncias de WhatsApp: <strong className="text-stone-700">{(detalhe?.instances || []).length}</strong></p>
                       {(detalhe?.instances || []).length === 0 ? (
                         <p className="text-xs text-stone-400 py-6 text-center">Sem instâncias conectadas.</p>
                       ) : (
-                        (detalhe.instances).map((inst) => {
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
+                        {(detalhe.instances).map((inst) => {
                           const exp = instExp === inst.id
                           return (
                             <div key={inst.id} className={`rounded-xl border overflow-hidden ${inst.bloqueada ? 'border-rose-200 bg-rose-50/50' : 'border-surface-200 bg-white'}`}>
@@ -643,7 +747,8 @@ export default function Admin() {
                               )}
                             </div>
                           )
-                        })
+                        })}
+                        </div>
                       )}
                     </div>
                   ) : detTab === 'templates' ? (
@@ -687,7 +792,7 @@ export default function Admin() {
                       </div>
                     </div>
                   ) : (() => {
-                    const PD = 6
+                    const PD = 12
                     const lista = detTab === 'disparos' ? (detalhe?.disparos || []) : (detalhe?.reclamacoes || [])
                     const totalP = Math.max(1, Math.ceil(lista.length / PD))
                     const pageSafe = Math.min(detPage, totalP)
@@ -697,7 +802,7 @@ export default function Admin() {
                     }
                     return (
                       <div className="flex-1 flex flex-col">
-                        <div className="space-y-1.5 flex-1">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 flex-1 content-start">
                           {detTab === 'disparos'
                             ? items.map((d, i) => (
                               <div key={i} className="flex items-center justify-between gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2 text-xs">

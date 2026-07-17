@@ -89,6 +89,31 @@ function assertPodeCriarRecurso(request, tenant, chave, atual, rotulo) {
 
 // Webhook do Evolution (n8n) — espelho de src/lib/constants.js. Usado pela trava de criação de instância.
 const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.iacodenxt.online/webhook/HUBNXTEVOPAI'
+
+/**
+ * Log de FATURAMENTO por cliente (append-only) — histórico de TUDO que gera custo/receita:
+ * compras (créditos SMS/e-mail/ligação, instância, número), mudança de plano, reembolso, chargeback, cancelamento.
+ * REGRA: toda coisa paga nova (ex.: SMS Brasil futuro) DEVE chamar isto no webhook. Ver memória [[faturamento-log]].
+ * @param {string} uid
+ * @param {{tipo:string, descricao?:string, quantidade?:number, valor?:number, stripeId?:string}} entry
+ *   tipo: 'credito_sms'|'credito_email'|'credito_call'|'instancia'|'numero'|'plano'|'reembolso'|'chargeback'|'cancelamento'
+ *   valor em R$ (NEGATIVO em reembolso/chargeback). stripeId dá idempotência (vira o id do doc).
+ */
+async function registrarFaturamento(uid, entry) {
+  if (!uid || !entry || !entry.tipo) return
+  try {
+    const doc = {
+      tipo: entry.tipo,
+      descricao: entry.descricao || '',
+      quantidade: entry.quantidade != null ? Number(entry.quantidade) : null,
+      valor: entry.valor != null ? Number(entry.valor) : null,
+      stripeId: entry.stripeId || null,
+      em: admin.firestore.FieldValue.serverTimestamp(),
+    }
+    if (entry.stripeId) await db.doc(`tenants/${uid}/faturamento/${entry.stripeId}`).set(doc, { merge: true })
+    else await db.collection(`tenants/${uid}/faturamento`).add(doc)
+  } catch (e) { console.error('registrarFaturamento', e) }
+}
 async function emailsEnviadosNoMes(uid) {
   const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
   let total = 0
@@ -2885,6 +2910,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
         await db.doc(`tenants/${uidC}`).set({ smsCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
         await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        await registrarFaturamento(uidC, { tipo: 'credito_sms', descricao: `${quantidade} créditos de SMS`, quantidade, valor: (session.amount_total || 0) / 100, stripeId: session.id })
         res.status(200).json({ ok: true, creditado: quantidade, uid: uidC }); return
       }
 
@@ -2899,6 +2925,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
         await db.doc(`tenants/${uidC}`).set({ emailCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
         await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        await registrarFaturamento(uidC, { tipo: 'credito_email', descricao: `${quantidade} créditos de e-mail`, quantidade, valor: (session.amount_total || 0) / 100, stripeId: session.id })
         res.status(200).json({ ok: true, creditadoEmail: quantidade, uid: uidC }); return
       }
 
@@ -2913,6 +2940,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
         await db.doc(`tenants/${uidC}`).set({ callCreditos: admin.firestore.FieldValue.increment(segundos) }, { merge: true })
         await recRef.set({ segundos, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        await registrarFaturamento(uidC, { tipo: 'credito_call', descricao: `${Math.round(segundos / 60)} min de ligação IA`, quantidade: Math.round(segundos / 60), valor: (session.amount_total || 0) / 100, stripeId: session.id })
         res.status(200).json({ ok: true, creditadoCallSeg: segundos, uid: uidC }); return
       }
 
@@ -2928,6 +2956,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         if (jaRec.exists) { res.status(200).json({ ok: true, ja: true }); return }
         await db.doc(`tenants/${uidC}`).set({ instanciasExtras: admin.firestore.FieldValue.increment(qtd) }, { merge: true })
         await recRef.set({ quantidade: qtd, stripeSubscriptionId: subId, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        await registrarFaturamento(uidC, { tipo: 'instancia', descricao: `${qtd} instância(s) de WhatsApp (assinatura)`, quantidade: qtd, valor: (session.amount_total || 0) / 100, stripeId: session.id })
         res.status(200).json({ ok: true, instanciasExtras: qtd, uid: uidC }); return
       }
 
@@ -2972,6 +3001,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           })
         }
+        await registrarFaturamento(uidN, { tipo: 'numero', descricao: `${comprados} número(s) de SMS (assinatura)`, quantidade: comprados, valor: (session.amount_total || 0) / 100, stripeId: session.id })
         res.status(200).json({ ok: true, total: numeros.length, comprados }); return
       }
 
@@ -2998,6 +3028,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true })
       if (criado) { const cfg = await getKiwifyOnboardConfig(); await enviarBoasVindasKiwify(cfg, email, nome, plano) }
+      await registrarFaturamento(uid, { tipo: 'plano', descricao: `${criado ? 'Assinou' : 'Mudou para'} o plano ${plano}`, valor: (session.amount_total || 0) / 100, stripeId: session.id })
       res.status(200).json({ ok: true, plano, criado, uid }); return
     }
 
@@ -3021,6 +3052,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
           const outros = await db.collection(`users/${uidN}/smsNumeros`).where('status', '==', 'active').limit(1).get()
           if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
         }
+        await registrarFaturamento(uidN, { tipo: 'cancelamento', descricao: `Cancelou assinatura de ${numSnap.size} número(s) de SMS`, quantidade: numSnap.size, stripeId: `cancel_num_${subId}` })
         res.status(200).json({ ok: true, numerosLiberados: numSnap.size }); return
       }
 
@@ -3035,6 +3067,8 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
           await doc.ref.delete()
           revogadas += qtd
         }
+        const uidRev = instSnap.docs[0].ref.path.split('/')[1]
+        await registrarFaturamento(uidRev, { tipo: 'cancelamento', descricao: `Cancelou assinatura de ${revogadas} instância(s)`, quantidade: revogadas, stripeId: `cancel_inst_${subId}` })
         res.status(200).json({ ok: true, instanciasRevogadas: revogadas }); return
       }
 
@@ -3046,9 +3080,35 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
           res.status(200).json({ ok: true, ignored: 'assinatura não é a do plano' }); return
         }
         await snap.docs[0].ref.set({ plano: 'free', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        await registrarFaturamento(snap.docs[0].id, { tipo: 'cancelamento', descricao: `Cancelou o plano ${t.plano || ''} (voltou pro Free)`, stripeId: `cancel_plano_${subId}` })
         res.status(200).json({ ok: true, revogado: true }); return
       }
       res.status(200).json({ ok: true, ignored: 'tenant não encontrado pra revogar' }); return
+    }
+
+    // ── Reembolso (Stripe charge.refunded) — registra valor NEGATIVO no faturamento do cliente. ──
+    if (tipo === 'charge.refunded') {
+      const charge = event.data.object
+      const customerId = charge.customer
+      const refunded = (charge.amount_refunded || 0) / 100
+      if (customerId && refunded > 0) {
+        const snap = await db.collection('tenants').where('stripeCustomerId', '==', customerId).limit(1).get()
+        if (!snap.empty) await registrarFaturamento(snap.docs[0].id, { tipo: 'reembolso', descricao: 'Reembolso Stripe', valor: -refunded, stripeId: `refund_${charge.id}` })
+      }
+      res.status(200).json({ ok: true, reembolso: refunded }); return
+    }
+
+    // ── Chargeback (Stripe charge.dispute.created) — registra valor NEGATIVO + marca alerta. ──
+    if (tipo === 'charge.dispute.created') {
+      const dispute = event.data.object
+      const amount = (dispute.amount || 0) / 100
+      let customerId = dispute.customer || null
+      if (!customerId && dispute.charge) { try { const ch = await stripe.charges.retrieve(dispute.charge); customerId = ch.customer } catch (_) {} }
+      if (customerId) {
+        const snap = await db.collection('tenants').where('stripeCustomerId', '==', customerId).limit(1).get()
+        if (!snap.empty) await registrarFaturamento(snap.docs[0].id, { tipo: 'chargeback', descricao: 'Chargeback (disputa) na Stripe', valor: -amount, stripeId: `dispute_${dispute.id}` })
+      }
+      res.status(200).json({ ok: true, chargeback: amount }); return
     }
 
     res.status(200).json({ ok: true, ignored: tipo })
@@ -4460,7 +4520,92 @@ exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) =
   if (ovLimites) ovUpdate['overrides.limites'] = ovLimites
   if (ovFeatures) ovUpdate['overrides.features'] = ovFeatures
   if (Object.keys(ovUpdate).length) await db.doc(`tenants/${uid}`).update(ovUpdate)
+  // Auditoria: registra no faturamento quando plano/limites são alterados no admin (pra ninguém mexer sem rastro).
+  if (p.plano != null || ovLimites) {
+    await registrarFaturamento(uid, { tipo: 'ajuste', descricao: `Ajuste no admin${p.plano ? ` · plano ${p.plano}` : ''}${ovLimites && Object.keys(ovLimites).length ? ` · limites custom: ${Object.entries(ovLimites).map(([k, v]) => `${k}=${v}`).join(', ')}` : ''}` })
+  }
   return { ok: true }
+})
+
+/**
+ * Histórico financeiro/custos COMPLETO de um cliente (aba Crédito no admin).
+ * Une o log de faturamento (canônico) + coleções legadas de recarga (dedup por stripeId),
+ * saldos atuais, uso que gera custo (e-mails, SMS, ligação, IA) e limites/overrides.
+ */
+exports.adminGetClienteCredito = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' }, async (request) => {
+  assertAdmin(request)
+  const uid = request.data?.uid
+  if (!uid) throw new HttpsError('invalid-argument', 'uid obrigatório.')
+  const tSnap = await db.doc(`tenants/${uid}`).get()
+  const t = tSnap.exists ? tSnap.data() : {}
+  const lim = limitesDoTenant(t)
+  const toMs = (x) => (x && x.toMillis) ? x.toMillis() : (typeof x === 'number' ? x : (x && x._seconds ? x._seconds * 1000 : 0))
+
+  const movimentos = []
+  const vistos = new Set()
+  const pushMov = (m) => {
+    const key = m.stripeId || `${m.tipo}_${m.emMs}_${m.valor}`
+    if (vistos.has(key)) return
+    vistos.add(key); movimentos.push(m)
+  }
+
+  // 1) Log canônico de faturamento (compras novas, planos, reembolsos, chargebacks, ajustes).
+  try {
+    const fs = await db.collection(`tenants/${uid}/faturamento`).get()
+    fs.forEach((d) => { const x = d.data(); pushMov({ tipo: x.tipo, descricao: x.descricao, quantidade: x.quantidade ?? null, valor: x.valor ?? null, stripeId: x.stripeId || d.id, emMs: toMs(x.em) }) })
+  } catch (_) {}
+
+  // 2) Legado: recargas antigas (antes do log). Dedup por stripeId = id da sessão.
+  const legado = [
+    { col: 'recargasSMS', tipo: 'credito_sms', desc: (x) => `${x.quantidade} créditos de SMS`, qtd: (x) => x.quantidade },
+    { col: 'recargasEmail', tipo: 'credito_email', desc: (x) => `${x.quantidade} créditos de e-mail`, qtd: (x) => x.quantidade },
+    { col: 'recargasCall', tipo: 'credito_call', desc: (x) => `${Math.round((x.segundos || 0) / 60)} min de ligação`, qtd: (x) => Math.round((x.segundos || 0) / 60) },
+    { col: 'instanciaSubs', tipo: 'instancia', desc: (x) => `${x.quantidade} instância(s) de WhatsApp`, qtd: (x) => x.quantidade },
+  ]
+  for (const l of legado) {
+    try {
+      const s = await db.collection(`tenants/${uid}/${l.col}`).get()
+      s.forEach((d) => { const x = d.data(); pushMov({ tipo: l.tipo, descricao: l.desc(x), quantidade: l.qtd(x), valor: x.valor ?? null, stripeId: d.id, emMs: toMs(x.em) }) })
+    } catch (_) {}
+  }
+  // Números SMS (legado): users/{uid}/smsNumeros
+  try {
+    const s = await db.collection(`users/${uid}/smsNumeros`).get()
+    s.forEach((d) => { const x = d.data(); pushMov({ tipo: 'numero', descricao: `Número ${x.number || ''}`.trim(), quantidade: 1, valor: x.valorMensal ?? 29.9, stripeId: `num_${d.id}`, emMs: toMs(x.createdAt) }) })
+  } catch (_) {}
+
+  movimentos.sort((a, b) => (b.emMs || 0) - (a.emMs || 0))
+
+  // 3) Uso que gera custo (totais).
+  const somaCampo = async (col, campo) => {
+    let total = 0
+    try { const s = await db.collection(`users/${uid}/${col}`).get(); s.forEach((d) => { total += Number(d.data()?.[campo]) || 0 }) } catch (_) {}
+    return total
+  }
+  const emailsEnviados = await somaCampo('emailDisparos', 'enviados')
+  const smsEnviados = await somaCampo('smsDisparos', 'enviados')
+  let ligacaoSeg = 0
+  try { const s = await db.collection(`users/${uid}/callLogs`).get(); s.forEach((d) => { ligacaoSeg += Number(d.data()?.segundos) || 0 }) } catch (_) {}
+  const iaUso = t.iaUso || {}
+  const iaUsadosTotal = Object.values(iaUso).reduce((a, b) => a + (Number(b) || 0), 0)
+
+  const totalGasto = movimentos.filter((m) => (m.valor || 0) > 0).reduce((a, m) => a + m.valor, 0)
+  const totalReembolsado = movimentos.filter((m) => (m.valor || 0) < 0).reduce((a, m) => a + m.valor, 0)
+
+  return {
+    movimentos,
+    saldos: {
+      emailCreditos: Number(t.emailCreditos) || 0,
+      smsCreditos: Number(t.smsCreditos) || 0,
+      callMin: Math.floor((Number(t.callCreditos) || 0) / 60),
+      instanciasExtras: Number(t.instanciasExtras) || 0,
+    },
+    uso: { emailsEnviados, smsEnviados, ligacaoMin: Math.round(ligacaoSeg / 60), iaUsadosTotal },
+    plano: t.plano || 'free',
+    limites: lim,
+    overrides: (t.overrides && t.overrides.limites) || null,
+    totalGasto, totalReembolsado,
+  }
 })
 
 /** Kill switch global: pausa/religa TODOS os envios. */
