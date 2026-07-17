@@ -168,6 +168,23 @@
 .gjs-editor { height: 100% !important; }
 .gjs-editor .gjs-pn-views-container { max-height: 100% !important; overflow-y: auto !important; }
 
+/* ── Color picker (Spectrum) claro, arredondado e sempre por cima ── */
+.sp-container {
+  background-color: #ffffff !important;
+  border: 1px solid #e7e5e4 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 18px 44px -12px rgba(0,0,0,.35) !important;
+  padding: 10px !important;
+  z-index: 100000 !important;
+}
+.sp-container.sp-dark { color: #44403c !important; }
+.sp-top, .sp-color, .sp-hue, .sp-clear, .sp-fill { border-radius: 8px !important; }
+.sp-picker-container { border-left: 0 !important; }
+.sp-input { border: 1px solid #e7e5e4 !important; border-radius: 8px !important; background: #fff !important; color: #44403c !important; }
+.sp-button-container .sp-cancel { color: #78716c !important; }
+.sp-button-container .sp-choose { background-color: #7c3aed !important; color: #fff !important; border: 0 !important; border-radius: 8px !important; text-shadow: none !important; }
+.sp-palette-container { border-right: 1px solid #e7e5e4 !important; }
+
 /* ── CATCH-ALL: força TODO fundo estrutural do editor pra claro (fim das faixas pretas) ── */
 .gjs-editor,
 .gjs-editor .gjs-pn-panel,
