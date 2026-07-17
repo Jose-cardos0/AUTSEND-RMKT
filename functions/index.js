@@ -3844,8 +3844,9 @@ async function processarFunnelRun(userId, runRef, run, cache) {
 // ───────────────────────── IA (Grok / xAI) ─────────────────────────
 const GROK_API_KEY = process.env.GROK_API || ''
 const GROK_MODEL = process.env.GROK_MODEL || 'grok-2-latest'
-// Modelo MAIS BARATO usado só no construtor de e-mail (IA). Configurável via .env (GROK_MODEL_IA).
-const GROK_MODEL_IA = process.env.GROK_MODEL_IA || 'grok-3-mini'
+// Modelo usado SÓ no construtor de e-mail (IA): grok-code-fast-1 (feito pra código, barato).
+// Configurável via .env (GROK_MODEL_IA) sem mexer no grok-4 dos outros usos.
+const GROK_MODEL_IA = process.env.GROK_MODEL_IA || 'grok-code-fast-1'
 
 async function callGrok(messages, { json = false, model } = {}) {
   if (!GROK_API_KEY) throw new HttpsError('failed-precondition', 'Chave do Grok não configurada (functions/.env → GROK_API).')
