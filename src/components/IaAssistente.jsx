@@ -4,8 +4,9 @@ import toast from 'react-hot-toast'
 import { functions } from '../lib/firebase'
 import { getIaBlocks, saveIaBlock, deleteIaBlock } from '../lib/firestore'
 import { uploadEmailAsset } from '../lib/storageAssets'
-import { X, Plus, Sparkles, ArrowUp, Loader2, Save, Trash2, ArrowLeft, User, Pencil } from 'lucide-react'
+import { X, Plus, Sparkles, ArrowUp, Loader2, Save, Trash2, ArrowLeft, User, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
 import foguete from '../assets/foguetes/foguete1.png'
+import CollapsibleSearch from './CollapsibleSearch'
 
 const iaGerar = httpsCallable(functions, 'iaGerarEmailHtml')
 
@@ -31,6 +32,8 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
   const [modo, setModo] = useState('lista')
   const [blocos, setBlocos] = useState([])
   const [carregando, setCarregando] = useState(true)
+  const [busca, setBusca] = useState('')
+  const [pagina, setPagina] = useState(0)
 
   const [input, setInput] = useState('')
   const [conversa, setConversa] = useState([]) // {de:'user'|'ia', texto, imgs?}
@@ -249,12 +252,19 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
   }
 
   // ─────────────────────────── LISTA (popup) ───────────────────────────
+  const POR_PAGINA = 4
+  const filtrados = blocos.filter((b) => (b.nome || '').toLowerCase().includes(busca.trim().toLowerCase()))
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA))
+  const pag = Math.min(pagina, totalPaginas - 1)
+  const visiveis = filtrados.slice(pag * POR_PAGINA, pag * POR_PAGINA + POR_PAGINA)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[86vh] overflow-y-auto p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-stone-800 flex items-center gap-2"><Sparkles className="w-5 h-5 text-primary-600" /> IA</h3>
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <h3 className="text-lg font-semibold text-stone-800 flex items-center gap-2 shrink-0"><Sparkles className="w-5 h-5 text-primary-600" /> IA</h3>
           <div className="flex items-center gap-2">
+            {blocos.length > 0 && <CollapsibleSearch value={busca} onChange={(v) => { setBusca(v); setPagina(0) }} placeholder="Buscar modelo..." />}
             <button onClick={novoChat} className="btn-primary text-sm min-h-[36px]"><Plus className="w-4 h-4" /> Novo IA</button>
             <button onClick={onClose} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
           </div>
@@ -267,26 +277,41 @@ export default function IaAssistente({ uid, fotoUsuario, onInsert, onClose }) {
             <Sparkles className="w-9 h-9 text-primary-300" />
             <p className="text-sm max-w-xs">Nenhum modelo criado por IA ainda. Clique em <b className="text-primary-600">Novo IA</b> pra criar o primeiro.</p>
           </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {blocos.map((b) => (
-              <div key={b.id} className="rounded-xl border border-surface-200 hover:border-primary-400 hover:shadow-md transition overflow-hidden group relative">
-                <button onClick={() => onInsert(b.html)} className="w-full text-left">
-                  <div className="bg-white overflow-hidden border-b border-surface-100" style={{ height: 190 }}>
-                    <iframe title={b.nome} scrolling="no" tabIndex={-1} srcDoc={docPreview(b.html)} style={{ width: 1140, height: 640, border: 0, transformOrigin: 'top left', transform: 'scale(0.3)', pointerEvents: 'none' }} />
-                  </div>
-                  <div className="p-3">
-                    <p className="text-sm font-semibold text-stone-800 truncate">{b.nome}</p>
-                    <span className="inline-flex items-center gap-1 mt-1.5 text-xs font-medium text-primary-600 group-hover:text-primary-700">Usar este bloco →</span>
-                  </div>
-                </button>
-                <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-                  <button onClick={(ev) => editarBloco(b, ev)} title="Editar com IA" className="w-7 h-7 rounded-full bg-white/90 border border-surface-200 text-primary-600 hover:bg-primary-50 flex items-center justify-center"><Pencil className="w-3.5 h-3.5" /></button>
-                  <button onClick={(ev) => excluirBloco(b.id, ev)} title="Excluir" className="w-7 h-7 rounded-full bg-white/90 border border-surface-200 text-red-500 hover:bg-red-50 flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
-              </div>
-            ))}
+        ) : filtrados.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center py-14 gap-2 text-stone-400">
+            <p className="text-sm">Nenhum modelo com “{busca}”.</p>
           </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {visiveis.map((b) => (
+                <div key={b.id} className="rounded-xl border border-surface-200 hover:border-primary-400 hover:shadow-md transition overflow-hidden group relative">
+                  <button onClick={() => onInsert(b.html)} className="w-full text-left">
+                    <div className="bg-white overflow-hidden border-b border-surface-100" style={{ height: 190 }}>
+                      <iframe title={b.nome} scrolling="no" tabIndex={-1} srcDoc={docPreview(b.html)} style={{ width: 1140, height: 640, border: 0, transformOrigin: 'top left', transform: 'scale(0.3)', pointerEvents: 'none' }} />
+                    </div>
+                    <div className="p-3">
+                      <p className="text-sm font-semibold text-stone-800 truncate">{b.nome}</p>
+                      <span className="inline-flex items-center gap-1 mt-1.5 text-xs font-medium text-primary-600 group-hover:text-primary-700">Usar este bloco →</span>
+                    </div>
+                  </button>
+                  <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
+                    <button onClick={(ev) => editarBloco(b, ev)} title="Editar com IA" className="w-7 h-7 rounded-full bg-white/90 border border-surface-200 text-primary-600 hover:bg-primary-50 flex items-center justify-center"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={(ev) => excluirBloco(b.id, ev)} title="Excluir" className="w-7 h-7 rounded-full bg-white/90 border border-surface-200 text-red-500 hover:bg-red-50 flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Paginação (4 por página) */}
+            {totalPaginas > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-5">
+                <button onClick={() => setPagina((p) => Math.max(0, p - 1))} disabled={pag === 0} className="w-8 h-8 rounded-lg border border-surface-200 text-stone-500 hover:bg-surface-50 disabled:opacity-40 flex items-center justify-center"><ChevronLeft className="w-4 h-4" /></button>
+                <span className="text-xs text-stone-500 font-medium">{pag + 1} / {totalPaginas}</span>
+                <button onClick={() => setPagina((p) => Math.min(totalPaginas - 1, p + 1))} disabled={pag >= totalPaginas - 1} className="w-8 h-8 rounded-lg border border-surface-200 text-stone-500 hover:bg-surface-50 disabled:opacity-40 flex items-center justify-center"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
