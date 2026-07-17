@@ -4439,22 +4439,27 @@ exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) =
   if (p.status && STATUS_VALIDOS.includes(p.status)) patch.status = p.status
   if (p.plano && ['free', 'inicial', 'padrao', 'pro'].includes(p.plano)) patch.plano = p.plano
   if (p.notas != null) patch.notas = String(p.notas).slice(0, 4000)
+  let ovLimites = null, ovFeatures = null
   if (p.overrides && typeof p.overrides === 'object') {
-    const ov = {}
     if (p.overrides.limites && typeof p.overrides.limites === 'object') {
-      ov.limites = {}
+      ovLimites = {}
       for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios', 'callMin', 'iaMes']) {
-        if (p.overrides.limites[k] != null) ov.limites[k] = Math.max(0, Number(p.overrides.limites[k]) || 0)
+        if (p.overrides.limites[k] != null) ovLimites[k] = Math.max(0, Number(p.overrides.limites[k]) || 0)
       }
     }
     if (p.overrides.features && typeof p.overrides.features === 'object') {
-      ov.features = {}
-      for (const k of Object.keys(p.overrides.features)) ov.features[k] = !!p.overrides.features[k]
+      ovFeatures = {}
+      for (const k of Object.keys(p.overrides.features)) ovFeatures[k] = !!p.overrides.features[k]
     }
-    patch.overrides = ov
   }
   if (patch.status === 'approved') patch.aprovadoEm = admin.firestore.FieldValue.serverTimestamp()
   await db.doc(`tenants/${uid}`).set(patch, { merge: true })
+  // SUBSTITUI (não deep-merge) os mapas de override enviados — assim limites que voltaram ao padrão
+  // do plano deixam de ser override e o cliente volta a HERDAR o plano (e acompanha mudanças futuras).
+  const ovUpdate = {}
+  if (ovLimites) ovUpdate['overrides.limites'] = ovLimites
+  if (ovFeatures) ovUpdate['overrides.features'] = ovFeatures
+  if (Object.keys(ovUpdate).length) await db.doc(`tenants/${uid}`).update(ovUpdate)
   return { ok: true }
 })
 

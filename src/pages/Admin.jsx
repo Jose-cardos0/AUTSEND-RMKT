@@ -8,6 +8,9 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
+
+// Limites editáveis no admin (espelho do whitelist do backend adminUpdateCliente).
+const LIMITE_FIELDS = ['emailsMes', 'smsMes', 'instancias', 'trackers', 'dominios', 'iaMes']
 import PageShell from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import Select from '../components/Select'
@@ -61,7 +64,7 @@ export default function Admin() {
   const [instExp, setInstExp] = useState('') // instância expandida
   const [hoverTpl, setHoverTpl] = useState(null) // template de e-mail em hover (preview)
   const [hoverRect, setHoverRect] = useState(null)
-  const [form, setForm] = useState({ plano: 'free', notas: '', limites: { trackers: 0, instancias: 0, emailsMes: 0, smsMes: 0, dominios: 0 } })
+  const [form, setForm] = useState({ plano: 'free', notas: '', limites: { trackers: 0, instancias: 0, emailsMes: 0, smsMes: 0, dominios: 0, iaMes: 0 } })
   const [salvando, setSalvando] = useState(false)
   const [impersonando, setImpersonando] = useState(false)
   const [togglingKill, setTogglingKill] = useState(false)
@@ -194,7 +197,15 @@ export default function Admin() {
     if (!sel) return
     setSalvando(true)
     try {
-      const patch = { plano: form.plano, notas: form.notas, overrides: { limites: { ...form.limites } } }
+      // Só vira OVERRIDE o limite que difere do padrão do plano — assim o cliente herda o plano
+      // (e acompanha mudanças futuras nos limites). O que ficar igual ao plano não é salvo.
+      const planoDef = PLANOS[form.plano]?.limites || {}
+      const limitesOverride = {}
+      for (const k of LIMITE_FIELDS) {
+        const v = Number(form.limites[k])
+        if (Number.isFinite(v) && v !== Number(planoDef[k] ?? 0)) limitesOverride[k] = v
+      }
+      const patch = { plano: form.plano, notas: form.notas, overrides: { limites: limitesOverride } }
       await adminUpdateCliente(sel.uid, patch)
       setClientes((prev) => prev.map((x) => (x.uid === sel.uid ? { ...x, plano: form.plano, notas: form.notas } : x)))
       toast.success('Cliente atualizado.')
@@ -510,16 +521,32 @@ export default function Admin() {
                         </div>
                       </div>
 
-                      {/* Limites (override) */}
+                      {/* Limites — só o que diferir do plano vira override; o resto herda. */}
                       <div>
-                        <label className="block text-xs font-medium text-stone-600 mb-1.5">Limites</label>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-medium text-stone-600">Limites <span className="font-normal text-stone-400">(igual ao plano = herda)</span></label>
+                          <button
+                            type="button"
+                            onClick={() => setForm((f) => ({ ...f, limites: { ...f.limites, ...PLANOS[f.plano].limites } }))}
+                            className="text-[11px] font-medium text-primary-600 hover:text-primary-700"
+                          >
+                            ↺ Usar limites do plano
+                          </button>
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
-                          {['emailsMes', 'smsMes', 'instancias', 'trackers', 'dominios'].map((k) => (
-                            <div key={k}>
-                              <span className="block text-[11px] text-stone-500 mb-0.5">{LIMITE_LABELS[k]}</span>
-                              <input type="number" min={0} value={form.limites[k]} onChange={(e) => setForm((f) => ({ ...f, limites: { ...f.limites, [k]: e.target.value } }))} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 tabular-nums" />
-                            </div>
-                          ))}
+                          {LIMITE_FIELDS.map((k) => {
+                            const padrao = Number(PLANOS[form.plano]?.limites?.[k] ?? 0)
+                            const customizado = Number(form.limites[k]) !== padrao
+                            return (
+                              <div key={k}>
+                                <span className="block text-[11px] text-stone-500 mb-0.5">
+                                  {LIMITE_LABELS[k]}
+                                  {customizado && <span className="ml-1 text-amber-600" title={`Padrão do plano: ${padrao}`}>• custom</span>}
+                                </span>
+                                <input type="number" min={0} value={form.limites[k] ?? 0} onChange={(e) => setForm((f) => ({ ...f, limites: { ...f.limites, [k]: e.target.value } }))} className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm outline-none focus:border-surface-300 tabular-nums" />
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
 
