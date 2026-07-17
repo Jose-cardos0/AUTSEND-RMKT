@@ -349,9 +349,6 @@ export default function EmailConstrutor() {
           <button onClick={abrirImagens} className="btn-secondary text-sm min-h-[40px]">
             <ImagePlus className="w-4 h-4" /> Imagens
           </button>
-          <button onClick={abrirCodigo} className="btn-secondary text-sm min-h-[40px]">
-            <Code2 className="w-4 h-4" /> Código HTML
-          </button>
           <button onClick={() => setShowTest(true)} className="btn-secondary text-sm min-h-[40px]">
             <Send className="w-4 h-4" /> Testar
           </button>
@@ -469,6 +466,7 @@ export default function EmailConstrutor() {
                 <DockBtn onClick={desfazer} title="Desfazer"><Undo2 className="w-4 h-4" /></DockBtn>
                 <DockBtn onClick={refazer} title="Refazer"><Redo2 className="w-4 h-4" /></DockBtn>
                 <DockBtn onClick={limparCanvas} title="Limpar tudo"><Eraser className="w-4 h-4" /></DockBtn>
+                <DockBtn onClick={abrirCodigo} title="Código HTML"><Code2 className="w-4 h-4" /></DockBtn>
               </div>
               <DockBtn onClick={() => togglePainel('blocos')} title="Blocos" ativo={painelAberto === 'blocos'}><Plus className="w-4 h-4" /></DockBtn>
               <DockBtn onClick={() => togglePainel('estilo')} title="Estilo" ativo={painelAberto === 'estilo'}><Paintbrush className="w-4 h-4" /></DockBtn>
