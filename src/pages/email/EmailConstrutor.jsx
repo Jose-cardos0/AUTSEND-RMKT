@@ -35,7 +35,7 @@ function DockBtn({ onClick, title, ativo, children }) {
       type="button"
       onClick={onClick}
       title={title}
-      className={`p-2 rounded-xl transition-colors ${ativo ? 'bg-primary-100 text-primary-700' : 'text-stone-600 hover:bg-primary-50 hover:text-primary-700'}`}
+      className={`p-2 rounded-xl transition-colors ${ativo ? 'bg-primary-100 text-primary-700' : 'text-stone-800 hover:bg-primary-50 hover:text-primary-700'}`}
     >
       {children}
     </button>
@@ -58,6 +58,9 @@ export default function EmailConstrutor() {
   const [testEmail, setTestEmail] = useState('')
   const [showImport, setShowImport] = useState(false)
   const [importCode, setImportCode] = useState('')
+  const [showHtmlBlock, setShowHtmlBlock] = useState(false) // popup do bloco HTML
+  const [htmlBlockCode, setHtmlBlockCode] = useState('')
+  const htmlTargetRef = useRef(null) // componente HTML solto (pra substituir pelo HTML digitado)
   const containerRef = useRef(null)
   const editorRef = useRef(null)
   const subjectRef = useRef(null)
@@ -213,6 +216,11 @@ export default function EmailConstrutor() {
           { id: 'am-fundo', name: 'Fundo', open: true, properties: [
             { property: 'background-color', name: 'Cor de fundo', type: 'color' },
           ] },
+          { id: 'am-dim', name: 'Dimensão', open: false, properties: [
+            { property: 'width', name: 'Largura', type: 'number', units: ['%', 'px'] },
+            { property: 'max-width', name: 'Largura máx.', type: 'number', units: ['px', '%'] },
+            { property: 'height', name: 'Altura', type: 'number', units: ['px', '%'] },
+          ] },
           { id: 'am-espaco', name: 'Espaçamento', open: false, properties: [
             { property: 'padding', name: 'Interno', type: 'composite', properties: [
               { property: 'padding-top', name: 'Cima', type: 'number', units: ['px'] },
@@ -238,6 +246,18 @@ export default function EmailConstrutor() {
     editor.on('asset:remove', (asset) => {
       const src = asset?.get?.('src') || asset?.src
       if (src && /firebasestorage|storage\.googleapis/.test(src)) deleteEmailAsset(src)
+    })
+
+    // Ao soltar o bloco "HTML", abre um popup pra digitar o HTML (renderiza no e-mail).
+    editor.on('block:drag:stop', (component, block) => {
+      try {
+        const bid = block?.id || block?.get?.('id')
+        if (bid === 'e-html' && component) {
+          htmlTargetRef.current = component
+          setHtmlBlockCode('')
+          setShowHtmlBlock(true)
+        }
+      } catch (_) {}
     })
     setReady(true)
     return () => {
@@ -397,6 +417,32 @@ export default function EmailConstrutor() {
     setShowImport(false)
     setImportCode('')
     toast.success('HTML importado! Ajuste no editor e clique em Salvar.')
+  }
+
+  // Aplica o HTML digitado no bloco HTML solto (substitui o placeholder pelo HTML renderizado).
+  const aplicarHtmlBlock = () => {
+    const comp = htmlTargetRef.current
+    const raw = htmlBlockCode.trim()
+    if (!comp) { setShowHtmlBlock(false); return }
+    try {
+      const parent = comp.parent()
+      const idx = comp.index()
+      comp.remove()
+      if (raw && parent) parent.append(raw, { at: idx })
+    } catch (_) {
+      try { comp.remove() } catch (_) {}
+    }
+    htmlTargetRef.current = null
+    setShowHtmlBlock(false)
+    setHtmlBlockCode('')
+  }
+
+  // Cancela o bloco HTML (remove o placeholder que foi solto).
+  const cancelarHtmlBlock = () => {
+    try { htmlTargetRef.current?.remove() } catch (_) {}
+    htmlTargetRef.current = null
+    setShowHtmlBlock(false)
+    setHtmlBlockCode('')
   }
 
   const enviarTeste = async () => {
@@ -682,6 +728,37 @@ export default function EmailConstrutor() {
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowImport(false)} className="btn-secondary min-h-[44px]">Cancelar</button>
               <button onClick={importarHtml} className="btn-primary min-h-[44px]"><Code2 className="w-4 h-4" /> Aplicar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: bloco HTML (digitar HTML que será renderizado no e-mail) */}
+      {showHtmlBlock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={cancelarHtmlBlock}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[80vw] p-4 sm:p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h3 className="text-lg font-semibold text-stone-800 flex items-center gap-2"><Code2 className="w-5 h-5 text-primary-600" /> Bloco HTML</h3>
+              <p className="text-xs text-stone-500 mt-0.5">Cole ou escreva seu HTML — ele será renderizado direto no e-mail.</p>
+            </div>
+            <div className="rounded-xl border border-surface-300 overflow-auto max-h-[62vh]" style={{ background: '#2d2d2d' }}>
+              <Editor
+                value={htmlBlockCode}
+                onValueChange={setHtmlBlockCode}
+                highlight={(code) => Prism.highlight(code || '', Prism.languages.markup, 'markup')}
+                padding={14}
+                placeholder="<div style=&quot;padding:16px;text-align:center;&quot;>Seu HTML aqui…</div>"
+                style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                  fontSize: 12.5,
+                  color: '#e6e6e6',
+                  minHeight: '42vh',
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={cancelarHtmlBlock} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={aplicarHtmlBlock} className="btn-primary min-h-[44px]"><Code2 className="w-4 h-4" /> Inserir no e-mail</button>
             </div>
           </div>
         </div>
