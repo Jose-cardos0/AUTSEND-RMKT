@@ -5,12 +5,12 @@ service firebase.storage {
 
     // Imagens do construtor de e-mail de cada usuário.
     // Leitura pública (o cliente de e-mail precisa carregar a imagem sem login).
-    // Escrita só o dono, só imagem, até 10 MB.
+    // Escrita só o dono, só imagem, até 1 MB (o app já comprime pra <1 MB antes de enviar).
     match /users/{uid}/emailAssets/{fileName} {
       allow read: if true;
       allow write: if request.auth != null
         && request.auth.uid == uid
-        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.size < 1 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
