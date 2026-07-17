@@ -351,7 +351,7 @@ export default function CallCampanha() {
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Configuração da chamada</span>
               {temAlgumaConfig && (
-                <button onClick={() => abrirConfig(1)} className="inline-flex items-center gap-1 text-xs text-stone-400 hover:text-primary-600 transition-colors"><Settings2 className="w-3.5 h-3.5" /> Editar</button>
+                <button onClick={() => abrirConfig(1)} className={`inline-flex items-center gap-1 text-xs transition-colors ${configCompleta ? 'text-stone-400 hover:text-primary-600' : 'animate-hint'}`}><Settings2 className="w-3.5 h-3.5" /> Editar</button>
               )}
             </div>
             {temAlgumaConfig ? (
@@ -370,7 +370,6 @@ export default function CallCampanha() {
             <button onClick={() => setSalvosOpen(true)} className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-primary-600 mt-1">
               <Bookmark className="w-3.5 h-3.5" /> Salvos{configs.length ? ` (${configs.length})` : ''}
             </button>
-            {temAlgumaConfig && !configCompleta && <p className="text-[11px] text-amber-600">Configuração incompleta — clique numa tag ou em Editar para completar.</p>}
 
             <div className="flex items-center justify-between mt-2">
               <div className="flex items-center gap-1">
@@ -405,6 +404,7 @@ export default function CallCampanha() {
             <button onClick={abrirConfirmar} disabled={ligando || selValidos === 0 || semVoz || !texto.trim()} className="btn-primary w-full min-h-[46px]">
               <Phone className="w-4 h-4" /> Ligar ({selValidos})
             </button>
+            {temAlgumaConfig && !configCompleta && <p className="text-[11px] text-stone-400 text-center mt-2">Configuração incompleta</p>}
           </Panel>
         </div>
 

@@ -217,3 +217,15 @@ select {
 @media (prefers-reduced-motion: reduce) {
   .faixa-marquee { animation: none; }
 }
+
+/* Dica visual: pisca alternando cinza ↔ roxo (ex.: botão "Editar" quando a config está incompleta) */
+@keyframes hintPulse {
+  0%, 100% { color: #a8a29e; }  /* stone-400 */
+  50% { color: #5b5eeb; }       /* primary */
+}
+.animate-hint {
+  animation: hintPulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-hint { animation: none; color: #5b5eeb; }
+}
