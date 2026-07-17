@@ -34,16 +34,6 @@ const BLOCOS = [
     </td></tr></table>`,
   },
   {
-    id: 'e-video', label: 'Vídeo', category: CAT_BASICO,
-    media: ic('<rect x="2.5" y="4.5" width="19" height="15" rx="3"/><path d="m10 9 5 3-5 3V9z" fill="currentColor" stroke="none"/>'),
-    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center" style="padding:10px 0;">
-      <a href="https://" target="_blank" style="text-decoration:none;display:inline-block;position:relative;">
-        <img src="https://placehold.co/560x315/1f2937/ffffff?text=%E2%96%B6+Assista+ao+v%C3%ADdeo" alt="Assista ao vídeo" style="display:block;max-width:100%;height:auto;border-radius:12px;" />
-      </a>
-      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#9ca3af;padding-top:6px;">Troque a imagem pela capa e o link pelo seu vídeo</div>
-    </td></tr></table>`,
-  },
-  {
     id: 'e-divisor', label: 'Divisor', category: CAT_BASICO,
     media: ic('<path d="M4 12h16"/>'),
     content: '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td style="padding:14px 0;"><div style="border-top:1px solid #e5e7eb;font-size:0;line-height:0;">&nbsp;</div></td></tr></table>',
