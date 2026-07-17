@@ -635,33 +635,40 @@ export default function Admin() {
                       <p className="text-xs text-stone-400 py-8 text-center">Sem dados.</p>
                     ) : (
                       <div className="space-y-3">
-                        {/* Resumo financeiro */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-emerald-700/70">Total gasto</span><span className="block text-sm font-bold text-emerald-700 tabular-nums">{fmtBRL(credito.totalGasto)}</span></div>
-                          <div className="rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-rose-700/70">Reembolso/CB</span><span className="block text-sm font-bold text-rose-700 tabular-nums">{fmtBRL(credito.totalReembolsado)}</span></div>
-                          <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-stone-400">Plano</span><span className="block text-sm font-bold text-stone-700 capitalize">{credito.plano}</span></div>
-                          <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-[10px] uppercase tracking-wide text-stone-400">Instâncias extras</span><span className="block text-sm font-bold text-stone-700 tabular-nums">{credito.saldos.instanciasExtras}</span></div>
-                        </div>
-
-                        {/* Saldos de crédito atuais */}
-                        <div>
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Saldo de créditos (não expira)</p>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center">
-                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.saldos.emailCreditos)}</span><span className="block text-[10px] text-stone-400">e-mail</span></div>
-                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.saldos.smsCreditos)}</span><span className="block text-[10px] text-stone-400">SMS</span></div>
-                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.saldos.callMin)}</span><span className="block text-[10px] text-stone-400">min ligação</span></div>
-                          </div>
-                        </div>
-
-                        {/* Uso que gera custo (totais) */}
-                        <div>
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-1.5">Uso total (gera custo pra nós)</p>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.emailsEnviados)}</span><span className="block text-[10px] text-stone-400">e-mails enviados</span></div>
-                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.smsEnviados)}</span><span className="block text-[10px] text-stone-400">SMS enviados</span></div>
-                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.ligacaoMin)}</span><span className="block text-[10px] text-stone-400">min ligação</span></div>
-                            <div className="rounded-xl border border-surface-200 bg-white px-3 py-2"><span className="block text-lg font-bold text-stone-800 tabular-nums">{fmtNum(credito.uso.iaUsadosTotal)}</span><span className="block text-[10px] text-stone-400">usos de IA</span></div>
-                          </div>
+                        {/* Resumo em tabela (Excel-like) */}
+                        <div className="overflow-x-auto rounded-xl border border-surface-200">
+                          <table className="w-full text-xs whitespace-nowrap">
+                            <thead className="bg-surface-100 text-stone-500">
+                              <tr>
+                                <th className="text-left px-3 py-2 font-medium">Total gasto</th>
+                                <th className="text-left px-3 py-2 font-medium">Reemb./CB</th>
+                                <th className="text-left px-3 py-2 font-medium">Plano</th>
+                                <th className="text-left px-3 py-2 font-medium">Inst. extras</th>
+                                <th className="text-left px-3 py-2 font-medium">Créd. e-mail</th>
+                                <th className="text-left px-3 py-2 font-medium">Créd. SMS</th>
+                                <th className="text-left px-3 py-2 font-medium">Créd. min</th>
+                                <th className="text-left px-3 py-2 font-medium">E-mails env.</th>
+                                <th className="text-left px-3 py-2 font-medium">SMS env.</th>
+                                <th className="text-left px-3 py-2 font-medium">Min lig.</th>
+                                <th className="text-left px-3 py-2 font-medium">Usos IA</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-t border-surface-100 tabular-nums">
+                                <td className="px-3 py-2 font-semibold text-emerald-700">{fmtBRL(credito.totalGasto)}</td>
+                                <td className="px-3 py-2 font-semibold text-rose-600">{fmtBRL(credito.totalReembolsado)}</td>
+                                <td className="px-3 py-2 capitalize text-stone-700">{credito.plano}</td>
+                                <td className="px-3 py-2 text-stone-700">{credito.saldos.instanciasExtras}</td>
+                                <td className="px-3 py-2 text-stone-700">{fmtNum(credito.saldos.emailCreditos)}</td>
+                                <td className="px-3 py-2 text-stone-700">{fmtNum(credito.saldos.smsCreditos)}</td>
+                                <td className="px-3 py-2 text-stone-700">{fmtNum(credito.saldos.callMin)}</td>
+                                <td className="px-3 py-2 text-stone-700">{fmtNum(credito.uso.emailsEnviados)}</td>
+                                <td className="px-3 py-2 text-stone-700">{fmtNum(credito.uso.smsEnviados)}</td>
+                                <td className="px-3 py-2 text-stone-700">{fmtNum(credito.uso.ligacaoMin)}</td>
+                                <td className="px-3 py-2 text-stone-700">{fmtNum(credito.uso.iaUsadosTotal)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
 
                         {credito.overrides && Object.keys(credito.overrides).length > 0 && (
