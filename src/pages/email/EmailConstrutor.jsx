@@ -209,10 +209,10 @@ export default function EmailConstrutor() {
       try {
         editor.StyleManager.getSectors().reset([
           { id: 'am-texto', name: 'Texto', open: true, properties: [
-            { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px', 'em', '%'], default: '15px' },
+            { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px'], default: '15px' },
             { property: 'color', name: 'Cor do texto', type: 'color' },
             { property: 'font-weight', name: 'Peso', type: 'select', default: '400', options: [{ id: '300', name: 'Fino' }, { id: '400', name: 'Normal' }, { id: '600', name: 'Semi' }, { id: '700', name: 'Negrito' }] },
-            { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['', 'px', '%'] },
+            { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['px'] },
           ] },
           { id: 'am-align', name: 'Alinhamento', open: true, properties: [
             { property: 'text-align', name: 'Horizontal', type: 'radio', default: 'left', options: [{ id: 'left', name: 'Esq.' }, { id: 'center', name: 'Centro' }, { id: 'right', name: 'Dir.' }] },
@@ -222,9 +222,9 @@ export default function EmailConstrutor() {
             { property: 'background-color', name: 'Cor de fundo', type: 'color' },
           ] },
           { id: 'am-dim', name: 'Dimensão', open: false, properties: [
-            { property: 'width', name: 'Largura', type: 'number', units: ['%', 'px'] },
-            { property: 'max-width', name: 'Largura máx.', type: 'number', units: ['px', '%'] },
-            { property: 'height', name: 'Altura', type: 'number', units: ['px', '%'] },
+            { property: 'width', name: 'Largura', type: 'number', units: ['px'] },
+            { property: 'max-width', name: 'Largura máx.', type: 'number', units: ['px'] },
+            { property: 'height', name: 'Altura', type: 'number', units: ['px'] },
           ] },
           { id: 'am-espaco', name: 'Espaçamento', open: false, properties: [
             { property: 'padding', name: 'Interno', type: 'composite', properties: [
