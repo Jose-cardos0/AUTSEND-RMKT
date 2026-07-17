@@ -225,6 +225,9 @@
 #am-styles input, #am-styles select, #am-traits input, #am-traits select { border-radius: 0 !important; }
 /* Borda cinza no fim dos setores de estilo (ex.: fim do "Borda") — remover */
 .gjs-sm-sector, .gjs-sm-properties, .gjs-sm-sector .gjs-sm-title { border-bottom: 0 !important; }
+/* Espaçamento (Interno/Externo): campos SEM borda cinza (fica limpo, só o input+px) */
+.gjs-editor .gjs-sm-composite .gjs-field,
+.gjs-sm-composite .gjs-field { border: 0 !important; background-color: #ffffff !important; }
 /* Sem contorno/ring de foco nos campos do painel (vinha do select:focus global do app) */
 .gjs-field:focus, .gjs-field:focus-within, .gjs-field-select:focus-within, .gjs-field-integer:focus-within,
 .gjs-field select:focus, .gjs-field input:focus, .gjs-sm-field select:focus, .gjs-sm-field input:focus,
