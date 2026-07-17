@@ -1,8 +1,9 @@
 /* Blocos customizados do construtor de e-mail (ícones bonitos + HTML email-safe).
    Substitui os blocos "crus" do preset-newsletter. */
 
+// Ícones no padrão lucide (traço 2, cantos arredondados).
 const ic = (paths) =>
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`
 
 const CAT_BASICO = 'Básico'
 const CAT_LAYOUT = 'Estrutura'
@@ -28,13 +29,13 @@ const BLOCOS = [
   },
   {
     id: 'e-imagem', label: 'Imagem', category: CAT_BASICO,
-    media: ic('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-5-5L5 21"/>'),
+    media: ic('<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'),
     content: { type: 'image', style: { display: 'block', 'max-width': '100%', height: 'auto', margin: '0 auto' }, attributes: { alt: '' } },
     activate: true,
   },
   {
     id: 'e-botao', label: 'Botão', category: CAT_BASICO,
-    media: ic('<rect x="2.5" y="8" width="19" height="8" rx="4"/><path d="M8 12h8"/>'),
+    media: ic('<rect width="18" height="9" x="3" y="7.5" rx="4.5"/><path d="M9 12h6"/>'),
     content: `<table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin:14px auto;"><tr><td align="center" style="border-radius:10px;background-color:#7c3aed;">
       <a href="#" style="display:inline-block;padding:14px 30px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">Clique aqui →</a>
     </td></tr></table>`,
@@ -46,7 +47,7 @@ const BLOCOS = [
   },
   {
     id: 'e-espaco', label: 'Espaço', category: CAT_BASICO,
-    media: ic('<path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/>'),
+    media: ic('<path d="M12 2v20"/><path d="m8 8 4-4 4 4"/><path d="m8 16 4 4 4-4"/>'),
     content: '<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>',
   },
 
@@ -121,24 +122,24 @@ const BLOCOS = [
   // ── Avançado ──
   {
     id: 'e-div', label: 'Div', category: CAT_AVANCADO,
-    media: ic('<rect x="3" y="5" width="18" height="14" rx="2"/>'),
+    media: ic('<rect width="18" height="16" x="3" y="4" rx="2" stroke-dasharray="4 3"/>'),
     content: `<div class="am-drop" style="padding:16px;${CENTRAVEL}"></div>`,
   },
   {
     id: 'e-section', label: 'Section', category: CAT_AVANCADO,
-    media: ic('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 10h18"/>'),
+    media: ic('<rect width="18" height="16" x="3" y="4" rx="2"/><path d="M3 9h18"/>'),
     content: `<section class="am-drop" style="padding:16px;${CENTRAVEL}"></section>`,
   },
   {
     id: 'e-html', label: 'HTML', category: CAT_AVANCADO,
-    media: ic('<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>'),
+    media: ic('<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>'),
     content: { type: 'text', content: '<div style="font-family:Arial,Helvetica,sans-serif;color:#4b5563;padding:8px 0;">Bloco de HTML livre — edite pelo botão de código.</div>' },
   },
 
   // ── Pré-pronto ── (ao soltar, abre um popup pra escolher um bloco DTC pronto)
   {
     id: 'e-dtc', label: 'DTC', category: CAT_PRONTO,
-    media: ic('<rect x="9" y="2" width="6" height="3" rx="1"/><path d="M9 5h6v1.6c0 .5.2 1 .6 1.4.9.9 1.4 2.1 1.4 3.4V19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-5.6c0-1.3.5-2.5 1.4-3.4.4-.4.6-.9.6-1.4V5z"/><path d="M7.5 13h9"/>'),
+    media: ic('<path d="M7 8h10v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2Z"/><path d="M6 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/><path d="M10 13h4"/>'),
     content: '<div class="am-drop" style="padding:20px;text-align:center;font-family:Arial,sans-serif;color:#7c3aed;">Escolha um bloco DTC…</div>',
   },
 ]
