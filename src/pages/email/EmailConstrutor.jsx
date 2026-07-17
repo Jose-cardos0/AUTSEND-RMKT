@@ -212,8 +212,11 @@ export default function EmailConstrutor() {
             { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px', 'em', '%'], default: '15px' },
             { property: 'color', name: 'Cor do texto', type: 'color' },
             { property: 'font-weight', name: 'Peso', type: 'select', default: '400', options: [{ id: '300', name: 'Fino' }, { id: '400', name: 'Normal' }, { id: '600', name: 'Semi' }, { id: '700', name: 'Negrito' }] },
-            { property: 'text-align', name: 'Alinhamento', type: 'radio', default: 'left', options: [{ id: 'left', name: 'Esq.' }, { id: 'center', name: 'Centro' }, { id: 'right', name: 'Dir.' }] },
             { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['', 'px', '%'] },
+          ] },
+          { id: 'am-align', name: 'Alinhamento', open: true, properties: [
+            { property: 'text-align', name: 'Horizontal', type: 'radio', default: 'left', options: [{ id: 'left', name: 'Esq.' }, { id: 'center', name: 'Centro' }, { id: 'right', name: 'Dir.' }] },
+            { property: 'vertical-align', name: 'Vertical', type: 'select', default: 'top', options: [{ id: 'top', name: 'Topo' }, { id: 'middle', name: 'Meio' }, { id: 'bottom', name: 'Base' }] },
           ] },
           { id: 'am-fundo', name: 'Fundo', open: true, properties: [
             { property: 'background-color', name: 'Cor de fundo', type: 'color' },

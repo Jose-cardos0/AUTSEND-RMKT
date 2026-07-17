@@ -144,26 +144,34 @@
 }
 
 /* Galeria: 4 colunas de miniaturas QUADRADAS (só a imagem, sem nome do lado) */
-.gjs-am-assets-cont { width: 100% !important; }
+.gjs-am-assets-cont { width: 100% !important; float: none !important; height: auto !important; overflow: visible !important; }
 .gjs-am-assets {
   display: grid !important; grid-template-columns: repeat(4, 1fr) !important;
-  grid-auto-rows: 1fr !important; align-content: start !important;
+  grid-auto-rows: auto !important; align-content: start !important;
   gap: 12px !important; padding: 0 16px 16px !important;
-  max-height: 58vh; overflow-y: auto;
+  height: auto !important; max-height: 58vh !important; overflow-y: auto !important;
 }
 .gjs-am-asset {
-  aspect-ratio: 1 / 1 !important; width: 100% !important;
+  aspect-ratio: 1 / 1 !important; width: 100% !important; height: auto !important;
+  display: block !important; box-sizing: border-box !important;
   border-radius: 12px !important; overflow: hidden !important; border: 1px solid #ececec !important;
   position: relative !important; float: none !important; left: auto !important; top: auto !important;
   padding: 0 !important; margin: 0 !important; cursor: pointer;
 }
 .gjs-am-asset:hover { border-color: #c4b5fd !important; box-shadow: 0 6px 16px -8px rgba(124,58,237,.35) !important; }
-.gjs-am-asset .gjs-am-preview-cont { width: 100% !important; height: 100% !important; border: 0 !important; border-radius: 0 !important; }
-.gjs-am-asset .gjs-am-preview { width: 100% !important; height: 100% !important; background-size: cover !important; background-position: center !important; }
+/* Preview preenche a célula quadrada de forma ABSOLUTA (não empurra/sobrepõe vizinhos) */
+.gjs-am-asset .gjs-am-preview-cont {
+  position: absolute !important; inset: 0 !important; float: none !important;
+  width: 100% !important; height: 100% !important; border: 0 !important; border-radius: 0 !important;
+}
+.gjs-am-asset .gjs-am-preview {
+  position: absolute !important; inset: 0 !important;
+  width: 100% !important; height: 100% !important; background-size: cover !important; background-position: center !important;
+}
+.gjs-am-asset .gjs-am-preview-bg { display: none !important; }
 .gjs-am-asset .gjs-am-meta,
 .gjs-am-asset .gjs-am-name,
 .gjs-am-asset .gjs-am-dimensions { display: none !important; }
-.gjs-am-preview-cont { border-radius: 10px !important; }
 .gjs-btn-prim { background-color: #7c3aed !important; color: #fff !important; border-radius: 8px !important; border: 0 !important; font-weight: 600 !important; }
 
 /* ── Painel lateral: dentro dos limites, com scroll interno (não transborda) ── */

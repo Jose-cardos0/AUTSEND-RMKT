@@ -46,16 +46,35 @@ const BLOCOS = [
 
   // ── Estrutura ──
   {
-    id: 'e-secao', label: '1 Coluna', category: CAT_LAYOUT,
+    id: 'e-secao', label: '1 Bloco', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/>'),
     content: '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td class="am-drop" valign="top" style="padding:16px;"></td></tr></table>',
   },
   {
-    id: 'e-2col', label: '2 Colunas', category: CAT_LAYOUT,
+    id: 'e-2col', label: '2 Blocos', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'),
     content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
       <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
       <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
+    </tr></table>`,
+  },
+  {
+    id: 'e-3col', label: '3 Blocos', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
+      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
+      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
+      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
+    </tr></table>`,
+  },
+  {
+    id: 'e-4col', label: '4 Blocos', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7.5 4v16M12 4v16M16.5 4v16"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
+      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
+      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
+      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
+      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
     </tr></table>`,
   },
 
