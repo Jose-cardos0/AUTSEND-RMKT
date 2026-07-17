@@ -64,11 +64,6 @@ export default function ComprarInstanciaModal({ onConfirm, comprando, onClose })
                 </div>
               </div>
 
-              <p className="text-sm text-stone-600 mb-4">
-                Cada instância é um número de WhatsApp a mais pra conectar e usar nas automações e disparos.
-                A cobrança é mensal e você pode cancelar quando quiser.
-              </p>
-
               {/* Seletor de quantidade */}
               <div className="rounded-2xl border border-surface-200 bg-white/70 backdrop-blur-md shadow-sm p-5">
                 <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Quantas instâncias?</p>

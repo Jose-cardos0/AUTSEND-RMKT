@@ -14,6 +14,9 @@ import {
   deleteWebhook,
 } from '../lib/firestore'
 import { criarInstancia, verificarStatus, buscarGrupos } from '../lib/evolutionApi'
+import { criarCheckoutInstancia } from '../lib/perfil'
+import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
+import CheckoutModal from '../components/CheckoutModal'
 import {
   QrCode,
   Plus,
@@ -30,6 +33,7 @@ import {
   Star,
   ChevronDown,
   Settings,
+  ShoppingCart,
 } from 'lucide-react'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import PageShell, { Panel } from '../components/PageShell'
@@ -64,6 +68,9 @@ export default function Integracoes() {
   const [user] = useAuthState(auth)
   const confirm = useConfirm()
   const { limiteDe } = usePlano()
+  const [instModalOpen, setInstModalOpen] = useState(false) // modal de comprar instância
+  const [comprandoInst, setComprandoInst] = useState(false)
+  const [checkoutSecret, setCheckoutSecret] = useState(null)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [instances, setInstances] = useState([])
   const [selectedInstanceId, setSelectedInstanceId] = useState(null)
@@ -206,6 +213,19 @@ export default function Integracoes() {
       toast.error(err.message || 'Erro ao criar instância')
     } finally {
       setCriando(false)
+    }
+  }
+
+  const comprarInstancia = async (quantidade) => {
+    setComprandoInst(true)
+    try {
+      const r = await criarCheckoutInstancia(quantidade)
+      if (r?.clientSecret) setCheckoutSecret(r.clientSecret)
+      else toast.error('Não consegui abrir o checkout. Tente de novo.')
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao iniciar a compra.')
+    } finally {
+      setComprandoInst(false)
     }
   }
 
@@ -392,6 +412,27 @@ export default function Integracoes() {
     >
       <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
 
+      {instModalOpen && (
+        <ComprarInstanciaModal
+          comprando={comprandoInst}
+          onConfirm={comprarInstancia}
+          onClose={() => setInstModalOpen(false)}
+        />
+      )}
+      {checkoutSecret && (
+        <CheckoutModal
+          clientSecret={checkoutSecret}
+          onClose={() => setCheckoutSecret(null)}
+          onComplete={() => {
+            setCheckoutSecret(null)
+            setInstModalOpen(false)
+            toast.success('Pagamento concluído! Atualizando seu limite de instâncias…')
+            // recarrega pra o novo limite (instanciasExtras) refletir no botão/trava
+            setTimeout(() => window.location.reload(), 3000)
+          }}
+        />
+      )}
+
       {/* Popup: gerenciar instância (principal / verificar / grupos / excluir) */}
       {gerenciarInst && (() => {
         const inst = gerenciarInst
@@ -542,13 +583,28 @@ export default function Integracoes() {
         open={secoes.whatsapp}
         onToggle={() => toggleSecao('whatsapp')}
         action={
-          <button
-            type="button"
-            onClick={() => { setNomeInstancia(''); setNumeroWhatsapp(''); setShowNovaInst(true) }}
-            className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
-          >
-            <Plus className="w-4 h-4" /> Nova instância
-          </button>
+          (() => {
+            const lim = limiteDe('instancias')
+            const noLimite = Number.isFinite(lim) && instances.length >= lim
+            return noLimite ? (
+              <button
+                type="button"
+                onClick={() => setInstModalOpen(true)}
+                className="text-xs sm:text-sm min-h-[38px] px-3 shrink-0 inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-white bg-emerald-500 hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition"
+                title="Você atingiu o limite de instâncias do seu plano"
+              >
+                <ShoppingCart className="w-4 h-4" /> Comprar instância
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setNomeInstancia(''); setNumeroWhatsapp(''); setShowNovaInst(true) }}
+                className="btn-primary text-xs sm:text-sm min-h-[38px] px-3 shrink-0"
+              >
+                <Plus className="w-4 h-4" /> Nova instância
+              </button>
+            )
+          })()
         }
       >
           <div className="space-y-4">
