@@ -351,7 +351,7 @@ export default function CallCampanha() {
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Configuração da chamada</span>
               {temAlgumaConfig && (
-                <button onClick={() => abrirConfig(1)} className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700"><Settings2 className="w-3.5 h-3.5" /> Editar</button>
+                <button onClick={() => abrirConfig(1)} className="inline-flex items-center gap-1 text-xs text-stone-400 hover:text-primary-600 transition-colors"><Settings2 className="w-3.5 h-3.5" /> Editar</button>
               )}
             </div>
             {temAlgumaConfig ? (
@@ -375,12 +375,12 @@ export default function CallCampanha() {
             <div className="flex items-center justify-between mt-2">
               <div className="flex items-center gap-1">
                 <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wide">Roteiro falado</label>
-                <button type="button" onClick={ouvirRoteiro} disabled={carregandoVoz} title={falando ? 'Parar' : 'Ouvir a voz da ligação'} className="p-1 rounded-lg text-primary-600 hover:bg-primary-50 transition-colors disabled:opacity-50">
+                <button type="button" onClick={ouvirRoteiro} disabled={carregandoVoz} title={falando ? 'Parar' : 'Ouvir a voz da ligação'} className="p-1 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors disabled:opacity-50">
                   {carregandoVoz ? <Loader2 className="w-4 h-4 animate-spin" /> : falando ? <Square className="w-3.5 h-3.5 fill-current" /> : <Volume2 className="w-4 h-4" />}
                 </button>
               </div>
               <div className="relative">
-                <button type="button" onClick={() => setVarsOpen((o) => !o)} title="Inserir variável" className="p-1.5 rounded-lg text-primary-600 hover:bg-primary-50 transition-colors"><Braces className="w-4 h-4" /></button>
+                <button type="button" onClick={() => setVarsOpen((o) => !o)} title="Inserir variável" className="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"><Braces className="w-4 h-4" /></button>
                 {varsOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setVarsOpen(false)} />

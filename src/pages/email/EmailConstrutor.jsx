@@ -14,17 +14,17 @@ import { auth, functions } from '../../lib/firebase'
 import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate, getEmailProviders, getEmailConfig } from '../../lib/firestore'
 import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../../lib/storageAssets'
 import { registrarBlocosEmail } from '../../lib/emailBlocks'
-import { TEMPLATE_VARIABLES } from '../../lib/constants'
 import PageShell from '../../components/PageShell'
 import Select from '../../components/Select'
 import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Loader2, Save, Send, Trash2, Plus, FileText, Code2, ImagePlus, Paintbrush, GripVertical, Undo2, Redo2, Settings, Layers, Eraser, X, Eye } from 'lucide-react'
+import { Loader2, Save, Send, Trash2, Plus, Code2, ImagePlus, Paintbrush, GripVertical, Undo2, Redo2, Settings, Layers, Eraser, X, Eye } from 'lucide-react'
 
 const TITULOS_PAINEL = { blocos: 'Blocos', estilo: 'Estilo', config: 'Configurações', camadas: 'Camadas' }
 import EmojiPicker from '../../components/EmojiPicker'
+import ChavesPicker from '../../components/ChavesPicker'
 
 const PLACEHOLDER = '<div style="padding:40px;text-align:center;font-family:Arial,sans-serif;color:#666">Arraste blocos aqui para montar seu e-mail…</div>'
 
@@ -481,16 +481,28 @@ export default function EmailConstrutor() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <label className="text-xs font-medium text-stone-600">Assunto do e-mail</label>
-                <EmojiPicker
-                  buttonClassName="ml-auto p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                  onPick={(emoji) => {
-                    const ta = subjectRef.current
-                    const text = subject || ''
-                    const start = ta ? ta.selectionStart : text.length
-                    setSubject(text.slice(0, start) + emoji + text.slice(start))
-                    setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + emoji.length, start + emoji.length) } }, 0)
-                  }}
-                />
+                <div className="ml-auto flex items-center gap-0.5">
+                  <ChavesPicker
+                    buttonClassName="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                    onPick={(chave) => {
+                      const ta = subjectRef.current
+                      const text = subject || ''
+                      const start = ta ? ta.selectionStart : text.length
+                      setSubject(text.slice(0, start) + chave + text.slice(start))
+                      setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + chave.length, start + chave.length) } }, 0)
+                    }}
+                  />
+                  <EmojiPicker
+                    buttonClassName="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                    onPick={(emoji) => {
+                      const ta = subjectRef.current
+                      const text = subject || ''
+                      const start = ta ? ta.selectionStart : text.length
+                      setSubject(text.slice(0, start) + emoji + text.slice(start))
+                      setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + emoji.length, start + emoji.length) } }, 0)
+                    }}
+                  />
+                </div>
               </div>
               <textarea
                 ref={subjectRef}
@@ -503,28 +515,6 @@ export default function EmailConstrutor() {
             </div>
           </div>
 
-          <div className="app-panel rounded-2xl p-4">
-            <p className="text-xs font-semibold text-stone-600 mb-2 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Variáveis <span className="font-normal text-stone-400">(clique pra inserir no assunto)</span></p>
-            <div className="flex flex-wrap gap-1.5">
-              {TEMPLATE_VARIABLES.map((v) => (
-                <button
-                  key={v.key}
-                  type="button"
-                  title={v.label || v.key}
-                  onClick={() => {
-                    const ta = subjectRef.current
-                    const text = subject || ''
-                    const start = ta ? ta.selectionStart : text.length
-                    setSubject(text.slice(0, start) + v.key + text.slice(start))
-                    setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + v.key.length, start + v.key.length) } }, 0)
-                  }}
-                  className="px-2.5 py-1 rounded-full bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200/70 text-[11px] font-medium transition-colors"
-                >
-                  {v.key}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Coluna direita: editor (canvas + painel lateral custom) */}
