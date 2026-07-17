@@ -11,7 +11,7 @@ import Prism from 'prismjs'
 import 'prismjs/themes/prism-tomorrow.css'
 import { html as beautifyHtml } from 'js-beautify'
 import { auth, functions } from '../../lib/firebase'
-import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate } from '../../lib/firestore'
+import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate, getEmailProviders, getEmailConfig } from '../../lib/firestore'
 import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../../lib/storageAssets'
 import { registrarBlocosEmail } from '../../lib/emailBlocks'
 import { TEMPLATE_VARIABLES } from '../../lib/constants'
@@ -67,6 +67,7 @@ export default function EmailConstrutor() {
   const [dockPos, setDockPos] = useState(null) // {left, top} em px; null = posição padrão (centro-baixo)
   const [painelAberto, setPainelAberto] = useState(null) // qual painel lateral está aberto (null = escondido)
   const [arrastando, setArrastando] = useState(false)
+  const [remetente, setRemetente] = useState(null) // {nome, email} principal — pro mockup do Gmail na prévia
 
   // Abre/fecha um painel lateral (mostra só o container escolhido; um por vez).
   const togglePainel = (key) => setPainelAberto((p) => (p === key ? null : key))
@@ -107,6 +108,20 @@ export default function EmailConstrutor() {
 
   // Mantém o uid disponível pro upload do Asset Manager (o editor é criado uma vez só).
   useEffect(() => { uidRef.current = user?.uid || null }, [user?.uid])
+
+  // Carrega o remetente principal (usado no mockup do Gmail na prévia).
+  useEffect(() => {
+    if (!user?.uid) return
+    ;(async () => {
+      try {
+        const provs = await getEmailProviders(user.uid)
+        const rem = provs.flatMap((p) => p.remetentes || []).find((r) => r.email)
+        if (rem) { setRemetente({ nome: rem.nome || '', email: rem.email }); return }
+        const cfg = await getEmailConfig(user.uid)
+        if (cfg?.fromEmail) setRemetente({ nome: cfg.fromName || '', email: cfg.fromEmail })
+      } catch (_) {}
+    })()
+  }, [user?.uid])
 
   // Inicializa o GrapesJS uma vez
   useEffect(() => {
@@ -320,15 +335,27 @@ export default function EmailConstrutor() {
     }
   }
 
-  // Pré-visualização do e-mail renderizado
+  // Pré-visualização do e-mail renderizado (mockup estilo Gmail)
   const [showPreview, setShowPreview] = useState(false)
   const [previewHtml, setPreviewHtml] = useState('')
+  const [previewInfo, setPreviewInfo] = useState(null) // dados do mockup: remetente, assunto, data, cor do avatar
+  const [iframeH, setIframeH] = useState(600) // altura auto do corpo do e-mail dentro do mockup
   const abrirPreview = () => {
     const editor = editorRef.current
     if (!editor) return
     const html = editor.getHtml()
     const css = editor.getCss()
-    setPreviewHtml(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{scrollbar-width:none;-ms-overflow-style:none}html::-webkit-scrollbar{display:none;width:0;height:0}body{margin:0;padding:24px;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif}${css}</style></head><body>${html}</body></html>`)
+    setPreviewHtml(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{scrollbar-width:none;-ms-overflow-style:none}html::-webkit-scrollbar{display:none;width:0;height:0}body{margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif}${css}</style></head><body>${html}</body></html>`)
+    // Congela os dados do remetente/assunto/data pro mockup do Gmail
+    const nomeRem = remetente?.nome?.trim() || (remetente?.email ? remetente.email.split('@')[0] : 'Sua Empresa')
+    const emailRem = remetente?.email || 'contato@suaempresa.com'
+    const inicial = (nomeRem.trim()[0] || 'S').toUpperCase()
+    const cores = ['#1a73e8', '#d93025', '#188038', '#e37400', '#9334e6', '#0b8043']
+    const cor = cores[inicial.charCodeAt(0) % cores.length]
+    const d = new Date()
+    const dataLabel = `${d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}, ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+    setPreviewInfo({ nome: nomeRem, email: emailRem, inicial, cor, dataLabel, subject: (subject || '').trim() || 'Assunto do seu e-mail' })
+    setIframeH(600)
     setShowPreview(true)
   }
 
@@ -554,15 +581,58 @@ export default function EmailConstrutor() {
         </div>
       </div>
 
-      {/* Modal: pré-visualização */}
-      {showPreview && (
+      {/* Modal: pré-visualização (mockup estilo Gmail — mostra como chega na caixa do cliente) */}
+      {showPreview && previewInfo && (
         <div className="fixed inset-0 z-50 flex flex-col p-4 bg-stone-900/60 backdrop-blur-sm" onClick={() => setShowPreview(false)}>
           <div className="mx-auto w-[80vw] max-w-none flex-1 min-h-0 flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-surface-100">
-              <h3 className="font-semibold text-stone-800 flex items-center gap-2"><Eye className="w-4 h-4 text-primary-600" /> Prévia do e-mail</h3>
+            {/* Barra da nossa modal */}
+            <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-surface-100 bg-surface-50/70">
+              <span className="text-xs font-medium text-stone-400 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5 text-primary-500" /> Prévia — como chega na caixa de entrada do cliente</span>
               <button onClick={() => setShowPreview(false)} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
             </div>
-            <iframe title="Prévia do e-mail" srcDoc={previewHtml} className="flex-1 min-h-0 w-full border-0 bg-[#f4f4f5]" />
+
+            {/* Página estilo Gmail — rola tudo junto (assunto + remetente + corpo + rodapé) */}
+            <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft bg-white">
+              <div className="max-w-3xl mx-auto px-4 sm:px-8 pt-6">
+                {/* Assunto + marcador */}
+                <div className="flex items-start gap-2 mb-5">
+                  <h1 className="flex-1 min-w-0 text-[21px] leading-snug font-normal text-stone-800">{previewInfo.subject}</h1>
+                  <span className="mt-1 shrink-0 text-[11px] text-stone-500 bg-stone-100 rounded px-1.5 py-0.5">Caixa de entrada</span>
+                </div>
+                {/* Remetente */}
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-base shrink-0" style={{ background: previewInfo.cor }}>{previewInfo.inicial}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                      <span className="font-semibold text-stone-800 text-sm">{previewInfo.nome}</span>
+                      <span className="text-xs text-stone-500 truncate">&lt;{previewInfo.email}&gt;</span>
+                    </div>
+                    <div className="text-xs text-stone-500">para mim ▾</div>
+                  </div>
+                  <div className="text-xs text-stone-400 whitespace-nowrap shrink-0">{previewInfo.dataLabel}</div>
+                </div>
+              </div>
+              {/* Corpo do e-mail — iframe isolado, altura automática (o mockup inteiro é que rola) */}
+              <div className="max-w-3xl mx-auto px-4 sm:px-8">
+                <iframe
+                  title="Prévia do e-mail"
+                  srcDoc={previewHtml}
+                  scrolling="no"
+                  onLoad={(e) => {
+                    const el = e.target
+                    const medir = () => { try { setIframeH(Math.max(300, el.contentWindow.document.documentElement.scrollHeight)) } catch (_) {} }
+                    medir(); setTimeout(medir, 300); setTimeout(medir, 900)
+                  }}
+                  className="block w-full border-0 bg-white"
+                  style={{ height: iframeH }}
+                />
+              </div>
+              {/* Rodapé Responder / Encaminhar (só visual) */}
+              <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 flex gap-3">
+                <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-stone-300 text-sm text-stone-600">↩ Responder</span>
+                <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-stone-300 text-sm text-stone-600">↪ Encaminhar</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
