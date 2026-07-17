@@ -123,17 +123,24 @@ export async function getInstances(uid) {
     const configSnap = await getDoc(userEvolutionRef(uid))
     const config = configSnap.exists ? configSnap.data() : null
     if (config && (config.nomeInstancia || config.hash)) {
-      const newId = await addInstance(uid, {
+      const legado = {
         nomeInstancia: config.nomeInstancia,
         numeroWhatsapp: config.numeroWhatsapp,
         hash: config.hash,
         instanceId: config.instanceId,
         conectado: config.conectado ?? false,
         grupos: config.grupos ?? [],
-      })
-      await setDoc(userEvolutionRef(uid), { selectedInstanceId: newId }, { merge: true })
-      snap = await getDocs(userInstancesRef(uid))
-      list = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
+      }
+      try {
+        // Migração de conta antiga (config único → doc na subcoleção). O create client é
+        // bloqueado nas rules; se falhar, devolve a config legada em memória (sem persistir).
+        const newId = await addInstance(uid, legado)
+        await setDoc(userEvolutionRef(uid), { selectedInstanceId: newId }, { merge: true })
+        snap = await getDocs(userInstancesRef(uid))
+        list = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
+      } catch (_) {
+        return [{ id: config.selectedInstanceId || 'legacy', ...legado }]
+      }
     }
   }
   return list.sort((a, b) => {

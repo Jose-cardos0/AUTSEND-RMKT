@@ -14,15 +14,15 @@ async function parseJsonResponse(res) {
 }
 
 /**
- * Cria a instância via Cloud Function `waCriarInstancia` — a trava de plano (limite `instancias`)
- * roda no servidor ANTES de bater no Evolution. Chame ANTES de gravar o doc no Firestore
- * (o servidor conta as instâncias existentes pra decidir se libera).
+ * Cria a instância via Cloud Function `waCriarInstancia`: a trava de plano (limite `instancias`)
+ * roda no servidor, que cria no Evolution E grava o doc no Firestore (o client não cria mais —
+ * a coleção `instances` bloqueia `create` nas rules). Devolve o id do doc + o QR/hash.
  */
 export async function criarInstancia(nomeInstancia, numeroWhatsapp = '') {
   const numero = (numeroWhatsapp || '').trim().replace(/\D/g, '')
   const call = httpsCallable(functions, 'waCriarInstancia')
   const r = await call({ nomeInstancia: (nomeInstancia || '').trim(), numeroWhatsapp: numero })
-  return r.data // { base64/qrcode, hash, instanceId, ... }
+  return r.data // { id, base64, hash, instanceId }
 }
 
 export async function verificarStatus(nomeInstancia, getParticipants = false, numeroWhatsapp = '') {

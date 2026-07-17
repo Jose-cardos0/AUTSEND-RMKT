@@ -1199,19 +1199,34 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
   // Passou na trava → cria no Evolution.
   const payload = { tipoAcao: 'criar_instancia', nomeInstancia: nome }
   if (numero) payload.numeroWhatsApp = numero
+  let data
   try {
     const res = await fetch(WEBHOOK_EVOLUTION, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    const data = await res.json().catch(() => ({}))
+    data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data?.message || data?.error || 'Falha ao criar instância')
-    return data // { base64/qrcode, hash, instanceId, ... }
   } catch (e) {
     console.error('waCriarInstancia', e)
     throw new HttpsError('internal', e.message || 'Falha ao criar a instância no Evolution.')
   }
+  // Grava o doc no servidor (client não cria mais — a coleção é bloqueada nas rules).
+  const base64 = data.base64 ?? data.qrCodeBase64 ?? data.qrcode ?? null
+  const hash = data.hash ?? data.instanceId ?? data.code ?? null
+  const instanceId = data.instanciaId ?? data.instanceId ?? hash ?? null
+  const ref = await db.collection(`users/${uid}/instances`).add({
+    nomeInstancia: nome,
+    numeroWhatsapp: numero,
+    hash,
+    qrCodeBase64: base64,
+    instanceId,
+    conectado: false,
+    grupos: [],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  return { id: ref.id, base64, hash, instanceId }
 })
 
 /**

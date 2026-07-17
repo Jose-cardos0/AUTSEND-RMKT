@@ -1,9 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Apenas o próprio usuário pode ler/escrever seus dados (multitenant)
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // Multitenant: cada usuário só mexe nos PRÓPRIOS dados (users/{seuUid}/**).
+    // tenants/** e config/** não têm regra aqui → negados ao client (só Cloud Functions/Admin SDK tocam).
+    match /users/{userId} {
+      function isOwner() { return request.auth != null && request.auth.uid == userId; }
+
+      // Doc raiz do usuário
+      allow read, write: if isOwner();
+
+      // Docs diretos de qualquer subcoleção (profundidade 2)
+      match /{coll}/{docId} {
+        allow read, delete: if isOwner();
+
+        // CRIAÇÃO bloqueada só p/ instâncias e trackers (webhooks tipo 'custom') — esses
+        // passam a ser criados EXCLUSIVAMENTE via Cloud Function (trava de plano no servidor).
+        // Demais coleções (leads, produtos, webhooks Kiwify, etc.) seguem criáveis pelo dono.
+        allow create: if isOwner()
+          && coll != 'instances'
+          && !(coll == 'webhooks' && request.resource.data.tipo == 'custom');
+
+        // UPDATE liberado, exceto "virar" um webhook em tracker (tipo→'custom') pra burlar a trava.
+        allow update: if isOwner()
+          && !(coll == 'webhooks'
+               && request.resource.data.tipo == 'custom'
+               && resource.data.tipo != 'custom');
+
+        // Profundidade 3+ (subcoleções dos docs, ex.: webhooks/{id}/samples): tudo do dono
+        match /{rest=**} {
+          allow read, write: if isOwner();
+        }
+      }
     }
   }
 }

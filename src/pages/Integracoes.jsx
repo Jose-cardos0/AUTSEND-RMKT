@@ -5,7 +5,6 @@ import { auth } from '../lib/firebase'
 import {
   getEvolutionConfig,
   getInstances,
-  addInstance,
   updateInstance,
   setSelectedInstance,
   deleteInstance,
@@ -184,20 +183,13 @@ export default function Integracoes() {
     setShowQrModal(false)
     setInstanceEmConexao(null)
     try {
-      // A trava de plano roda no servidor: se estourar o limite, isto lança e nenhum doc é criado.
+      // A trava de plano roda no servidor, que TAMBÉM grava o doc (a coleção é bloqueada nas rules).
+      // Se estourar o limite, isto lança e nada é criado.
       const res = await criarInstancia(nome, numeroWhatsapp)
       const base64 = res.base64 ?? res.qrCodeBase64 ?? res.qrcode
       const codeHash = res.hash ?? res.instanceId ?? res.code
       const instanceId = res.instanciaId ?? res.instanceId ?? codeHash
-      const newId = await addInstance(user.uid, {
-        nomeInstancia: nome,
-        numeroWhatsapp: num,
-        hash: codeHash,
-        qrCodeBase64: base64,
-        instanceId,
-        conectado: false,
-        grupos: [],
-      })
+      const newId = res.id
       setQrBase64(base64 || null)
       setInstanceEmConexao({ id: newId, nomeInstancia: nome, numeroWhatsapp: num })
       setShowNovaInst(false)
