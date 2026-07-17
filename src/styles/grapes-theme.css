@@ -147,13 +147,15 @@
 .gjs-am-assets-cont { width: 100% !important; }
 .gjs-am-assets {
   display: grid !important; grid-template-columns: repeat(4, 1fr) !important;
+  grid-auto-rows: 1fr !important; align-content: start !important;
   gap: 12px !important; padding: 0 16px 16px !important;
   max-height: 58vh; overflow-y: auto;
 }
 .gjs-am-asset {
   aspect-ratio: 1 / 1 !important; width: 100% !important;
   border-radius: 12px !important; overflow: hidden !important; border: 1px solid #ececec !important;
-  position: relative; padding: 0 !important; margin: 0 !important; cursor: pointer;
+  position: relative !important; float: none !important; left: auto !important; top: auto !important;
+  padding: 0 !important; margin: 0 !important; cursor: pointer;
 }
 .gjs-am-asset:hover { border-color: #c4b5fd !important; box-shadow: 0 6px 16px -8px rgba(124,58,237,.35) !important; }
 .gjs-am-asset .gjs-am-preview-cont { width: 100% !important; height: 100% !important; border: 0 !important; border-radius: 0 !important; }

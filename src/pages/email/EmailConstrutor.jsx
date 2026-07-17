@@ -15,6 +15,7 @@ import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate, getEmailProv
 import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../../lib/storageAssets'
 import { registrarBlocosEmail } from '../../lib/emailBlocks'
 import PageShell from '../../components/PageShell'
+import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
 import { emailPreviewDoc } from '../../lib/emailPreview'
 import { useConfirm } from '../../components/ConfirmDialog'
@@ -60,6 +61,7 @@ export default function EmailConstrutor() {
   const [importCode, setImportCode] = useState('')
   const [showHtmlBlock, setShowHtmlBlock] = useState(false) // popup do bloco HTML
   const [htmlBlockCode, setHtmlBlockCode] = useState('')
+  const [carregandoImgs, setCarregandoImgs] = useState(false) // loading da galeria de imagens
   const htmlTargetRef = useRef(null) // componente HTML solto (pra substituir pelo HTML digitado)
   const containerRef = useRef(null)
   const editorRef = useRef(null)
@@ -275,15 +277,7 @@ export default function EmailConstrutor() {
     })
   }, [user?.uid])
 
-  // Popula a galeria do editor com as imagens que o usuário já subiu (uma vez).
-  useEffect(() => {
-    if (!ready || !user?.uid || assetsCarregados.current) return
-    assetsCarregados.current = true
-    listEmailAssets(user.uid).then((assets) => {
-      const ed = editorRef.current
-      if (ed && assets.length) ed.AssetManager.add(assets)
-    })
-  }, [ready, user?.uid])
+  // A galeria carrega as imagens de forma lazy (ao abrir), com loading — ver abrirImagens().
 
   // Ao selecionar um template (ou ficar pronto), carrega o conteúdo no editor
   useEffect(() => {
@@ -379,11 +373,24 @@ export default function EmailConstrutor() {
     setShowPreview(true)
   }
 
-  // Abre a galeria de imagens (upload direto pro Storage do usuário)
-  const abrirImagens = () => {
+  // Abre a galeria de imagens (upload direto pro Storage do usuário).
+  // Carrega as imagens de forma lazy na 1ª vez, mostrando o loading até aparecerem.
+  const abrirImagens = async () => {
     const editor = editorRef.current
     if (!editor) return
     editor.runCommand('open-assets')
+    if (assetsCarregados.current || !user?.uid) return
+    setCarregandoImgs(true)
+    try {
+      const assets = await listEmailAssets(user.uid)
+      const ed = editorRef.current
+      if (ed && assets.length) ed.AssetManager.add(assets)
+      assetsCarregados.current = true
+    } catch (_) {
+      toast.error('Não consegui carregar suas imagens. Tente de novo.')
+    } finally {
+      setCarregandoImgs(false)
+    }
   }
 
   // Abre o modal de código já preenchido com o HTML atual do editor (ver/editar/colar)
@@ -730,6 +737,13 @@ export default function EmailConstrutor() {
               <button onClick={importarHtml} className="btn-primary min-h-[44px]"><Code2 className="w-4 h-4" /> Aplicar</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Loading da galeria de imagens (foguetinho) — fica por cima do modal do GrapesJS */}
+      {carregandoImgs && (
+        <div className="fixed inset-0 flex items-center justify-center bg-white/85 backdrop-blur-sm" style={{ zIndex: 100000 }}>
+          <PageLoader label="Carregando suas imagens…" />
         </div>
       )}
 
