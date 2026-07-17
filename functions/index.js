@@ -3866,6 +3866,39 @@ async function callGrok(messages, { json = false } = {}) {
   return data?.choices?.[0]?.message?.content || ''
 }
 
+/** IA (Grok): gera/edita um e-mail em HTML+CSS EMAIL-SAFE a partir do chat do construtor. */
+exports.iaGerarEmailHtml = onCall({ region: 'us-central1', timeoutSeconds: 180 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const mensagens = request.data?.mensagens
+  if (!Array.isArray(mensagens) || !mensagens.length) throw new HttpsError('invalid-argument', 'Sem mensagem pra IA.')
+
+  const sys = [
+    'Você é um especialista em criar e-mails de marketing em HTML.',
+    'REGRAS OBRIGATÓRIAS (responda SEMPRE seguindo todas):',
+    '1) Responda APENAS com o código HTML completo do e-mail. NADA de explicação, NADA de markdown, NADA de crases (```).',
+    '2) HTML + CSS 100% EMAIL-SAFE: layout em TABELAS (<table>), estilos INLINE em cada elemento (style="..."), cores em HEX fixo.',
+    '3) PROIBIDO: CSS grid, flexbox, variáveis CSS (var()), @import, ::before/::after, position absolute/fixed, JavaScript.',
+    '4) Largura do e-mail no máximo 640px, centralizado (margin:0 auto). Fonte: Arial, Helvetica, sans-serif.',
+    '5) Responsividade (empilhar colunas no mobile) SÓ via um único <style> com @media (max-width:620px){...} usando classes simples.',
+    '6) Quando o usuário mandar uma URL de imagem no texto, use EXATAMENTE essa URL no src da <img> (com width e style inline).',
+    '7) Se o usuário pedir uma alteração, devolva o HTML COMPLETO já modificado (não devolva só o trecho).',
+    '8) Botões devem ser links <a> estilizados dentro de <td> (email-safe), nunca <button>.',
+  ].join('\n')
+
+  const messages = [
+    { role: 'system', content: sys },
+    ...mensagens.slice(-16).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 8000) })),
+  ]
+  let html = await callGrok(messages)
+  // remove cercas de markdown, se vierem
+  html = String(html || '').trim()
+    .replace(/^```(?:html)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+  return { html }
+})
+
 /** IA: analisa uma amostra de webhook e sugere fieldMap + eventRules. */
 exports.aiMapFields = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
   const uid = request.auth?.uid

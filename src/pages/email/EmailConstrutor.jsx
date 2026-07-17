@@ -15,6 +15,7 @@ import { getEmailTemplates, saveEmailTemplate, deleteEmailTemplate, getEmailProv
 import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../../lib/storageAssets'
 import { registrarBlocosEmail } from '../../lib/emailBlocks'
 import { DTC_PRESETS } from '../../lib/dtcPresets'
+import IaAssistente from '../../components/IaAssistente'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Select from '../../components/Select'
@@ -64,8 +65,10 @@ export default function EmailConstrutor() {
   const [htmlBlockCode, setHtmlBlockCode] = useState('')
   const [carregandoImgs, setCarregandoImgs] = useState(false) // loading da galeria de imagens
   const [showDtc, setShowDtc] = useState(false) // popup de blocos DTC pré-prontos
+  const [showIa, setShowIa] = useState(false) // assistente/popup de blocos IA
   const htmlTargetRef = useRef(null) // componente HTML solto (pra substituir pelo HTML digitado)
   const dtcTargetRef = useRef(null) // componente DTC solto (placeholder a substituir)
+  const iaTargetRef = useRef(null) // componente IA solto (placeholder a substituir)
   const containerRef = useRef(null)
   const editorRef = useRef(null)
   const subjectRef = useRef(null)
@@ -298,6 +301,9 @@ export default function EmailConstrutor() {
         } else if (bid === 'e-dtc' && component) {
           dtcTargetRef.current = component
           setShowDtc(true)
+        } else if (bid === 'e-ia' && component) {
+          iaTargetRef.current = component
+          setShowIa(true)
         }
       } catch (_) {}
     })
@@ -588,6 +594,30 @@ export default function EmailConstrutor() {
     try { dtcTargetRef.current?.remove() } catch (_) {}
     dtcTargetRef.current = null
     setShowDtc(false)
+  }
+
+  // Insere um bloco de IA (HTML gerado/salvo) no lugar do placeholder solto.
+  const inserirIa = (html) => {
+    const comp = iaTargetRef.current
+    if (!comp || !html) { setShowIa(false); iaTargetRef.current = null; return }
+    try {
+      const parent = comp.parent()
+      const idx = comp.index()
+      comp.remove()
+      if (parent) parent.append(html, { at: idx })
+    } catch (_) {
+      try { comp.remove() } catch (_) {}
+    }
+    iaTargetRef.current = null
+    setShowIa(false)
+    toast.success('Bloco IA inserido! Ajuste no editor e clique em Salvar.')
+  }
+
+  // Cancela o IA (remove o placeholder que foi solto).
+  const cancelarIa = () => {
+    try { iaTargetRef.current?.remove() } catch (_) {}
+    iaTargetRef.current = null
+    setShowIa(false)
   }
 
   const enviarTeste = async () => {
@@ -884,6 +914,11 @@ export default function EmailConstrutor() {
         <div className="fixed inset-0 md:left-[15.5rem] flex items-center justify-center bg-white/95" style={{ zIndex: 100000 }}>
           <PageLoader label="Carregando suas imagens…" />
         </div>
+      )}
+
+      {/* Assistente de IA (popup de modelos salvos + chat com o Grok) */}
+      {showIa && user?.uid && (
+        <IaAssistente uid={user.uid} onInsert={inserirIa} onClose={cancelarIa} />
       )}
 
       {/* Modal: blocos DTC pré-prontos (escolher um pra inserir) */}

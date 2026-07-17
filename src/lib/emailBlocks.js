@@ -142,6 +142,11 @@ const BLOCOS = [
     media: ic('<path d="M7 8h10v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2Z"/><path d="M6 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/><path d="M10 13h4"/>'),
     content: '<div class="am-drop" style="padding:20px;text-align:center;font-family:Arial,sans-serif;color:#7c3aed;">Escolha um bloco DTC…</div>',
   },
+  {
+    id: 'e-ia', label: 'IA', category: CAT_PRONTO,
+    media: ic('<path d="M9.94 14.06 5 19l-2-2 4.94-4.94"/><path d="m14 6 4 4"/><path d="M12 3v2M19 5l-1.4 1.4M21 12h-2M5 12H3M6.4 6.4 5 5M12 3l1.2 3.2L16 7.4l-2.8 1.2L12 12l-1.2-3.4L8 7.4l2.8-1.2Z"/>'),
+    content: '<div class="am-drop" style="padding:20px;text-align:center;font-family:Arial,sans-serif;color:#7c3aed;">Escolha um bloco IA…</div>',
+  },
 ]
 
 /** Limpa os blocos padrão (feios) e registra os nossos com ícone. */

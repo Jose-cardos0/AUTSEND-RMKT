@@ -421,6 +421,28 @@ export async function deleteEmailTemplate(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'emailTemplates', id))
 }
 
+// ── Blocos gerados por IA (Grok) no construtor — reusáveis pelo bloco "IA" ──
+export function userIaBlocksRef(uid) {
+  return collection(db, 'users', uid, 'iaBlocks')
+}
+export async function getIaBlocks(uid) {
+  const snap = await getDocs(userIaBlocksRef(uid))
+  return snap.docs
+    .map((d) => ({ ...d.data(), id: d.id }))
+    .sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? a.createdAt ?? 0
+      const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
+      return tb - ta
+    })
+}
+export async function saveIaBlock(uid, { nome, html }) {
+  const ref = await addDoc(userIaBlocksRef(uid), removeUndefined({ nome, html, createdAt: serverTimestamp() }))
+  return ref.id
+}
+export async function deleteIaBlock(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'iaBlocks', id))
+}
+
 // ── Templates de mensagens (copys de WhatsApp salvas) ──
 
 export function userMessageTemplatesRef(uid) {
