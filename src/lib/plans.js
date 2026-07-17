@@ -61,7 +61,7 @@ export const FEATURE_LABELS = {
   emailIntegracoes: 'E-mail · Integrações', emailConstrutor: 'E-mail · Construtor', emailAutomacoes: 'E-mail · Automações', emailDisparos: 'E-mail · Disparos', emailFunil: 'E-mail · Funil', emailMetricas: 'E-mail · Métricas',
   smsDisparos: 'SMS · Disparos',
 }
-export const LIMITE_LABELS = { trackers: 'Trackers', instancias: 'Instâncias WhatsApp', emailsMes: 'E-mails/mês', smsMes: 'SMS/mês (EUA)', dominios: 'Domínios de e-mail', iaMes: 'E-mails com IA/mês ✨' }
+export const LIMITE_LABELS = { trackers: 'Trackers', instancias: 'Instâncias WhatsApp', emailsMes: 'E-mails/mês', smsMes: 'SMS/mês (EUA)', dominios: 'Domínios de e-mail', iaMes: 'E-mails com IA/mês' }
 
 // Rota → feature que a libera (usado pra esconder no menu / bloquear página).
 export const ROTA_FEATURE = {
