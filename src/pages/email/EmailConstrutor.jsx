@@ -328,7 +328,7 @@ export default function EmailConstrutor() {
     if (!editor) return
     const html = editor.getHtml()
     const css = editor.getCss()
-    setPreviewHtml(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:24px;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif}${css}</style></head><body>${html}</body></html>`)
+    setPreviewHtml(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{scrollbar-width:none;-ms-overflow-style:none}html::-webkit-scrollbar{display:none;width:0;height:0}body{margin:0;padding:24px;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif}${css}</style></head><body>${html}</body></html>`)
     setShowPreview(true)
   }
 
@@ -557,7 +557,7 @@ export default function EmailConstrutor() {
       {/* Modal: pré-visualização */}
       {showPreview && (
         <div className="fixed inset-0 z-50 flex flex-col p-4 bg-stone-900/60 backdrop-blur-sm" onClick={() => setShowPreview(false)}>
-          <div className="mx-auto w-full max-w-2xl flex-1 min-h-0 flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto w-[80vw] max-w-none flex-1 min-h-0 flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-surface-100">
               <h3 className="font-semibold text-stone-800 flex items-center gap-2"><Eye className="w-4 h-4 text-primary-600" /> Prévia do e-mail</h3>
               <button onClick={() => setShowPreview(false)} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
