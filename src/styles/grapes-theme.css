@@ -29,9 +29,12 @@
   border-bottom: 1px solid #ececec !important;
   width: 100% !important; left: 0 !important; right: 0 !important; box-sizing: border-box !important;
 }
-.gjs-editor .gjs-pn-commands .gjs-pn-btn { color: #78716c !important; border-radius: 8px; }
+.gjs-editor .gjs-pn-commands .gjs-pn-btn { color: #78716c !important; border-radius: 0 !important; }
 .gjs-editor .gjs-pn-commands .gjs-pn-btn:hover { color: #7c3aed !important; background-color: #faf5ff !important; box-shadow: none !important; }
 .gjs-editor .gjs-pn-commands .gjs-pn-btn.gjs-pn-active { color: #7c3aed !important; background-color: #f3e8ff !important; box-shadow: none !important; }
+/* Botões de dispositivo (desktop/tablet/mobile): sem cantos arredondados */
+.gjs-editor .gjs-pn-devices-c .gjs-pn-btn,
+.gjs-editor .gjs-pn-devices .gjs-pn-btn { border-radius: 0 !important; }
 
 /* Abas do painel direito (blocos/estilos/config/camadas) */
 .gjs-editor .gjs-pn-views .gjs-pn-btn { color: #a8a29e !important; }
