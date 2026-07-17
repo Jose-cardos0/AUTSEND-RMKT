@@ -61,3 +61,9 @@ export async function criarCheckoutInstancia(quantidade) {
   const r = await call('instanciaCriarCheckout')({ quantidade })
   return r.data // { clientSecret }
 }
+
+/** Cria o checkout Stripe embutido de PLANO (assinatura). Funciona logado (upgrade) ou deslogado (landing). */
+export async function criarCheckoutPlano(plano) {
+  const r = await call('planoCriarCheckout')({ plano })
+  return r.data // { clientSecret }
+}

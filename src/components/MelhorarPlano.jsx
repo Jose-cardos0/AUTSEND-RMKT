@@ -3,10 +3,13 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
 import { usePlano } from '../lib/PlanoContext'
-import { PLANOS, PLANO_CHECKOUT, PLANO_ORDEM } from '../lib/plans'
+import { PLANOS, PLANO_ORDEM } from '../lib/plans'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
-import { X, Check, Sparkles } from 'lucide-react'
+import { criarCheckoutPlano } from '../lib/perfil'
+import { X, Check, Sparkles, Loader2 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import WhatsAppIcon from './WhatsAppIcon'
+import CheckoutModal from './CheckoutModal'
 import foguete from '../assets/foguetes/foguete1.png'
 
 const CARD = {
@@ -31,6 +34,17 @@ const CARD = {
 export default function MelhorarPlano({ className = '', label = 'Melhorar plano', trigger = true, open: openProp, onClose }) {
   const { plano, isAdmin } = usePlano()
   const [openState, setOpenState] = useState(false)
+  const [assinando, setAssinando] = useState(null) // plano em processamento
+  const [checkoutSecret, setCheckoutSecret] = useState(null)
+
+  const assinar = async (k) => {
+    setAssinando(k)
+    try {
+      const r = await criarCheckoutPlano(k)
+      if (r?.clientSecret) setCheckoutSecret(r.clientSecret)
+      else toast.error('Não consegui abrir o checkout. Tente de novo.')
+    } catch (e) { toast.error(e?.message || 'Falha ao abrir o checkout.') } finally { setAssinando(null) }
+  }
   const controlled = openProp !== undefined
   const open = controlled ? openProp : openState
   const setOpen = (v) => { if (controlled) { if (!v) onClose?.() } else setOpenState(v) }
@@ -79,9 +93,10 @@ export default function MelhorarPlano({ className = '', label = 'Melhorar plano'
                           <li key={i} className="flex items-start gap-2 text-[13px] text-stone-600"><Check className={clsx('w-4 h-4 shrink-0 mt-0.5', isPro ? 'text-primary-600' : 'text-emerald-600')} /> <span>{f}</span></li>
                         ))}
                       </ul>
-                      <a href={PLANO_CHECKOUT[k]} target="_blank" rel="noreferrer" className={clsx('w-full inline-flex items-center justify-center gap-2 rounded-xl min-h-[46px] text-sm font-semibold transition', isPro ? 'text-white bg-gradient-to-br from-primary-500 to-violet-600 shadow-md shadow-primary-600/25 hover:brightness-105' : 'border border-surface-200 text-stone-700 hover:border-primary-300 hover:text-primary-700')}>
-                        Assinar {PLANOS[k].nome}
-                      </a>
+                      <button onClick={() => assinar(k)} disabled={!!assinando} className={clsx('w-full inline-flex items-center justify-center gap-2 rounded-xl min-h-[46px] text-sm font-semibold transition disabled:opacity-60', isPro ? 'text-white bg-gradient-to-br from-primary-500 to-violet-600 shadow-md shadow-primary-600/25 hover:brightness-105' : 'border border-surface-200 text-stone-700 hover:border-primary-300 hover:text-primary-700')}>
+                        {assinando === k ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        {assinando === k ? 'Abrindo…' : `Assinar ${PLANOS[k].nome}`}
+                      </button>
                     </div>
                   )
                 })}
@@ -113,6 +128,17 @@ export default function MelhorarPlano({ className = '', label = 'Melhorar plano'
         )}
         </AnimatePresence>,
         document.body
+      )}
+      {checkoutSecret && (
+        <CheckoutModal
+          clientSecret={checkoutSecret}
+          onClose={() => setCheckoutSecret(null)}
+          onComplete={() => {
+            setCheckoutSecret(null)
+            toast.success('Assinatura confirmada! Seu plano é atualizado em instantes.')
+            setTimeout(() => window.location.reload(), 2500)
+          }}
+        />
       )}
     </>
   )

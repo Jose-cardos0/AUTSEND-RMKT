@@ -19,8 +19,12 @@ import astroFoguete from '../assets/astrosend/astro-foguete.png'
 import astroCurioso from '../assets/astrosend/astrocurioso.png'
 import ShootingStars from '../components/ShootingStars'
 import WhatsAppIcon from '../components/WhatsAppIcon'
-import { PLANOS, PLANO_CHECKOUT } from '../lib/plans'
+import EmbeddedCheckoutInline from '../components/EmbeddedCheckoutInline'
+import CheckoutModal from '../components/CheckoutModal'
+import { PLANOS } from '../lib/plans'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
+import { criarCheckoutPlano } from '../lib/perfil'
+import toast from 'react-hot-toast'
 
 // Demo interativo do funil (lazy: só carrega o React Flow quando aparece)
 const FunilDemoLazy = lazy(() => import('./FunilDemo'))
@@ -118,6 +122,28 @@ export default function Landing() {
   const navigate = useNavigate()
   const irLogin = () => navigate('/login')
   const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+
+  // Checkout de plano embutido: desktop expande uma div abaixo dos planos; celular abre popup.
+  const [assinandoPlano, setAssinandoPlano] = useState(null)
+  const [planoCheckout, setPlanoCheckout] = useState(null) // { plano, clientSecret }
+  const [ehMobile, setEhMobile] = useState(false)
+  const checkoutRef = useRef(null)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const upd = () => setEhMobile(mq.matches)
+    upd(); mq.addEventListener('change', upd)
+    return () => mq.removeEventListener('change', upd)
+  }, [])
+  const assinarPlano = async (k) => {
+    setAssinandoPlano(k)
+    try {
+      const r = await criarCheckoutPlano(k)
+      if (r?.clientSecret) {
+        setPlanoCheckout({ plano: k, clientSecret: r.clientSecret })
+        if (!ehMobile) setTimeout(() => checkoutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120)
+      } else toast.error('Não consegui abrir o checkout. Tente de novo.')
+    } catch (e) { toast.error(e?.message || 'Falha ao abrir o checkout.') } finally { setAssinandoPlano(null) }
+  }
 
   const [openFaq, setOpenFaq] = useState(0)
   // Efeito de digitação da frase: digita → espera 5s → apaga → repete
@@ -293,11 +319,38 @@ export default function Landing() {
                 {p.key === 'free' ? (
                   <button onClick={irLogin} className="w-full inline-flex items-center justify-center gap-2 rounded-xl min-h-[46px] text-sm font-semibold border border-surface-200 text-stone-700 bg-white/70 hover:border-primary-300 hover:text-primary-700 transition">Criar conta grátis</button>
                 ) : (
-                  <a href={PLANO_CHECKOUT[p.key]} target="_blank" rel="noreferrer" className={`w-full inline-flex items-center justify-center gap-2 rounded-xl min-h-[46px] text-sm font-semibold transition ${p.destaque ? 'text-white bg-gradient-to-br from-primary-500 to-violet-600 shadow-md shadow-primary-600/25 hover:brightness-105' : 'border border-surface-200 text-stone-700 bg-white/70 hover:border-primary-300 hover:text-primary-700'}`}>Assinar {PLANOS[p.key].nome}</a>
+                  <button onClick={() => assinarPlano(p.key)} disabled={!!assinandoPlano} className={`w-full inline-flex items-center justify-center gap-2 rounded-xl min-h-[46px] text-sm font-semibold transition disabled:opacity-60 ${p.destaque ? 'text-white bg-gradient-to-br from-primary-500 to-violet-600 shadow-md shadow-primary-600/25 hover:brightness-105' : 'border border-surface-200 text-stone-700 bg-white/70 hover:border-primary-300 hover:text-primary-700'}`}>
+                    {assinandoPlano === p.key ? 'Abrindo…' : `Assinar ${PLANOS[p.key].nome}`}
+                  </button>
                 )}
               </motion.div>
             ))}
           </div>
+
+          {/* Checkout embutido — desktop: expande aqui abaixo dos planos (com smooth scroll). */}
+          {!ehMobile && planoCheckout && (
+            <div ref={checkoutRef} className="mt-6 rounded-2xl border-2 border-primary-300 bg-white shadow-xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-surface-100 bg-primary-50/50">
+                <span className="text-sm font-bold text-stone-800">Assinar {PLANOS[planoCheckout.plano]?.nome} — pagamento seguro</span>
+                <button onClick={() => setPlanoCheckout(null)} className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100" title="Fechar"><ChevronDown className="w-4 h-4" /></button>
+              </div>
+              <div className="p-2 max-h-[80vh] overflow-y-auto scroll-y-soft">
+                <EmbeddedCheckoutInline
+                  clientSecret={planoCheckout.clientSecret}
+                  onComplete={() => { setPlanoCheckout(null); toast.success('Assinatura confirmada! Enviamos os dados de acesso no seu e-mail.') }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Checkout embutido — celular: popup. */}
+          {ehMobile && planoCheckout && (
+            <CheckoutModal
+              clientSecret={planoCheckout.clientSecret}
+              onClose={() => setPlanoCheckout(null)}
+              onComplete={() => { setPlanoCheckout(null); toast.success('Assinatura confirmada! Enviamos os dados de acesso no seu e-mail.') }}
+            />
+          )}
 
           {/* Plano Business — horizontal, fala com o suporte no WhatsApp */}
           <motion.a

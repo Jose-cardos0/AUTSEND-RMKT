@@ -2933,6 +2933,38 @@ function planoDoPriceStripe(priceId) {
   return null
 }
 
+/**
+ * Checkout EMBUTIDO de PLANO (assinatura). Funciona logado (upgrade no app) OU deslogado (landing) —
+ * nesse caso a Stripe coleta o e-mail e o webhook cria a conta (garantirUsuarioKiwify). Devolve clientSecret.
+ */
+exports.planoCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const plano = String(request.data?.plano || '')
+  const price = { inicial: process.env.STRIPE_PRICE_INICIAL, padrao: process.env.STRIPE_PRICE_PADRAO, pro: process.env.STRIPE_PRICE_PRO }[plano]
+  if (!price) throw new HttpsError('invalid-argument', 'Plano inválido.')
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) throw new HttpsError('failed-precondition', 'Checkout de plano ainda não configurado.')
+  const stripe = require('stripe')(key)
+  // Se logado (upgrade), anexa cliente/e-mail; senão a Stripe coleta o e-mail no próprio checkout.
+  let customer, email
+  const uid = request.auth?.uid
+  if (uid) {
+    try { const s = await db.doc(`tenants/${uid}`).get(); const t = s.exists ? s.data() : {}; if (t.stripeCustomerId) customer = t.stripeCustomerId; email = (request.auth?.token?.email || t.email || '').toLowerCase() || undefined } catch (_) {}
+  }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      ui_mode: 'embedded_page',
+      mode: 'subscription',
+      line_items: [{ price, quantity: 1 }],
+      ...(customer ? { customer } : (email ? { customer_email: email } : {})),
+      redirect_on_completion: 'never',
+    })
+    return { clientSecret: session.client_secret }
+  } catch (e) {
+    console.error('planoCriarCheckout', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout do plano.')
+  }
+})
+
 /** Extrai CPF/CNPJ do checkout (tax id ou custom field) — usado no Termo. */
 function extrairDocumentoStripe(session) {
   try {
