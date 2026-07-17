@@ -1498,7 +1498,7 @@ exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds
   const meta = { tipo: 'credito_sms', uid, quantidade: String(pacote.quantidade) }
   try {
     const session = await stripe.checkout.sessions.create({
-      ui_mode: 'embedded',
+      ui_mode: 'embedded_page',
       mode: 'payment',
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
@@ -1569,7 +1569,7 @@ exports.emailCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSecon
   const meta = { tipo: 'credito_email', uid, quantidade: String(pacote.quantidade) }
   try {
     const session = await stripe.checkout.sessions.create({
-      ui_mode: 'embedded',
+      ui_mode: 'embedded_page',
       mode: 'payment',
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
@@ -1678,7 +1678,7 @@ exports.callCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSecond
   const meta = { tipo: 'credito_call', uid, segundos: String(pacote.segundos) }
   try {
     const session = await stripe.checkout.sessions.create({
-      ui_mode: 'embedded',
+      ui_mode: 'embedded_page',
       mode: 'payment',
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
