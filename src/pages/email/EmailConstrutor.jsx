@@ -260,6 +260,24 @@ export default function EmailConstrutor() {
       } catch (_) {}
     })
 
+    // Sempre que o gerenciador de imagens ABRIR (botão Imagens, imagem de fundo, etc.),
+    // carrega as imagens do Storage do usuário (uma vez), com loading do foguetinho.
+    editor.on('asset:open', async () => {
+      if (assetsCarregados.current) return
+      const uid = uidRef.current
+      if (!uid) return
+      setCarregandoImgs(true)
+      try {
+        const assets = await listEmailAssets(uid)
+        if (assets.length) editor.AssetManager.add(assets)
+        assetsCarregados.current = true
+      } catch (_) {
+        toast.error('Não consegui carregar suas imagens. Tente de novo.')
+      } finally {
+        setCarregandoImgs(false)
+      }
+    })
+
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
       const src = asset?.get?.('src') || asset?.src
@@ -428,24 +446,11 @@ export default function EmailConstrutor() {
     setShowPreview(true)
   }
 
-  // Abre a galeria de imagens (upload direto pro Storage do usuário).
-  // Carrega as imagens de forma lazy na 1ª vez, mostrando o loading até aparecerem.
-  const abrirImagens = async () => {
-    const editor = editorRef.current
-    if (!editor) return
-    editor.runCommand('open-assets')
-    if (assetsCarregados.current || !user?.uid) return
-    setCarregandoImgs(true)
-    try {
-      const assets = await listEmailAssets(user.uid)
-      const ed = editorRef.current
-      if (ed && assets.length) ed.AssetManager.add(assets)
-      assetsCarregados.current = true
-    } catch (_) {
-      toast.error('Não consegui carregar suas imagens. Tente de novo.')
-    } finally {
-      setCarregandoImgs(false)
-    }
+  // Abre a galeria de imagens. O carregamento (lazy + loading) acontece no
+  // handler 'asset:open' na init — assim funciona por QUALQUER caminho que abra
+  // o gerenciador (botão Imagens, imagem de fundo no Estilo, etc.).
+  const abrirImagens = () => {
+    editorRef.current?.runCommand('open-assets')
   }
 
   // Abre o modal de código já preenchido com o HTML atual do editor (ver/editar/colar)
