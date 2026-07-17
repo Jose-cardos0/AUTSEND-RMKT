@@ -144,7 +144,7 @@ const BLOCOS = [
   },
   {
     id: 'e-ia', label: 'IA', category: CAT_PRONTO,
-    media: ic('<path d="M9.94 14.06 5 19l-2-2 4.94-4.94"/><path d="m14 6 4 4"/><path d="M12 3v2M19 5l-1.4 1.4M21 12h-2M5 12H3M6.4 6.4 5 5M12 3l1.2 3.2L16 7.4l-2.8 1.2L12 12l-1.2-3.4L8 7.4l2.8-1.2Z"/>'),
+    media: ic('<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>'),
     content: '<div class="am-drop" style="padding:20px;text-align:center;font-family:Arial,sans-serif;color:#7c3aed;">Escolha um bloco IA…</div>',
   },
 ]
