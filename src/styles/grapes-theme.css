@@ -174,23 +174,35 @@
 .gjs-editor select, .am-panel select { background-color: #ffffff !important; color: #44403c !important; }
 .gjs-editor select option, .am-panel select option { background-color: #ffffff !important; color: #44403c !important; }
 
-/* ── Color picker (Spectrum) claro, arredondado, por cima E abrindo pra ESQUERDA (não quebra a tela) ── */
+/* ── Color picker (Spectrum) reestilizado: maior, claro, sem bordas pretas, abre pra esquerda ── */
 .sp-container {
   background-color: #ffffff !important;
   border: 1px solid #e7e5e4 !important;
   border-radius: 14px !important;
   box-shadow: 0 18px 44px -12px rgba(0,0,0,.35) !important;
-  padding: 10px !important;
+  padding: 12px !important;
+  width: auto !important;
   z-index: 100000 !important;
   transform: translateX(-100%) translateX(28px) !important;
 }
 .sp-container.sp-dark { color: #44403c !important; }
-.sp-top, .sp-color, .sp-hue, .sp-clear, .sp-fill { border-radius: 8px !important; }
-.sp-picker-container { border-left: 0 !important; }
-.sp-input { border: 1px solid #e7e5e4 !important; border-radius: 8px !important; background: #fff !important; color: #44403c !important; }
+/* Área maior do seletor SV + matiz */
+.sp-picker-container { width: 236px !important; height: 172px !important; border: 0 !important; padding: 0 !important; }
+.sp-top { margin-bottom: 10px !important; }
+/* Tira TODAS as bordas pretas do Spectrum e arredonda */
+.sp-color, .sp-hue, .sp-clear, .sp-alpha-inner, .sp-alpha, .sp-preview, .sp-preview-inner, .sp-initial, .sp-thumb-el {
+  border-color: #e7e5e4 !important;
+}
+.sp-color { border-radius: 10px !important; overflow: hidden !important; right: 26px !important; }
+.sp-hue { border-radius: 8px !important; overflow: hidden !important; width: 18px !important; }
+.sp-slider { height: 6px !important; border: 2px solid #fff !important; border-radius: 3px !important; box-shadow: 0 0 0 1px rgba(0,0,0,.25) !important; }
+.sp-dragger { border-radius: 50% !important; border: 2px solid #fff !important; box-shadow: 0 0 0 1px rgba(0,0,0,.35) !important; height: 12px !important; width: 12px !important; }
+.sp-input { border: 1px solid #e7e5e4 !important; border-radius: 8px !important; background: #fff !important; color: #44403c !important; height: 32px !important; }
+.sp-button-container { margin-top: 8px !important; }
 .sp-button-container .sp-cancel { color: #78716c !important; }
-.sp-button-container .sp-choose { background-color: #7c3aed !important; color: #fff !important; border: 0 !important; border-radius: 8px !important; text-shadow: none !important; }
-.sp-palette-container { border-right: 1px solid #e7e5e4 !important; }
+.sp-button-container .sp-choose { background: #7c3aed !important; color: #fff !important; border: 0 !important; border-radius: 8px !important; padding: 6px 16px !important; text-shadow: none !important; }
+.sp-palette-container { display: none !important; }
+.sp-cancel { text-decoration: none !important; }
 
 /* ── CATCH-ALL: força TODO fundo estrutural do editor pra claro (fim das faixas pretas) ── */
 .gjs-editor,
