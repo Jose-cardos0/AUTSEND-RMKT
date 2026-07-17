@@ -138,7 +138,7 @@ const BLOCOS = [
   // ── Pré-pronto ── (ao soltar, abre um popup pra escolher um bloco DTC pronto)
   {
     id: 'e-dtc', label: 'DTC', category: CAT_PRONTO,
-    media: ic('<rect x="3" y="4" width="4.5" height="16" rx="1"/><rect x="9.75" y="4" width="4.5" height="16" rx="1"/><rect x="16.5" y="4" width="4.5" height="16" rx="1"/>'),
+    media: ic('<rect x="9" y="2" width="6" height="3" rx="1"/><path d="M9 5h6v1.6c0 .5.2 1 .6 1.4.9.9 1.4 2.1 1.4 3.4V19a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v-5.6c0-1.3.5-2.5 1.4-3.4.4-.4.6-.9.6-1.4V5z"/><path d="M7.5 13h9"/>'),
     content: '<div class="am-drop" style="padding:20px;text-align:center;font-family:Arial,sans-serif;color:#7c3aed;">Escolha um bloco DTC…</div>',
   },
 ]
