@@ -6,7 +6,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { signInWithCustomToken } from 'firebase/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, adminGetClienteGastos, adminGetClienteConectados, adminResetTermos, ADMIN_EMAIL } from '../lib/admin'
+import { adminListClientes, adminGetClienteDetalhe, adminUpdateCliente, adminSetKillSwitch, healthDoCliente, STATUS_INFO, admin2faStatus, admin2faSetup, admin2faConfirm, admin2faVerify, admin2faDisable, adminImpersonar, adminGetKiwifyConfig, adminSetKiwifyConfig, adminStripePlanos, adminReembolsarCliente, adminSetRiscoConta, adminSetInstanciaBloqueada, adminGetClienteCredito, adminGetClienteGastos, adminGetClienteConectados, adminResetTermos, adminGetSecurityReport, adminRunSecurityScan, adminMarkSecuritySeen, ADMIN_EMAIL } from '../lib/admin'
 import { PLANOS, PLANO_ORDEM, planoEfetivo, LIMITE_LABELS } from '../lib/plans'
 
 // Limites editáveis no admin (espelho do whitelist do backend adminUpdateCliente).
@@ -18,7 +18,7 @@ import CollapsibleSearch from '../components/CollapsibleSearch'
 import { useConfirm } from '../components/ConfirmDialog'
 import {
   Users, ShieldCheck, ShieldAlert, Pause, Ban, CheckCircle2, Power, RefreshCw, Filter,
-  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink, Wallet, Receipt, Plug, Send,
+  X, ChevronLeft, ChevronRight, ChevronDown, Loader2, Mail, TrendingDown, AlertTriangle, Save, KeyRound, Smartphone, Lock, LogIn, Crown, ShoppingBag, FileText, Eye, ExternalLink, Wallet, Receipt, Plug, Send, ArrowUpDown, ArrowUp, ArrowDown, ShieldAlert as ShieldAlertIcon, Skull,
 } from 'lucide-react'
 
 const POR_PAGINA = 12
@@ -45,19 +45,85 @@ const MOV_META = {
 const fmtDate = (v) => { if (!v) return '—'; const d = new Date(v); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR') }
 const fmtDateMs = (ms) => { if (!ms) return '—'; const d = new Date(ms); return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
 
-function StatCard({ icon: Icon, label, value, tint = 'stone' }) {
-  const tints = { stone: 'text-stone-400', emerald: 'text-emerald-500', amber: 'text-amber-500', rose: 'text-rose-500' }
+function StatCard({ icon: Icon, label, value, tint = 'stone', onClick, active }) {
+  const tints = { stone: 'text-stone-400', emerald: 'text-emerald-500', amber: 'text-amber-500', rose: 'text-rose-500', sky: 'text-sky-500', violet: 'text-violet-500' }
   return (
-    <div className="relative overflow-hidden app-panel rounded-2xl p-4">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative overflow-hidden app-panel rounded-2xl p-4 text-left w-full transition ${onClick ? 'hover:ring-2 hover:ring-primary-200 cursor-pointer' : 'cursor-default'} ${active ? 'ring-2 ring-primary-400' : ''}`}
+    >
       <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400">{label}</p>
       <p className="text-2xl font-bold text-stone-800 tabular-nums mt-1">{value}</p>
       <Icon className={`pointer-events-none absolute -right-3 -bottom-4 w-20 h-20 opacity-[0.12] ${tints[tint]}`} strokeWidth={1.5} />
-    </div>
+    </button>
   )
 }
 
 // Sua própria conta admin: aparece na lista, mas é somente leitura (não dá pra banir/mexer).
 const ehAdminCliente = (c) => (c?.email || '').toLowerCase() === (ADMIN_EMAIL || '').toLowerCase()
+
+const NIVEL_META = {
+  critico: { label: 'CRÍTICO', cls: 'bg-rose-100 text-rose-700 border-rose-300', dot: 'bg-rose-500', icon: Skull },
+  alto: { label: 'ALTO', cls: 'bg-orange-100 text-orange-700 border-orange-300', dot: 'bg-orange-500', icon: ShieldAlertIcon },
+  medio: { label: 'MÉDIO', cls: 'bg-amber-100 text-amber-700 border-amber-300', dot: 'bg-amber-500', icon: AlertTriangle },
+}
+
+// Página LOGS SECURITY: fiscalização de risco (financeiro/jurídico/abuso) por cliente.
+function SecurityView({ report, carregando, onScan, onAbrirCliente }) {
+  const alertas = report?.alertas || []
+  return (
+    <div className="app-panel rounded-2xl overflow-hidden">
+      <div className="px-4 sm:px-5 py-3 border-b border-surface-100 flex items-center justify-between gap-3 flex-wrap">
+        <span className="flex items-center gap-2 text-sm font-semibold text-stone-800">
+          <ShieldAlertIcon className="w-4 h-4 text-rose-600" /> Logs Security — fiscalização de risco
+        </span>
+        <div className="flex items-center gap-3">
+          {report?.geradoEmMs ? <span className="text-[11px] text-stone-400">Última análise: {fmtDateMs(report.geradoEmMs)}</span> : null}
+          <button onClick={onScan} disabled={carregando} className="text-xs font-medium text-primary-600 hover:underline inline-flex items-center gap-1 disabled:opacity-50">
+            {carregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Rodar análise agora
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 p-4">
+        <div className="rounded-xl border border-rose-200 bg-rose-50/50 px-3 py-2 text-center"><span className="block text-2xl font-bold text-rose-700 tabular-nums">{report?.criticos ?? 0}</span><span className="block text-[10px] uppercase text-rose-700/70">Críticos</span></div>
+        <div className="rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-2 text-center"><span className="block text-2xl font-bold text-orange-700 tabular-nums">{report?.altos ?? 0}</span><span className="block text-[10px] uppercase text-orange-700/70">Altos</span></div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50/40 px-3 py-2 text-center"><span className="block text-2xl font-bold text-amber-700 tabular-nums">{report?.medios ?? 0}</span><span className="block text-[10px] uppercase text-amber-700/70">Médios</span></div>
+      </div>
+
+      <div className="px-4 pb-4 space-y-2">
+        {carregando && alertas.length === 0 ? (
+          <p className="text-xs text-stone-400 py-8 text-center">Analisando clientes…</p>
+        ) : alertas.length === 0 ? (
+          <p className="text-sm text-emerald-600 py-8 text-center flex items-center justify-center gap-2"><ShieldCheck className="w-5 h-5" /> Nenhum cliente em risco no momento. Tudo limpo.</p>
+        ) : alertas.map((a) => {
+          const m = NIVEL_META[a.nivel] || NIVEL_META.medio
+          const Icon = m.icon
+          return (
+            <button key={a.uid} onClick={() => onAbrirCliente(a.uid)} className={`w-full text-left rounded-xl border p-3 hover:ring-2 hover:ring-primary-200 transition ${m.cls}`}>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <span className="flex items-center gap-2 min-w-0">
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="font-semibold text-stone-800 truncate">{a.nome || a.email || a.uid}</span>
+                  <span className="text-[11px] text-stone-500 truncate hidden sm:inline">{a.email}</span>
+                </span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-white/70 capitalize">{a.plano}</span>
+                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${m.cls}`}>{m.label} · {a.score}</span>
+                </span>
+              </div>
+              <ul className="text-[11px] text-stone-600 space-y-0.5 list-disc list-inside">
+                {(a.motivos || []).map((mo, i) => <li key={i}>{mo}</li>)}
+              </ul>
+              <p className="text-[10px] text-stone-500 mt-1.5">Mês: custo {fmtBRL(a.custoMes)} · receita {fmtBRL(a.receitaMes)} · <span className={a.receitaMes - a.custoMes < 0 ? 'text-rose-600 font-semibold' : ''}>lucro {fmtBRL(a.receitaMes - a.custoMes)}</span></p>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export default function Admin() {
   const [user] = useAuthState(auth)
@@ -69,6 +135,11 @@ export default function Admin() {
   const [erro, setErro] = useState('')
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState('todos')
+  const [sortBy, setSortBy] = useState(null) // coluna de ordenação
+  const [sortDir, setSortDir] = useState('asc')
+  const [view, setView] = useState('clientes') // 'clientes' | 'security'
+  const [secReport, setSecReport] = useState(null)
+  const [carregandoSec, setCarregandoSec] = useState(false)
   const [pagina, setPagina] = useState(1)
   const [sel, setSel] = useState(null) // cliente aberto
   const [detalhe, setDetalhe] = useState(null) // { tenant, disparos, leadsCount, reclamacoes }
@@ -158,14 +229,35 @@ export default function Admin() {
   }
   useEffect(() => { carregar() }, [user?.uid])
 
+  // Relatório de segurança (bolinha vermelha + página Logs Security).
+  const carregarSec = (scan = false) => {
+    setCarregandoSec(true)
+    const p = scan ? adminRunSecurityScan().then(() => adminGetSecurityReport()) : adminGetSecurityReport()
+    p.then((r) => setSecReport(r)).catch(() => {}).finally(() => setCarregandoSec(false))
+  }
+  useEffect(() => { if (user?.uid) adminGetSecurityReport().then(setSecReport).catch(() => {}) }, [user?.uid])
+
+  const abrirSecurity = () => {
+    setView('security')
+    if (!secReport || secReport.geradoEmMs == null) carregarSec(false)
+    adminMarkSecuritySeen().then(() => setSecReport((r) => (r ? { ...r, naoVisto: false } : r))).catch(() => {})
+  }
+
   const stats = useMemo(() => {
     const total = clientes.length
     const aprovados = clientes.filter((c) => c.status === 'approved').length
     const pendentes = clientes.filter((c) => c.status === 'pending').length
     const travados = clientes.filter((c) => c.status === 'paused' || c.status === 'banned').length
     const risco = clientes.filter((c) => healthDoCliente(c) === 'red').length
-    return { total, aprovados, pendentes, travados, risco }
+    const porPlano = { free: 0, inicial: 0, padrao: 0, pro: 0 }
+    clientes.forEach((c) => { const p = c.plano || 'free'; if (porPlano[p] != null) porPlano[p]++ })
+    return { total, aprovados, pendentes, travados, risco, porPlano }
   }, [clientes])
+
+  const toggleSort = (col) => {
+    if (sortBy === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortBy(col); setSortDir(col === 'consumoMes' || col === 'complaintRate' || col === 'ultimoLogin' ? 'desc' : 'asc') }
+  }
 
   const filtrados = useMemo(() => {
     let list = clientes
@@ -173,9 +265,26 @@ export default function Admin() {
     if (q) list = list.filter((c) => (c.email || '').toLowerCase().includes(q) || (c.nome || '').toLowerCase().includes(q))
     if (filtro === 'pending' || filtro === 'approved' || filtro === 'paused' || filtro === 'banned') list = list.filter((c) => c.status === filtro)
     else if (filtro === 'risco') list = list.filter((c) => healthDoCliente(c) === 'red')
+    else if (['free', 'inicial', 'padrao', 'pro'].includes(filtro)) list = list.filter((c) => (c.plano || 'free') === filtro)
+    if (sortBy) {
+      const HR = { green: 0, yellow: 1, red: 2 }
+      const val = (c) => {
+        switch (sortBy) {
+          case 'nome': return (c.nome || c.email || '').toLowerCase()
+          case 'status': return c.status || ''
+          case 'plano': return PLANO_ORDEM.indexOf(c.plano || 'free')
+          case 'consumoMes': return Number(c.consumoMes) || 0
+          case 'saude': return HR[healthDoCliente(c)] || 0
+          case 'complaintRate': return Number(c.complaintRate) || 0
+          case 'ultimoLogin': return c.ultimoLogin ? new Date(c.ultimoLogin).getTime() : 0
+          default: return 0
+        }
+      }
+      list = [...list].sort((a, b) => { const va = val(a), vb = val(b); if (va < vb) return sortDir === 'asc' ? -1 : 1; if (va > vb) return sortDir === 'asc' ? 1 : -1; return 0 })
+    }
     return list
-  }, [clientes, busca, filtro])
-  useEffect(() => { setPagina(1) }, [busca, filtro])
+  }, [clientes, busca, filtro, sortBy, sortDir])
+  useEffect(() => { setPagina(1) }, [busca, filtro, sortBy, sortDir])
 
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA))
   const paginaAtual = Math.min(pagina, totalPaginas)
@@ -386,6 +495,10 @@ export default function Admin() {
       title="Clientes"
       right={
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button onClick={() => (view === 'security' ? setView('clientes') : abrirSecurity())} className={`relative inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-3.5 min-h-[44px] border transition-colors ${view === 'security' ? 'border-rose-300 bg-rose-50 text-rose-700' : 'border-surface-200 bg-white text-stone-600 hover:border-rose-300 hover:text-rose-600'}`} title="Fiscalização de risco dos clientes">
+            <ShieldAlertIcon className="w-4 h-4" /> {view === 'security' ? 'Ver clientes' : 'Logs Security'}
+            {secReport?.naoVisto && view !== 'security' && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white animate-pulse" />}
+          </button>
           <button onClick={abrirKiwify} className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-3.5 min-h-[44px] border border-surface-200 bg-white text-stone-600 hover:border-primary-300 hover:text-primary-600 transition-colors" title="Onboarding Stripe (planos + e-mail de boas-vindas)">
             <ShoppingBag className="w-4 h-4" /> Stripe
           </button>
@@ -406,19 +519,26 @@ export default function Admin() {
         </div>
       )}
 
+      {view === 'security' ? (
+        <SecurityView report={secReport} carregando={carregandoSec} onScan={() => carregarSec(true)} onAbrirCliente={(uid) => { const c = clientes.find((x) => x.uid === uid); if (c) abrir(c) }} />
+      ) : (
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
       {/* Lateral esquerda */}
       <aside className="lg:w-40 xl:w-44 shrink-0 lg:order-1">
         <div className="lg:sticky lg:top-24 grid grid-cols-2 lg:grid-cols-1 gap-3">
-          <StatCard icon={Users} label="Clientes" value={fmtNum(stats.total)} tint="stone" />
-          <StatCard icon={ShieldCheck} label="Aprovados" value={fmtNum(stats.aprovados)} tint="emerald" />
+          <StatCard icon={Users} label="Clientes" value={fmtNum(stats.total)} tint="stone" onClick={() => setFiltro('todos')} active={filtro === 'todos'} />
+          <StatCard icon={ShieldCheck} label="Aprovados" value={fmtNum(stats.aprovados)} tint="emerald" onClick={() => setFiltro('approved')} active={filtro === 'approved'} />
+          <StatCard icon={Crown} label="Free" value={fmtNum(stats.porPlano.free)} tint="stone" onClick={() => setFiltro('free')} active={filtro === 'free'} />
+          <StatCard icon={Crown} label="Padrão" value={fmtNum(stats.porPlano.padrao)} tint="sky" onClick={() => setFiltro('padrao')} active={filtro === 'padrao'} />
+          <StatCard icon={Crown} label="Pro" value={fmtNum(stats.porPlano.pro)} tint="violet" onClick={() => setFiltro('pro')} active={filtro === 'pro'} />
         </div>
       </aside>
       {/* Lateral direita */}
       <aside className="lg:w-40 xl:w-44 shrink-0 lg:order-3">
         <div className="lg:sticky lg:top-24 grid grid-cols-2 lg:grid-cols-1 gap-3">
-          <StatCard icon={Pause} label="Pausados / banidos" value={fmtNum(stats.travados)} tint="amber" />
-          <StatCard icon={TrendingDown} label="Em risco" value={fmtNum(stats.risco)} tint="rose" />
+          <StatCard icon={Crown} label="Inicial" value={fmtNum(stats.porPlano.inicial)} tint="emerald" onClick={() => setFiltro('inicial')} active={filtro === 'inicial'} />
+          <StatCard icon={Pause} label="Pausados / banidos" value={fmtNum(stats.travados)} tint="amber" onClick={() => setFiltro('paused')} active={filtro === 'paused'} />
+          <StatCard icon={TrendingDown} label="Em risco" value={fmtNum(stats.risco)} tint="rose" onClick={() => setFiltro('risco')} active={filtro === 'risco'} />
         </div>
       </aside>
 
@@ -455,8 +575,14 @@ export default function Admin() {
             <table className="w-full text-sm min-w-[860px]">
               <thead>
                 <tr className="border-b border-surface-100 text-left text-stone-500">
-                  {['Cliente', 'Status', 'Plano', 'Uso do mês', 'Saúde', 'Reclamação', 'Último acesso', ''].map((h, i) => (
-                    <th key={i} className="px-4 py-2.5 font-medium text-xs whitespace-nowrap">{h}</th>
+                  {[['Cliente', 'nome'], ['Status', 'status'], ['Plano', 'plano'], ['Uso do mês', 'consumoMes'], ['Saúde', 'saude'], ['Reclamação', 'complaintRate'], ['Último acesso', 'ultimoLogin'], ['', '']].map(([h, key], i) => (
+                    <th key={i} className="px-4 py-2.5 font-medium text-xs whitespace-nowrap">
+                      {key ? (
+                        <button onClick={() => toggleSort(key)} className={`inline-flex items-center gap-1 hover:text-stone-700 ${sortBy === key ? 'text-primary-600' : ''}`}>
+                          {h} {sortBy === key ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                        </button>
+                      ) : h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -502,7 +628,8 @@ export default function Admin() {
         )}
       </div>
       </div>{/* fim do meio */}
-      </div>{/* fim do layout lateral */}
+      </div>
+      )}
       </div>{/* fim do wrapper */}
 
       {/* Perfil do cliente */}

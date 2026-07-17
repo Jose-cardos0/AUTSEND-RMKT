@@ -4,7 +4,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall } from 'lucide-react'
 import { auth } from '../lib/firebase'
-import { isAdmin } from '../lib/admin'
+import { isAdmin, adminGetSecurityReport } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
 import { ROTA_FEATURE } from '../lib/plans'
 import { signOut } from 'firebase/auth'
@@ -120,7 +120,7 @@ const isGroupActive = (group, pathname) =>
   allGroupItems(group).some((it) => pathname === it.to || pathname.startsWith(it.to + '/'))
 
 // Item usado no menu mobile (drawer).
-function ItemLink({ to, label, icon: Icon, soon, locked, onNavigate, onLocked }) {
+function ItemLink({ to, label, icon: Icon, soon, locked, badge, onNavigate, onLocked }) {
   if (locked) {
     return (
       <button type="button" onClick={onLocked} title="Disponível em planos superiores"
@@ -146,6 +146,7 @@ function ItemLink({ to, label, icon: Icon, soon, locked, onNavigate, onLocked })
     >
       <Icon className="w-4 h-4 opacity-90 shrink-0" />
       <span className="flex-1">{label}</span>
+      {badge && <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" title="Alertas de segurança" />}
       {soon && (
         <span className="text-[9px] font-bold uppercase tracking-wider text-amber-600 bg-amber-100/80 px-1.5 py-0.5 rounded-full shrink-0">
           Em breve
@@ -185,6 +186,7 @@ function SubItemLink({ item, onLocked }) {
           <span className={clsx('absolute -left-[13px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full transition-colors', isActive ? 'bg-primary-600' : 'bg-transparent')} />
           <SubIcon className="w-4 h-4 shrink-0 opacity-90" />
           <span className="flex-1">{item.label}</span>
+          {item.badge && <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" title="Alertas de segurança" />}
         </>
       )}
     </NavLink>
@@ -314,7 +316,17 @@ export default function Layout() {
   const outlet = useOutlet()
   const [authUser] = useAuthState(auth)
   const { temFeature, fotoURL, temSmsApi } = usePlano()
-  const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroup] : navGroups
+  const [secAlerta, setSecAlerta] = useState(false)
+  useEffect(() => {
+    if (!isAdmin(authUser)) return
+    let vivo = true
+    const puxar = () => adminGetSecurityReport().then((r) => { if (vivo) setSecAlerta(!!r?.naoVisto) }).catch(() => {})
+    puxar()
+    const id = setInterval(puxar, 5 * 60 * 1000) // re-checa a cada 5 min
+    return () => { vivo = false; clearInterval(id) }
+  }, [authUser?.uid])
+  const adminGroupBadge = { ...adminGroup, items: adminGroup.items.map((it) => ({ ...it, badge: secAlerta })) }
+  const baseGroups = isAdmin(authUser) ? [...navGroups, adminGroupBadge] : navGroups
   // Mostra TUDO no menu; o que o plano não libera vira bloqueado (cadeado + popup de upgrade).
   const podeItem = (it) => { const f = ROTA_FEATURE[it.to]; return !f || temFeature(f) }
   const marcar = (it) => ({ ...it, locked: !podeItem(it) })

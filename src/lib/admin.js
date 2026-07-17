@@ -45,6 +45,9 @@ export async function adminGetClienteCredito(uid) { return (await call('adminGet
 export async function adminGetClienteGastos(uid) { return (await call('adminGetClienteGastos')({ uid })).data }
 export async function adminGetClienteConectados(uid) { return (await call('adminGetClienteConectados')({ uid })).data }
 export async function adminResetTermos(uid) { return (await call('adminResetTermos')({ uid })).data }
+export async function adminGetSecurityReport() { return (await call('adminGetSecurityReport')()).data }
+export async function adminRunSecurityScan() { return (await call('adminRunSecurityScan')()).data }
+export async function adminMarkSecuritySeen() { return (await call('adminMarkSecuritySeen')()).data }
 
 // Saúde do cliente pelo % de reclamação/bounce (limiares dos provedores).
 export function healthDoCliente(c) {

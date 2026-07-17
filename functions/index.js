@@ -4708,6 +4708,131 @@ exports.adminResetTermos = onCall({ region: 'us-central1' }, async (request) => 
   return { ok: true }
 })
 
+// ───────────────────────── Fiscalização de segurança (LOGS SECURITY) ─────────────────────────
+
+/** Calcula o risco (score + motivos) de UM cliente: financeiro, jurídico e abuso. */
+async function scanRiscoTenant(uid, t) {
+  const motivos = []
+  let score = 0
+  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0, 0, 0, 0)
+  const inicioMesMs = inicioMes.getTime()
+  const agora = Date.now()
+  const mesStr = `${inicioMes.getFullYear()}-${String(inicioMes.getMonth() + 1).padStart(2, '0')}`
+  const somaMes = async (col, campo) => {
+    let total = 0
+    try { const s = await db.collection(`users/${uid}/${col}`).get(); s.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicioMesMs) total += Number(x[campo]) || 0 }) } catch (_) {}
+    return total
+  }
+
+  // 1) Overrides que ELEVAM limite acima do plano (alguém bumpou os limites do cliente).
+  const ov = (t.overrides && t.overrides.limites) || {}
+  const base = PLAN_LIMITS[t.plano] || PLAN_LIMITS.free
+  for (const k of Object.keys(ov)) {
+    if (Number(ov[k]) > Number(base[k] || 0)) { motivos.push(`Limite '${k}' custom ACIMA do plano (${ov[k]} vs ${base[k] || 0})`); score += 20 }
+  }
+
+  // 2) Custo (nós) x Receita do mês → margem negativa = prejuízo.
+  const emailsMes = await somaMes('emailDisparos', 'enviados')
+  const smsMes = await somaMes('smsDisparos', 'enviados')
+  let callMinMes = 0
+  try { const s = await db.collection(`users/${uid}/callLogs`).get(); s.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicioMesMs) callMinMes += (Number(x.segundos) || 0) / 60 }) } catch (_) {}
+  const iaMes = Number((t.iaUso || {})[mesStr] || 0)
+  let instQtd = 0
+  try { instQtd = (await db.collection(`users/${uid}/instances`).count().get()).data().count } catch (_) {}
+  const custoMes = emailsMes * CUSTOS_UNIT.email + smsMes * CUSTOS_UNIT.sms + callMinMes * CUSTOS_UNIT.callMin + iaMes * CUSTOS_UNIT.ia + instQtd * CUSTOS_UNIT.instanciaMes
+
+  // 3) Reclamação/bounce (spam) → risco de BAN da conta Resend compartilhada (financeiro + reputação).
+  let complained = 0, bounced = 0, enviadosTotal = 0
+  try { const s = await db.collection(`users/${uid}/emailDisparos`).get(); s.forEach((d) => { enviadosTotal += Number(d.data()?.enviados) || 0 }) } catch (_) {}
+  try { complained = (await db.collection(`users/${uid}/emailEvents`).where('tipo', '==', 'complained').count().get()).data().count } catch (_) {}
+  try { bounced = (await db.collection(`users/${uid}/emailEvents`).where('tipo', '==', 'bounced').count().get()).data().count } catch (_) {}
+  const compRate = enviadosTotal > 0 ? (complained / enviadosTotal) * 100 : 0
+  const bounceRate = enviadosTotal > 0 ? (bounced / enviadosTotal) * 100 : 0
+  if (compRate >= 0.1) { motivos.push(`Reclamação de spam ALTA (${compRate.toFixed(2)}%) — pode derrubar nossa conta Resend`); score += 30 }
+  else if (compRate >= 0.05) { motivos.push(`Reclamação de spam subindo (${compRate.toFixed(2)}%)`); score += 15 }
+  if (bounceRate >= 5) { motivos.push(`Bounce alto (${bounceRate.toFixed(1)}%) — lista suja`); score += 20 }
+
+  // 4) Faturamento: chargebacks, reembolsos, rajada de compras (teste de cartão), receita do mês.
+  let receitaMes = 0, chargebacks = 0, reembolsos = 0, compras24h = 0
+  try {
+    const s = await db.collection(`tenants/${uid}/faturamento`).get()
+    s.forEach((d) => {
+      const x = d.data(); const v = Number(x.valor) || 0; const em = x.em?.toMillis ? x.em.toMillis() : (x.em || 0)
+      if (x.tipo === 'chargeback') chargebacks++
+      if (x.tipo === 'reembolso') reembolsos++
+      if (v > 0 && em >= inicioMesMs) receitaMes += v
+      if (v > 0 && em >= agora - 86400000) compras24h++
+    })
+  } catch (_) {}
+  if (chargebacks > 0) { motivos.push(`${chargebacks} CHARGEBACK(s) na Stripe — risco jurídico/financeiro`); score += 40 * chargebacks }
+  if (reembolsos > 0) { motivos.push(`${reembolsos} reembolso(s)`); score += 10 * reembolsos }
+  if (compras24h >= 4) { motivos.push(`${compras24h} compras em 24h — possível teste de cartão/fraude`); score += 25 }
+
+  // 5) Margem negativa.
+  if (custoMes > receitaMes && custoMes > 5) { motivos.push(`Custo do mês (R$${custoMes.toFixed(2)}) MAIOR que a receita (R$${receitaMes.toFixed(2)}) — prejuízo`); score += 20 }
+
+  // 6) Marcado pelo setor de risco.
+  if (t.risco && (t.risco.pausadoPorRisco || t.risco.override)) { motivos.push('Marcado pelo setor de risco'); score += 15 }
+
+  const nivel = score >= 60 ? 'critico' : score >= 30 ? 'alto' : score >= 15 ? 'medio' : 'ok'
+  return { score, nivel, motivos, custoMes: Number(custoMes.toFixed(2)), receitaMes: Number(receitaMes.toFixed(2)) }
+}
+
+/** Roda a varredura em TODOS os clientes e grava o relatório em config/securityReport. */
+async function rodarSecurityScan() {
+  const snap = await db.collection('tenants').get()
+  const alertas = []
+  for (const doc of snap.docs) {
+    const t = doc.data()
+    if ((t.email || '').toLowerCase() === ADMIN_EMAIL) continue
+    try {
+      const r = await scanRiscoTenant(doc.id, t)
+      if (r.nivel !== 'ok') alertas.push({ uid: doc.id, nome: t.nome || '', email: t.email || '', plano: t.plano || 'free', ...r })
+    } catch (e) { console.error('scanRiscoTenant', doc.id, e) }
+  }
+  alertas.sort((a, b) => b.score - a.score)
+  await db.doc('config/securityReport').set({
+    geradoEm: admin.firestore.FieldValue.serverTimestamp(),
+    total: alertas.length,
+    criticos: alertas.filter((a) => a.nivel === 'critico').length,
+    altos: alertas.filter((a) => a.nivel === 'alto').length,
+    medios: alertas.filter((a) => a.nivel === 'medio').length,
+    alertas: alertas.slice(0, 100),
+  })
+  return alertas.length
+}
+
+/** Cron: a cada 1h fiscaliza todos os clientes (risco financeiro/jurídico/abuso). */
+exports.securityScan = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'America/Sao_Paulo', region: 'us-central1', timeoutSeconds: 540, memory: '512MiB' },
+  async () => { const n = await rodarSecurityScan(); console.log('securityScan: alertas =', n) },
+)
+
+/** Admin: lê o último relatório de segurança + se há alertas não vistos (pra bolinha vermelha). */
+exports.adminGetSecurityReport = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  const [rep, meta] = await Promise.all([db.doc('config/securityReport').get(), db.doc('config/securityMeta').get()])
+  const data = rep.exists ? rep.data() : { alertas: [], total: 0, criticos: 0, altos: 0, medios: 0 }
+  const geradoEmMs = data.geradoEm?.toMillis ? data.geradoEm.toMillis() : 0
+  const lastSeen = meta.exists && meta.data().lastSeenAt?.toMillis ? meta.data().lastSeenAt.toMillis() : 0
+  const naoVisto = geradoEmMs > lastSeen && ((data.criticos || 0) + (data.altos || 0)) > 0
+  return { alertas: data.alertas || [], total: data.total || 0, criticos: data.criticos || 0, altos: data.altos || 0, medios: data.medios || 0, geradoEmMs, naoVisto }
+})
+
+/** Admin: roda a varredura AGORA (botão Atualizar na página de Logs Security). */
+exports.adminRunSecurityScan = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
+  assertAdmin(request)
+  const n = await rodarSecurityScan()
+  return { ok: true, alertas: n }
+})
+
+/** Admin: marca o relatório como visto (limpa a bolinha vermelha). */
+exports.adminMarkSecuritySeen = onCall({ region: 'us-central1' }, async (request) => {
+  assertAdmin(request)
+  await db.doc('config/securityMeta').set({ lastSeenAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+  return { ok: true }
+})
+
 /** Kill switch global: pausa/religa TODOS os envios. */
 exports.adminSetKillSwitch = onCall({ region: 'us-central1' }, async (request) => {
   assertAdmin(request)
