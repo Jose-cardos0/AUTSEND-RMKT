@@ -184,12 +184,14 @@ export default function Integracoes() {
     setShowQrModal(false)
     setInstanceEmConexao(null)
     try {
-      const newId = await addInstance(user.uid, { nomeInstancia: nome, numeroWhatsapp: num })
+      // A trava de plano roda no servidor: se estourar o limite, isto lança e nenhum doc é criado.
       const res = await criarInstancia(nome, numeroWhatsapp)
       const base64 = res.base64 ?? res.qrCodeBase64 ?? res.qrcode
       const codeHash = res.hash ?? res.instanceId ?? res.code
       const instanceId = res.instanciaId ?? res.instanceId ?? codeHash
-      await updateInstance(user.uid, newId, {
+      const newId = await addInstance(user.uid, {
+        nomeInstancia: nome,
+        numeroWhatsapp: num,
         hash: codeHash,
         qrCodeBase64: base64,
         instanceId,

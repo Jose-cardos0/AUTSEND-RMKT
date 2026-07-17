@@ -1,4 +1,6 @@
 import { WEBHOOK_EVOLUTION } from './constants'
+import { httpsCallable } from 'firebase/functions'
+import { functions } from './firebase'
 
 /** Evita "Unexpected end of JSON input" quando o webhook retorna body vazio ou não-JSON */
 async function parseJsonResponse(res) {
@@ -11,21 +13,16 @@ async function parseJsonResponse(res) {
   }
 }
 
+/**
+ * Cria a instância via Cloud Function `waCriarInstancia` — a trava de plano (limite `instancias`)
+ * roda no servidor ANTES de bater no Evolution. Chame ANTES de gravar o doc no Firestore
+ * (o servidor conta as instâncias existentes pra decidir se libera).
+ */
 export async function criarInstancia(nomeInstancia, numeroWhatsapp = '') {
   const numero = (numeroWhatsapp || '').trim().replace(/\D/g, '')
-  const payload = {
-    tipoAcao: 'criar_instancia',
-    nomeInstancia: (nomeInstancia || '').trim() || `instancia_${Date.now()}`,
-  }
-  if (numero) payload.numeroWhatsApp = numero
-  const res = await fetch(WEBHOOK_EVOLUTION, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  const data = await parseJsonResponse(res)
-  if (!res.ok) throw new Error(data?.message || data?.error || 'Falha ao criar instância')
-  return data
+  const call = httpsCallable(functions, 'waCriarInstancia')
+  const r = await call({ nomeInstancia: (nomeInstancia || '').trim(), numeroWhatsapp: numero })
+  return r.data // { base64/qrcode, hash, instanceId, ... }
 }
 
 export async function verificarStatus(nomeInstancia, getParticipants = false, numeroWhatsapp = '') {

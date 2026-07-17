@@ -12,7 +12,8 @@ import {
   where,
   orderBy,
 } from 'firebase/firestore'
-import { db } from './firebase'
+import { httpsCallable } from 'firebase/functions'
+import { db, functions } from './firebase'
 
 export function userRef(uid) {
   return doc(db, 'users', uid)
@@ -200,22 +201,18 @@ export async function updateWebhook(uid, webhookId, data) {
 
 // ── Webhooks custom (qualquer plataforma) + Tracker ──
 
-const CUSTOM_WEBHOOK_BASE_URL = 'https://us-central1-afiliadocdnx.cloudfunctions.net/customWebhook'
-
+// Criação passa pela Cloud Function `criarTrackerCustom` — a trava de plano (limite `trackers`)
+// roda no servidor. O doc é gravado server-side; aqui só repassamos o payload.
 export async function createCustomWebhook(uid, payload = {}) {
-  const ref = await addDoc(userWebhooksRef(uid), {
-    tipo: 'custom',
-    status: 'testing',
+  const call = httpsCallable(functions, 'criarTrackerCustom')
+  const r = await call({
     nome: payload.nome || 'Webhook custom',
     plataforma: payload.plataforma || '',
     loja: payload.loja || '',
     fieldMap: payload.fieldMap || {},
     eventRules: payload.eventRules || [],
-    createdAt: serverTimestamp(),
   })
-  const url = `${CUSTOM_WEBHOOK_BASE_URL}?webhookId=${ref.id}&userId=${uid}`
-  await setDoc(ref, { webhookUrl: url }, { merge: true })
-  return ref.id
+  return r.data?.id // id do webhook criado
 }
 
 /** Só os webhooks custom, mais recentes primeiro. */

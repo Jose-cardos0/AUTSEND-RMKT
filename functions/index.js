@@ -61,6 +61,31 @@ function limitesDoTenant(t) {
   const ov = (t && t.overrides && t.overrides.limites) || {}
   return { plano, ...PLAN_LIMITS[plano], ...ov }
 }
+
+/**
+ * Trava de CONTAGEM de recurso (instâncias, trackers, domínios…). Garante que criar +1 não estoura
+ * o limite EFETIVO (plano base + overrides do admin). O e-mail admin é isento (ilimitado).
+ * @param {object} request  onCall request (pra ler o e-mail e detectar admin)
+ * @param {object} tenant   doc do tenant (já carregado; contém overrides)
+ * @param {string} chave    chave do limite: 'instancias' | 'trackers' | 'dominios' | ...
+ * @param {number} atual    quantos o cliente já tem
+ * @param {string} rotulo   texto amigável pro erro (ex.: 'instância(s) de WhatsApp')
+ */
+function assertPodeCriarRecurso(request, tenant, chave, atual, rotulo) {
+  const email = (request.auth?.token?.email || '').toLowerCase()
+  if (email === ADMIN_EMAIL) return // admin não tem limite
+  const lim = limitesDoTenant(tenant)
+  const limite = Number(lim[chave])
+  if (!Number.isFinite(limite)) return // sem limite definido → não trava
+  if (atual >= limite) {
+    throw new HttpsError('resource-exhausted', limite === 0
+      ? `Seu plano não inclui ${rotulo}. Faça upgrade pra ativar.`
+      : `Seu plano permite ${limite} ${rotulo}. Faça upgrade pra criar mais.`)
+  }
+}
+
+// Webhook do Evolution (n8n) — espelho de src/lib/constants.js. Usado pela trava de criação de instância.
+const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.iacodenxt.online/webhook/HUBNXTEVOPAI'
 async function emailsEnviadosNoMes(uid) {
   const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
   let total = 0
@@ -1155,6 +1180,66 @@ exports.smsCriarCheckoutNumero = onCall({ region: 'us-central1', timeoutSeconds:
     console.error('smsCriarCheckoutNumero', e)
     throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
   }
+})
+
+/**
+ * Cria uma instância de WhatsApp com TRAVA de plano no servidor (limite `instancias`).
+ * Conta as instâncias existentes ANTES de criar; só então chama o Evolution (n8n).
+ * O frontend grava o doc no Firestore com o retorno (hash/qr).
+ */
+exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  const nome = String(request.data?.nomeInstancia || '').trim() || `instancia_${Date.now()}`
+  const numero = String(request.data?.numeroWhatsapp || '').replace(/\D/g, '')
+  // Trava: quantas instâncias o cliente já tem.
+  const snap = await db.collection(`users/${uid}/instances`).get()
+  assertPodeCriarRecurso(request, tenant, 'instancias', snap.size, 'instância(s) de WhatsApp')
+  // Passou na trava → cria no Evolution.
+  const payload = { tipoAcao: 'criar_instancia', nomeInstancia: nome }
+  if (numero) payload.numeroWhatsApp = numero
+  try {
+    const res = await fetch(WEBHOOK_EVOLUTION, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Falha ao criar instância')
+    return data // { base64/qrcode, hash, instanceId, ... }
+  } catch (e) {
+    console.error('waCriarInstancia', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar a instância no Evolution.')
+  }
+})
+
+/**
+ * Cria um Tracker (webhook custom) com TRAVA de plano no servidor (limite `trackers`).
+ * Conta os webhooks 'custom' existentes; cria o doc no Firestore (server-side) e devolve id + URL.
+ */
+exports.criarTrackerCustom = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  // Trava: quantos trackers (webhooks custom) o cliente já tem.
+  const snap = await db.collection(`users/${uid}/webhooks`).get()
+  const atuais = snap.docs.filter((d) => d.data()?.tipo === 'custom').length
+  assertPodeCriarRecurso(request, tenant, 'trackers', atuais, 'tracker(s)')
+  const p = request.data || {}
+  const ref = await db.collection(`users/${uid}/webhooks`).add({
+    tipo: 'custom',
+    status: 'testing',
+    nome: String(p.nome || 'Webhook custom').slice(0, 200),
+    plataforma: p.plataforma || '',
+    loja: p.loja || '',
+    fieldMap: (p.fieldMap && typeof p.fieldMap === 'object') ? p.fieldMap : {},
+    eventRules: Array.isArray(p.eventRules) ? p.eventRules : [],
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  const url = `https://us-central1-afiliadocdnx.cloudfunctions.net/customWebhook?webhookId=${ref.id}&userId=${uid}`
+  await ref.set({ webhookUrl: url }, { merge: true })
+  return { id: ref.id, webhookUrl: url }
 })
 
 /** Lista os números SMS do cliente (pra tela de Integração). */
@@ -4265,7 +4350,7 @@ exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) =
     const ov = {}
     if (p.overrides.limites && typeof p.overrides.limites === 'object') {
       ov.limites = {}
-      for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios', 'callMin']) {
+      for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios', 'callMin', 'iaMes']) {
         if (p.overrides.limites[k] != null) ov.limites[k] = Math.max(0, Number(p.overrides.limites[k]) || 0)
       }
     }
