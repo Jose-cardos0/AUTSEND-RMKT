@@ -118,16 +118,7 @@ export default function EmailConstrutor() {
       storageManager: false,
       // Cada painel é renderizado no NOSSO container (controlamos qual aparece).
       blockManager: { appendTo: '#am-blocks' },
-      styleManager: {
-        appendTo: '#am-styles',
-        // Estilos enxutos e relevantes pra e-mail (fundo é só COR, sem o stack de imagem confuso).
-        sectors: [
-          { name: 'Texto', open: true, buildProps: ['font-size', 'color', 'font-weight', 'text-align', 'line-height', 'letter-spacing'] },
-          { name: 'Fundo', open: true, buildProps: ['background-color'] },
-          { name: 'Espaçamento', open: false, buildProps: ['padding', 'margin'] },
-          { name: 'Borda', open: false, buildProps: ['border-radius', 'border'] },
-        ],
-      },
+      styleManager: { appendTo: '#am-styles' },
       traitManager: { appendTo: '#am-traits' },
       layerManager: { appendTo: '#am-layers' },
       assetManager: {
@@ -180,6 +171,17 @@ export default function EmailConstrutor() {
     ].forEach((id) => { try { editor.Panels.removeButton('options', id) } catch (_) {} })
     // Os painéis viraram containers nossos (appendTo) — remove os painéis de abas do GrapesJS.
     ;['views', 'views-container'].forEach((id) => { try { editor.Panels.removePanel(id) } catch (_) {} })
+
+    // Reescreve os setores de estilo DEPOIS do preset (que traz Dimension/Typography confusos):
+    // deixa só o que faz sentido pra e-mail.
+    try {
+      const sm = editor.StyleManager
+      sm.getSectors().reset()
+      sm.addSector('am-texto', { name: 'Texto', open: true, buildProps: ['font-size', 'color', 'font-weight', 'text-align', 'line-height', 'letter-spacing'] })
+      sm.addSector('am-fundo', { name: 'Fundo', open: true, buildProps: ['background-color'] })
+      sm.addSector('am-espaco', { name: 'Espaçamento', open: false, buildProps: ['padding', 'margin'] })
+      sm.addSector('am-borda', { name: 'Borda', open: false, buildProps: ['border-radius', 'border'] })
+    } catch (_) {}
 
     // Dica visual "Arraste blocos aqui" nas caixas VAZIAS — só no editor, NÃO vai pro e-mail.
     editor.on('load', () => {
