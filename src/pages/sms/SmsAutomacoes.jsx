@@ -6,6 +6,8 @@ import { Link, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { auth, functions } from '../../lib/firebase'
 import MessageEditor from '../../components/MessageEditor'
+import GerarMensagemIA from '../../components/GerarMensagemIA'
+import TemplatePicker from '../../components/TemplatePicker'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import CollapsibleSearch from '../../components/CollapsibleSearch'
 import { getSmsAutomations, saveSmsAutomationGrupo, getProductGroups, getLeads, getSmsLogs } from '../../lib/firestore'
@@ -149,10 +151,18 @@ function EventCard({ event, auto, onSave }) {
             {mensagem.length} caractere(s) · <span className={segmentos > 1 ? 'text-amber-600 font-medium' : ''}>{segmentos} segmento(s)</span>. Acentos removidos automaticamente. Só dispara pra leads internacionais (ignora +55).
           </p>
 
-          <button onClick={handleSave} disabled={salvando} className="btn-primary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation">
-            {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {salvando ? 'Salvando...' : 'Salvar automação'}
-          </button>
+          <div className="flex flex-wrap gap-2 items-center">
+            <button onClick={handleSave} disabled={salvando} className="btn-primary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation">
+              {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {salvando ? 'Salvando...' : 'Salvar automação'}
+            </button>
+            <TemplatePicker onPick={setMensagem} className="text-sm w-full sm:w-auto min-h-[44px] justify-center" />
+            <GerarMensagemIA
+              evento={event.label}
+              onResult={setMensagem}
+              className="text-sm w-full sm:w-auto min-h-[44px] px-4 rounded-xl border-2 border-violet-200 text-violet-700 font-medium hover:bg-violet-50 disabled:opacity-50 flex items-center justify-center gap-2 touch-manipulation"
+            />
+          </div>
         </div>
       )}
     </div>
