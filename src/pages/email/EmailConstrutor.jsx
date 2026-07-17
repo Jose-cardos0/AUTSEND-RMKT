@@ -270,6 +270,38 @@ export default function EmailConstrutor() {
         }
       } catch (_) {}
     })
+
+    // Alinhamento CASCATA: ao setar text-align num container (bloco/div/section/td),
+    // aplica em TODOS os filhos — assim "Centro" centraliza tudo o que está dentro.
+    // Precisa mexer no atributo style inline (que ganha da regra) e no content cru.
+    let propagandoAlign = false
+    editor.on('component:styleUpdate:text-align', (component) => {
+      if (propagandoAlign || !component) return
+      const val = component.getStyle()?.['text-align']
+      if (!val) return
+      propagandoAlign = true
+      try {
+        const aplicarFundo = (comp) => {
+          comp.components?.().forEach((child) => {
+            try {
+              child.addStyle({ 'text-align': val })
+              const at = child.getAttributes ? child.getAttributes() : {}
+              if (at && at.style && /text-align/i.test(at.style)) {
+                child.addAttributes({ style: at.style.replace(/text-align\s*:\s*[^;]+;?/gi, `text-align:${val};`) })
+              }
+              const cont = child.get('content')
+              if (typeof cont === 'string' && cont && /text-align/i.test(cont)) {
+                child.set('content', cont.replace(/text-align\s*:\s*[^;"']+/gi, `text-align:${val}`))
+              }
+            } catch (_) {}
+            aplicarFundo(child)
+          })
+        }
+        aplicarFundo(component)
+      } finally {
+        propagandoAlign = false
+      }
+    })
     setReady(true)
     return () => {
       try { editor.destroy() } catch (_) {}
@@ -580,7 +612,7 @@ export default function EmailConstrutor() {
         </div>
 
         {/* Coluna direita: editor (canvas + painel lateral custom) */}
-        <div className="flex-1 min-h-0 min-w-0 app-panel rounded-2xl overflow-hidden relative flex">
+        <div className="flex-1 min-h-0 min-w-0 app-panel overflow-hidden relative flex">
           {/* Área do canvas */}
           <div className="flex-1 min-w-0 relative">
           {!ready && (
