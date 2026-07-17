@@ -19,6 +19,7 @@ import imgCall120 from '../assets/minutes/120minutes.png'
 import globoIcon from '../assets/global.png'
 import euaFlag from '../assets/flags/euaflaglarge.png'
 import Bandeira from '../components/Bandeira'
+import CheckoutModal from '../components/CheckoutModal'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
 const PACOTE_IMG = { 500: img500, 1000: img1000, 2500: img2500 }
@@ -104,6 +105,7 @@ export default function Perfil() {
   const [loading, setLoading] = useState(true)
   const [comprando, setComprando] = useState(null) // key do pacote em compra
   const [enviandoFoto, setEnviandoFoto] = useState(false)
+  const [checkoutSecret, setCheckoutSecret] = useState(null) // client_secret do checkout embutido
   const fileRef = useRef(null)
 
   const escolherFoto = async (e) => {
@@ -161,7 +163,7 @@ export default function Perfil() {
     setComprando(id)
     try {
       const r = canal === 'email' ? await criarCheckoutCreditoEmail(key) : canal === 'call' ? await criarCheckoutCreditoCall(key) : await criarCheckoutCreditoSMS(key)
-      if (r?.url) window.location.href = r.url
+      if (r?.clientSecret) setCheckoutSecret(r.clientSecret) // abre o pagamento dentro do app
       else toast.error('Não consegui abrir o checkout. Tente de novo.')
     } catch (err) {
       toast.error(err?.message || 'Falha ao iniciar a recarga.')
@@ -346,6 +348,18 @@ export default function Perfil() {
           </div>
         </Panel>
       </div>
+
+      {checkoutSecret && (
+        <CheckoutModal
+          clientSecret={checkoutSecret}
+          onClose={() => setCheckoutSecret(null)}
+          onComplete={() => {
+            setCheckoutSecret(null)
+            toast.success('Pagamento concluído! Seus créditos são adicionados em instantes.')
+            setTimeout(carregar, 2500)
+          }}
+        />
+      )}
     </PageShell>
   )
 }
