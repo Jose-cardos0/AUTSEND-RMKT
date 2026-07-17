@@ -29,6 +29,7 @@ import Bandeira, { paisDoNumero, nomePais } from '../../components/Bandeira'
 import euaflag from '../../assets/euaflag.png'
 import chipastron from '../../assets/chip/chipastron.png'
 import usFlagBg from '../../assets/flags/us-flag.png'
+import CheckoutModal from '../../components/CheckoutModal'
 
 const PRECO_MES = 'R$ 29,90/mês'
 
@@ -94,6 +95,7 @@ export default function SmsIntegracao() {
   const [buscando, setBuscando] = useState(false)
   const [selecionados, setSelecionados] = useState([]) // números marcados pra comprar
   const [comprando, setComprando] = useState(false) // criando o checkout
+  const [checkoutSecret, setCheckoutSecret] = useState(null) // client_secret do pagamento embutido
   const [acaoId, setAcaoId] = useState(null) // id em ação (principal/cancelar)
   const [gerenciar, setGerenciar] = useState(null) // número aberto no popup de gerenciar
   const [gerenciando, setGerenciando] = useState(null) // 'cancelar' | 'excluir' em andamento
@@ -163,8 +165,8 @@ export default function SmsIntegracao() {
     setComprando(true)
     try {
       const r = await criarCheckoutNumeroSMS(selecionados)
-      if (r?.url) {
-        window.location.href = r.url // vai pro checkout do Stripe
+      if (r?.clientSecret) {
+        setCheckoutSecret(r.clientSecret) // abre o pagamento dentro do app
       } else {
         toast.error('Não consegui abrir o checkout. Tente de novo.')
       }
@@ -702,6 +704,20 @@ export default function SmsIntegracao() {
             </div>
           </div>
         </div>
+      )}
+
+      {checkoutSecret && (
+        <CheckoutModal
+          clientSecret={checkoutSecret}
+          onClose={() => setCheckoutSecret(null)}
+          onComplete={() => {
+            setCheckoutSecret(null)
+            setPopupOpen(false)
+            setSelecionados([])
+            toast.success('Pagamento confirmado! Seu número está sendo ativado — aparece aqui em instantes.')
+            setTimeout(carregar, 2500)
+          }}
+        />
       )}
     </PageShell>
   )

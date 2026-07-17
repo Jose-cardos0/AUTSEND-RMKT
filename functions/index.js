@@ -1142,15 +1142,15 @@ exports.smsCriarCheckoutNumero = onCall({ region: 'us-central1', timeoutSeconds:
   const meta = { tipo: 'numero_sms', uid, numeros: JSON.stringify(numeros) }
   try {
     const session = await stripe.checkout.sessions.create({
+      ui_mode: 'embedded_page',
       mode: 'subscription',
       line_items: [{ price: priceNumero, quantity: numeros.length }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
       metadata: meta,
       subscription_data: { metadata: meta },
-      success_url: `${appUrl}/sms/integracao?compra=ok`,
-      cancel_url: `${appUrl}/sms/integracao?compra=cancelado`,
+      redirect_on_completion: 'never',
     })
-    return { url: session.url }
+    return { clientSecret: session.client_secret }
   } catch (e) {
     console.error('smsCriarCheckoutNumero', e)
     throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')

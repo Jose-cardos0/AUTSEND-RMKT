@@ -9,11 +9,11 @@ export async function buscarNumerosSMS() {
   return r.data // { numeros: [{ numero, regiao, tipo }] }
 }
 
-/** Cria o checkout Stripe (assinatura R$29,90/mês por número) e devolve a URL. Aceita 1 número ou uma lista. */
+/** Cria o checkout Stripe embutido (assinatura R$29,90/mês por número). Aceita 1 número ou uma lista. */
 export async function criarCheckoutNumeroSMS(numeros) {
   const lista = Array.isArray(numeros) ? numeros : [numeros]
   const r = await call('smsCriarCheckoutNumero')({ numeros: lista })
-  return r.data // { url }
+  return r.data // { clientSecret }
 }
 
 /** Lista os números SMS do cliente. */

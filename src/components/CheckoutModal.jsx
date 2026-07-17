@@ -2,8 +2,9 @@ import { loadStripe } from '@stripe/stripe-js'
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js'
 import { X } from 'lucide-react'
 
-// Carrega o Stripe uma única vez (chave publishable — pública). Configure VITE_STRIPE_PK no Vercel/.env.
-const PK = import.meta.env.VITE_STRIPE_PK
+// Carrega o Stripe uma única vez. A chave publishable é PÚBLICA por design (feita pra viver no frontend);
+// preferimos a env VITE_STRIPE_PK, mas caímos no fallback fixo pra não quebrar se a env não subiu no build.
+const PK = import.meta.env.VITE_STRIPE_PK || 'pk_live_51RJDCqLvVsGXtCnTXdtr7H0YwCAlHz5uPUcfq9Np9t94Ys2TV3t66QMOwpDmwR5P1EGHbeWTJ7T9ZmuYXrjbeVBF00W1VRcIb1'
 const stripePromise = PK ? loadStripe(PK) : null
 
 /**
