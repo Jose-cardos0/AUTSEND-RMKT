@@ -68,6 +68,7 @@ export default function EmailConstrutor() {
   const subjectRef = useRef(null)
   const uidRef = useRef(null)
   const assetsCarregados = useRef(false)
+  const assetsPromiseRef = useRef(null) // promessa do pré-carregamento das imagens
   const dockRef = useRef(null)
   const [dockPos, setDockPos] = useState(null) // {left, top} em px; null = posição padrão (centro-baixo)
   const [painelAberto, setPainelAberto] = useState(null) // qual painel lateral está aberto (null = escondido)
@@ -260,6 +261,15 @@ export default function EmailConstrutor() {
       } catch (_) {}
     })
 
+    // Ao ABRIR o gerenciador (botão Imagens OU imagem de fundo): se as imagens ainda
+    // não terminaram de pré-carregar, mostra o foguetinho até ficarem prontas.
+    editor.on('asset:open', async () => {
+      if (assetsCarregados.current) return
+      setCarregandoImgs(true)
+      try { await assetsPromiseRef.current } catch (_) {}
+      finally { setCarregandoImgs(false) }
+    })
+
     // Ao remover um asset da galeria, apaga do Storage também.
     editor.on('asset:remove', (asset) => {
       const src = asset?.get?.('src') || asset?.src
@@ -332,22 +342,18 @@ export default function EmailConstrutor() {
     })
   }, [user?.uid])
 
-  // Pré-carrega as imagens do usuário na coleção do editor assim que ele fica pronto.
-  // Assim elas aparecem em QUALQUER abertura do gerenciador (botão Imagens, imagem de
-  // fundo de div/section/body, etc.). Mostra o loading do foguetinho enquanto puxa.
+  // Pré-carrega as imagens do usuário na coleção do editor assim que ele fica pronto —
+  // SILENCIOSO (sem loader no mount). O foguetinho só aparece ao ABRIR o gerenciador
+  // (ver handler asset:open na init). Assim as imagens aparecem em qualquer caminho.
   useEffect(() => {
     if (!ready || !user?.uid || assetsCarregados.current) return
-    let vivo = true
-    setCarregandoImgs(true)
-    listEmailAssets(user.uid)
+    assetsPromiseRef.current = listEmailAssets(user.uid)
       .then((assets) => {
         const ed = editorRef.current
-        if (vivo && ed && assets.length) ed.AssetManager.add(assets)
+        if (ed && assets.length) ed.AssetManager.add(assets)
         assetsCarregados.current = true
       })
-      .catch(() => { if (vivo) toast.error('Não consegui carregar suas imagens. Tente de novo.') })
-      .finally(() => { if (vivo) setCarregandoImgs(false) })
-    return () => { vivo = false }
+      .catch(() => {})
   }, [ready, user?.uid])
 
   // Ao selecionar um template (ou ficar pronto), carrega o conteúdo no editor

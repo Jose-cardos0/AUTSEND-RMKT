@@ -8,10 +8,9 @@ const CAT_BASICO = 'Básico'
 const CAT_LAYOUT = 'Estrutura'
 const CAT_AVANCADO = 'Avançado'
 
-// Estilo que deixa o elemento CENTRALIZÁVEL: vira inline-block, então responde ao
-// text-align do pai (Body/coluna). Com largura 100% (padrão) ele empilha normal;
-// ao reduzir a largura (Estilo › Dimensão) + alinhar o pai no centro, ele centraliza.
-const CENTRAVEL = 'display:inline-block;vertical-align:top;width:100%;box-sizing:border-box;'
+// Bloco largura total, block-level (empilha na vertical → drop correto embaixo).
+// A centralização acontece via margin auto (cascata do alinhamento) quando a largura < 100%.
+const CENTRAVEL = 'width:100%;box-sizing:border-box;'
 
 const BLOCOS = [
   // ── Básico ──
