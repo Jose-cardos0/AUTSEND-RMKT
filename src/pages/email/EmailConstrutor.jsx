@@ -591,9 +591,9 @@ export default function EmailConstrutor() {
               <button onClick={() => setShowPreview(false)} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
             </div>
 
-            {/* Página estilo Gmail — rola tudo junto (assunto + remetente + corpo + rodapé) */}
-            <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft bg-white">
-              <div className="max-w-3xl mx-auto px-4 sm:px-8 pt-6">
+            {/* Página estilo Gmail — rola tudo junto, sem barra visível (mouse/touch rolam) */}
+            <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft no-scrollbar bg-white">
+              <div className="w-full px-5 sm:px-10 pt-6">
                 {/* Assunto + marcador */}
                 <div className="flex items-start gap-2 mb-5">
                   <h1 className="flex-1 min-w-0 text-[21px] leading-snug font-normal text-stone-800">{previewInfo.subject}</h1>
@@ -612,23 +612,21 @@ export default function EmailConstrutor() {
                   <div className="text-xs text-stone-400 whitespace-nowrap shrink-0">{previewInfo.dataLabel}</div>
                 </div>
               </div>
-              {/* Corpo do e-mail — iframe isolado, altura automática (o mockup inteiro é que rola) */}
-              <div className="max-w-3xl mx-auto px-4 sm:px-8">
-                <iframe
-                  title="Prévia do e-mail"
-                  srcDoc={previewHtml}
-                  scrolling="no"
-                  onLoad={(e) => {
-                    const el = e.target
-                    const medir = () => { try { setIframeH(Math.max(300, el.contentWindow.document.documentElement.scrollHeight)) } catch (_) {} }
-                    medir(); setTimeout(medir, 300); setTimeout(medir, 900)
-                  }}
-                  className="block w-full border-0 bg-white"
-                  style={{ height: iframeH }}
-                />
-              </div>
+              {/* Corpo do e-mail — iframe FULL WIDTH (o fundo do e-mail preenche tudo), altura automática */}
+              <iframe
+                title="Prévia do e-mail"
+                srcDoc={previewHtml}
+                scrolling="no"
+                onLoad={(e) => {
+                  const el = e.target
+                  const medir = () => { try { setIframeH(Math.max(300, el.contentWindow.document.documentElement.scrollHeight)) } catch (_) {} }
+                  medir(); setTimeout(medir, 300); setTimeout(medir, 900)
+                }}
+                className="block w-full border-0"
+                style={{ height: iframeH }}
+              />
               {/* Rodapé Responder / Encaminhar (só visual) */}
-              <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 flex gap-3">
+              <div className="w-full px-5 sm:px-10 py-6 flex gap-3">
                 <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-stone-300 text-sm text-stone-600">↩ Responder</span>
                 <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-stone-300 text-sm text-stone-600">↪ Encaminhar</span>
               </div>
