@@ -105,11 +105,14 @@ const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.iacodenx
  * email = Resend por e-mail · sms = Telnyx por SMS · callMin = Telnyx por min de ligação ·
  * ia = Grok (grok-code-fast-1) por uso do construtor · instanciaMes = R$2,00 por instância/mês.
  */
+// Valores pesquisados (jul/2026, câmbio ~R$5,15/USD):
+// Resend ~$0,0009/e-mail · Telnyx SMS toll-free ~$0,008 · Telnyx voz ~$0,007/min · Grok 4.1-fast ~$0,0015/uso.
+// ⚠️ callMin é SÓ Telnyx: se a ligação IA usar ElevenLabs (TTS) + Grok (cérebro), somar ~R$0,50/min a mais.
 const CUSTOS_UNIT = {
-  email: Number(process.env.CUSTO_EMAIL) || 0.002,
-  sms: Number(process.env.CUSTO_SMS) || 0.05,
-  callMin: Number(process.env.CUSTO_CALL_MIN) || 0.10,
-  ia: Number(process.env.CUSTO_IA) || 0.04,
+  email: Number(process.env.CUSTO_EMAIL) || 0.004,
+  sms: Number(process.env.CUSTO_SMS) || 0.045,
+  callMin: Number(process.env.CUSTO_CALL_MIN) || 0.04,
+  ia: Number(process.env.CUSTO_IA) || 0.02,
   instanciaMes: Number(process.env.CUSTO_INSTANCIA_MES) || 2.0,
 }
 
