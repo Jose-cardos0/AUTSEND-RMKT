@@ -192,8 +192,8 @@ export default function EmailConstrutor() {
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-white">
         <MelhorarPlano trigger={false} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
-        {/* Barra superior do editor */}
-        <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 border-b border-surface-200 bg-white">
+        {/* Barra superior do editor — altura fixa 56px (usada no calc abaixo) */}
+        <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 border-b border-surface-200 bg-white" style={{ minHeight: 56 }}>
           <button onClick={fecharEditor} className="btn-secondary text-sm min-h-[38px]" title="Voltar">
             <ArrowLeft className="w-4 h-4" /> Voltar
           </button>
@@ -214,13 +214,13 @@ export default function EmailConstrutor() {
           </div>
         </div>
 
-        {/* Editor Easy Email — tela cheia */}
-        <div className="flex-1 min-h-0 min-w-0">
+        {/* Editor Easy Email — tela cheia, altura DEFINIDA (senão os painéis colapsam) */}
+        <div className="min-h-0 min-w-0" style={{ height: 'calc(100vh - 56px)' }}>
           {initialValues ? (
             <EmailEditorProvider
               key={selectedId || 'novo'}
               data={initialValues}
-              height="100%"
+              height="calc(100vh - 56px)"
               autoComplete
               dashed={false}
               mergeTags={MERGE_TAGS}
