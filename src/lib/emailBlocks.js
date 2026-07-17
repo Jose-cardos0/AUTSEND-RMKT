@@ -44,41 +44,51 @@ const BLOCOS = [
     content: '<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>',
   },
 
-  // ── Estrutura ──
+  // ── Estrutura ── (blocos EMPILHADOS, um embaixo do outro)
   {
     id: 'e-secao', label: '1 Bloco', category: CAT_LAYOUT,
     media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/>'),
     content: '<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td class="am-drop" valign="top" style="padding:16px;"></td></tr></table>',
   },
   {
-    id: 'e-2col', label: '2 Blocos', category: CAT_LAYOUT,
-    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'),
-    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
-      <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
-      <td class="am-drop" width="50%" valign="top" style="padding:12px;"></td>
-    </tr></table>`,
+    id: 'e-2blocos', label: '2 Blocos', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+    </table>`,
   },
   {
-    id: 'e-3col', label: '3 Blocos', category: CAT_LAYOUT,
-    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/>'),
-    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
-      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
-      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
-      <td class="am-drop" width="33.33%" valign="top" style="padding:10px;"></td>
-    </tr></table>`,
+    id: 'e-3blocos', label: '3 Blocos', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.3h18M3 14.6h18"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+    </table>`,
   },
   {
-    id: 'e-4col', label: '4 Blocos', category: CAT_LAYOUT,
-    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7.5 4v16M12 4v16M16.5 4v16"/>'),
-    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr>
-      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
-      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
-      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
-      <td class="am-drop" width="25%" valign="top" style="padding:8px;"></td>
-    </tr></table>`,
+    id: 'e-4blocos', label: '4 Blocos', category: CAT_LAYOUT,
+    media: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 8h18M3 12h18M3 16h18"/>'),
+    content: `<table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+      <tr><td class="am-drop" valign="top" style="padding:14px;"></td></tr>
+    </table>`,
   },
 
   // ── Avançado ──
+  {
+    id: 'e-div', label: 'Div', category: CAT_AVANCADO,
+    media: ic('<rect x="3" y="5" width="18" height="14" rx="2"/>'),
+    content: '<div class="am-drop" style="padding:16px;"></div>',
+  },
+  {
+    id: 'e-section', label: 'Section', category: CAT_AVANCADO,
+    media: ic('<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 10h18"/>'),
+    content: '<section class="am-drop" style="padding:16px;"></section>',
+  },
   {
     id: 'e-html', label: 'HTML', category: CAT_AVANCADO,
     media: ic('<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>'),
