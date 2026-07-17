@@ -346,14 +346,14 @@ export default function EmailConstrutor() {
           <button onClick={novoTemplate} className="btn-secondary text-sm min-h-[40px]">
             <Plus className="w-4 h-4" /> Novo
           </button>
-          <button onClick={abrirImagens} className="btn-secondary text-sm min-h-[40px]">
-            <ImagePlus className="w-4 h-4" /> Imagens
+          <button onClick={abrirImagens} title="Imagens" className="btn-secondary min-h-[40px] min-w-[40px] justify-center px-2.5">
+            <ImagePlus className="w-4 h-4" />
           </button>
-          <button onClick={() => setShowTest(true)} className="btn-secondary text-sm min-h-[40px]">
-            <Send className="w-4 h-4" /> Testar
+          <button onClick={() => setShowTest(true)} title="Enviar teste" className="btn-secondary min-h-[40px] min-w-[40px] justify-center px-2.5">
+            <Send className="w-4 h-4" />
           </button>
-          <button onClick={handleSalvar} disabled={salvando} className="btn-primary text-sm min-h-[40px]">
-            {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar
+          <button onClick={handleSalvar} disabled={salvando} title="Salvar" className="btn-primary min-h-[40px] min-w-[40px] justify-center px-2.5">
+            {salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           </button>
         </div>
       }
