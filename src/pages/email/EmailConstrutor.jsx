@@ -172,19 +172,9 @@ export default function EmailConstrutor() {
     // Os painéis viraram containers nossos (appendTo) — remove os painéis de abas do GrapesJS.
     ;['views', 'views-container'].forEach((id) => { try { editor.Panels.removePanel(id) } catch (_) {} })
 
-    // Reescreve os setores de estilo DEPOIS do preset (que traz Dimension/Typography confusos):
-    // deixa só o que faz sentido pra e-mail.
-    try {
-      const sm = editor.StyleManager
-      sm.getSectors().reset()
-      sm.addSector('am-texto', { name: 'Texto', open: true, buildProps: ['font-size', 'color', 'font-weight', 'text-align', 'line-height', 'letter-spacing'] })
-      sm.addSector('am-fundo', { name: 'Fundo', open: true, buildProps: ['background-color'] })
-      sm.addSector('am-espaco', { name: 'Espaçamento', open: false, buildProps: ['padding', 'margin'] })
-      sm.addSector('am-borda', { name: 'Borda', open: false, buildProps: ['border-radius', 'border'] })
-    } catch (_) {}
 
-    // Dica visual "Arraste blocos aqui" nas caixas VAZIAS — só no editor, NÃO vai pro e-mail.
     editor.on('load', () => {
+      // Dica visual "Arraste blocos aqui" nas caixas VAZIAS — só no editor, NÃO vai pro e-mail.
       try {
         const doc = editor.Canvas.getDocument()
         if (doc && !doc.getElementById('am-editor-helpers')) {
@@ -193,6 +183,39 @@ export default function EmailConstrutor() {
           st.textContent = '.am-drop:empty{min-height:56px;outline:1px dashed #c4b5fd;outline-offset:-4px;border-radius:8px;position:relative}.am-drop:empty::before{content:"Arraste blocos aqui";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a78bfa;font:500 12px Arial,sans-serif;pointer-events:none}'
           doc.head.appendChild(st)
         }
+      } catch (_) {}
+
+      // Setores de estilo ENXUTOS pra e-mail (definições explícitas; sobrescreve o preset).
+      try {
+        editor.StyleManager.getSectors().reset([
+          { id: 'am-texto', name: 'Texto', open: true, properties: [
+            { property: 'font-size', name: 'Tamanho', type: 'number', units: ['px', 'em', '%'], default: '15px' },
+            { property: 'color', name: 'Cor do texto', type: 'color' },
+            { property: 'font-weight', name: 'Peso', type: 'select', default: '400', options: [{ id: '300', name: 'Fino' }, { id: '400', name: 'Normal' }, { id: '600', name: 'Semi' }, { id: '700', name: 'Negrito' }] },
+            { property: 'text-align', name: 'Alinhamento', type: 'radio', default: 'left', options: [{ id: 'left', name: 'Esq.' }, { id: 'center', name: 'Centro' }, { id: 'right', name: 'Dir.' }] },
+            { property: 'line-height', name: 'Altura da linha', type: 'number', units: ['', 'px', '%'] },
+          ] },
+          { id: 'am-fundo', name: 'Fundo', open: true, properties: [
+            { property: 'background-color', name: 'Cor de fundo', type: 'color' },
+          ] },
+          { id: 'am-espaco', name: 'Espaçamento', open: false, properties: [
+            { property: 'padding', name: 'Interno', type: 'composite', properties: [
+              { property: 'padding-top', name: 'Cima', type: 'number', units: ['px'] },
+              { property: 'padding-right', name: 'Direita', type: 'number', units: ['px'] },
+              { property: 'padding-bottom', name: 'Baixo', type: 'number', units: ['px'] },
+              { property: 'padding-left', name: 'Esquerda', type: 'number', units: ['px'] },
+            ] },
+            { property: 'margin', name: 'Externo', type: 'composite', properties: [
+              { property: 'margin-top', name: 'Cima', type: 'number', units: ['px'] },
+              { property: 'margin-right', name: 'Direita', type: 'number', units: ['px'] },
+              { property: 'margin-bottom', name: 'Baixo', type: 'number', units: ['px'] },
+              { property: 'margin-left', name: 'Esquerda', type: 'number', units: ['px'] },
+            ] },
+          ] },
+          { id: 'am-borda', name: 'Borda', open: false, properties: [
+            { property: 'border-radius', name: 'Cantos', type: 'number', units: ['px'] },
+          ] },
+        ])
       } catch (_) {}
     })
 
