@@ -587,7 +587,7 @@ export default function EmailConstrutor() {
           <div className="mx-auto w-[80vw] max-w-none flex-1 min-h-0 flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
             {/* Barra da nossa modal */}
             <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-surface-100 bg-surface-50/70">
-              <span className="text-xs font-medium text-stone-400 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5 text-primary-500" /> Prévia — como chega na caixa de entrada do cliente</span>
+              <span className="text-xs font-medium text-stone-400 flex items-center gap-1.5"><Eye className="w-3.5 h-3.5 text-primary-500" /> Prévia</span>
               <button onClick={() => setShowPreview(false)} title="Fechar" className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
             </div>
 
