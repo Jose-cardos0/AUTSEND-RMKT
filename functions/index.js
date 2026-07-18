@@ -1277,7 +1277,7 @@ exports.smsCriarCheckoutNumero = onCall({ region: 'us-central1', timeoutSeconds:
       line_items: [{ price: priceNumero, quantity: numeros.length }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
       metadata: meta,
-      subscription_data: { metadata: meta },
+      subscription_data: { metadata: meta, description: `Autsend · ${numeros.length} número(s) de SMS` },
       redirect_on_completion: 'never',
     })
     return { clientSecret: session.client_secret }
@@ -1311,7 +1311,7 @@ exports.instanciaCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds:
       line_items: [{ price: priceInst, quantity: qtd }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
       metadata: meta,
-      subscription_data: { metadata: meta },
+      subscription_data: { metadata: meta, description: `Autsend · ${qtd} instância(s) de WhatsApp` },
       redirect_on_completion: 'never',
     })
     return { clientSecret: session.client_secret }
@@ -1756,7 +1756,7 @@ exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
       metadata: meta,
-      payment_intent_data: { metadata: meta },
+      payment_intent_data: { metadata: meta, description: `Autsend · ${pacote.quantidade} créditos de SMS` },
       redirect_on_completion: 'never',
     })
     return { clientSecret: session.client_secret }
@@ -1833,7 +1833,7 @@ exports.emailCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSecon
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
       metadata: meta,
-      payment_intent_data: { metadata: meta },
+      payment_intent_data: { metadata: meta, description: `Autsend · ${pacote.quantidade} créditos de e-mail` },
       redirect_on_completion: 'never',
     })
     return { clientSecret: session.client_secret }
@@ -1943,7 +1943,7 @@ exports.callCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSecond
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
       metadata: meta,
-      payment_intent_data: { metadata: meta },
+      payment_intent_data: { metadata: meta, description: `Autsend · ${Math.round(pacote.segundos / 60)} min de Ligação IA` },
       redirect_on_completion: 'never',
     })
     return { clientSecret: session.client_secret }
@@ -2962,6 +2962,7 @@ exports.planoCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds: 30 
       mode: 'subscription',
       line_items: [{ price, quantity: 1 }],
       ...(customer ? { customer } : (email ? { customer_email: email } : {})),
+      subscription_data: { description: `Autsend · Plano ${plano.charAt(0).toUpperCase() + plano.slice(1)}` },
       redirect_on_completion: 'never',
     })
     return { clientSecret: session.client_secret }
