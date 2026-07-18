@@ -956,7 +956,8 @@ export default function Admin() {
                               <table className="w-full text-xs whitespace-nowrap">
                                 <thead className="bg-surface-100 text-stone-500"><tr>
                                   <th className="text-left px-3 py-2 font-medium">Resend (e-mail)</th>
-                                  <th className="text-left px-3 py-2 font-medium">Telnyx (SMS)</th>
+                                  <th className="text-left px-3 py-2 font-medium">Telnyx (SMS EUA)</th>
+                                  <th className="text-left px-3 py-2 font-medium">SMSDev (SMS BR)</th>
                                   <th className="text-left px-3 py-2 font-medium">Telnyx (ligação)</th>
                                   <th className="text-left px-3 py-2 font-medium">Grok (IA)</th>
                                   <th className="text-left px-3 py-2 font-medium">Instâncias ({gastos.instanciasQtd})</th>
@@ -964,6 +965,7 @@ export default function Admin() {
                                 <tbody><tr className="border-t border-surface-100 tabular-nums text-stone-700">
                                   <td className="px-3 py-2">{fmtBRL(a.custoResend)}</td>
                                   <td className="px-3 py-2">{fmtBRL(a.custoSms)}</td>
+                                  <td className="px-3 py-2">{fmtBRL(a.custoSmsBr)}</td>
                                   <td className="px-3 py-2">{fmtBRL(a.custoCall)}</td>
                                   <td className="px-3 py-2">{fmtBRL(a.custoGrok)}</td>
                                   <td className="px-3 py-2">{fmtBRL(a.custoInst)}</td>
@@ -980,7 +982,8 @@ export default function Admin() {
                                 <thead className="bg-surface-100 text-stone-500"><tr>
                                   <th className="text-left px-3 py-2 font-medium">Mês</th>
                                   <th className="text-right px-3 py-2 font-medium">E-mails</th>
-                                  <th className="text-right px-3 py-2 font-medium">SMS</th>
+                                  <th className="text-right px-3 py-2 font-medium">SMS EUA</th>
+                                  <th className="text-right px-3 py-2 font-medium">SMS BR</th>
                                   <th className="text-right px-3 py-2 font-medium">Min lig.</th>
                                   <th className="text-right px-3 py-2 font-medium">IA</th>
                                   <th className="text-right px-3 py-2 font-medium">Custo</th>
@@ -989,12 +992,13 @@ export default function Admin() {
                                 </tr></thead>
                                 <tbody>
                                   {(gastos.meses || []).length === 0 ? (
-                                    <tr><td colSpan={8} className="px-3 py-4 text-center text-stone-400">Sem movimentação ainda.</td></tr>
+                                    <tr><td colSpan={9} className="px-3 py-4 text-center text-stone-400">Sem movimentação ainda.</td></tr>
                                   ) : gastos.meses.map((m) => (
                                     <tr key={m.mes} className="border-t border-surface-100 tabular-nums">
                                       <td className="px-3 py-2 text-stone-600">{m.mes}</td>
                                       <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.emails)}</td>
                                       <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.sms)}</td>
+                                      <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.smsBr)}</td>
                                       <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.callMin)}</td>
                                       <td className="px-3 py-2 text-right text-stone-500">{fmtNum(m.ia)}</td>
                                       <td className="px-3 py-2 text-right text-rose-600 font-medium">{fmtBRL(m.custoTotal)}</td>
@@ -1007,7 +1011,7 @@ export default function Admin() {
                             </div>
                           </div>
 
-                          <p className="text-[10px] text-stone-400">Custos estimados por uso: e-mail {fmtBRL(gastos.custos.email)} · SMS {fmtBRL(gastos.custos.sms)} · min ligação {fmtBRL(gastos.custos.callMin)} · IA {fmtBRL(gastos.custos.ia)} · instância {fmtBRL(gastos.custos.instanciaMes)}/mês. Ajuste conforme suas faturas reais. Custo de instância só entra no mês atual.</p>
+                          <p className="text-[10px] text-stone-400">Custos estimados por uso: e-mail {fmtBRL(gastos.custos.email)} · SMS EUA {fmtBRL(gastos.custos.sms)} · SMS BR {fmtBRL(gastos.custos.smsBr)} · min ligação {fmtBRL(gastos.custos.callMin)} · IA {fmtBRL(gastos.custos.ia)} · instância {fmtBRL(gastos.custos.instanciaMes)}/mês. Ajuste conforme suas faturas reais. Custo de instância só entra no mês atual.</p>
                         </div>
                       )
                     })()

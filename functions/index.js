@@ -113,7 +113,8 @@ const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.iacodenx
 // - Grok IA construtor (chat multi-turn, grok-4.1-fast) → R$0,04/uso.
 const CUSTOS_UNIT = {
   email: Number(process.env.CUSTO_EMAIL) || 0.004,
-  sms: Number(process.env.CUSTO_SMS) || 0.045,
+  sms: Number(process.env.CUSTO_SMS) || 0.045, // Telnyx (EUA)
+  smsBr: Number(process.env.CUSTO_SMS_BR) || 0.10, // SMSDev (Brasil ~R$0,08–0,11)
   callMin: Number(process.env.CUSTO_CALL_MIN) || 0.12,
   ia: Number(process.env.CUSTO_IA) || 0.04,
   instanciaMes: Number(process.env.CUSTO_INSTANCIA_MES) || 2.0,
@@ -4928,10 +4929,10 @@ exports.adminGetClienteGastos = onCall({ region: 'us-central1', timeoutSeconds: 
   const mesDeMs = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` }
 
   const meses = {} // 'YYYY-MM' -> agregados
-  const bump = (mes, campo, v) => { if (!mes) return; (meses[mes] = meses[mes] || { emails: 0, sms: 0, callMin: 0, ia: 0, receita: 0, mensalidade: 0, produtos: 0 })[campo] += v }
+  const bump = (mes, campo, v) => { if (!mes) return; (meses[mes] = meses[mes] || { emails: 0, sms: 0, smsBr: 0, callMin: 0, ia: 0, receita: 0, mensalidade: 0, produtos: 0 })[campo] += v }
 
   try { const s = await db.collection(`users/${uid}/emailDisparos`).get(); s.forEach((d) => { const x = d.data(); const ms = toMs(x.createdAt); if (ms) bump(mesDeMs(ms), 'emails', Number(x.enviados) || 0) }) } catch (_) {}
-  try { const s = await db.collection(`users/${uid}/smsDisparos`).get(); s.forEach((d) => { const x = d.data(); const ms = toMs(x.createdAt); if (ms) bump(mesDeMs(ms), 'sms', Number(x.enviados) || 0) }) } catch (_) {}
+  try { const s = await db.collection(`users/${uid}/smsDisparos`).get(); s.forEach((d) => { const x = d.data(); const ms = toMs(x.createdAt); if (ms) bump(mesDeMs(ms), x.canal === 'brl' ? 'smsBr' : 'sms', Number(x.enviados) || 0) }) } catch (_) {}
   try { const s = await db.collection(`users/${uid}/callLogs`).get(); s.forEach((d) => { const x = d.data(); const ms = toMs(x.createdAt); if (ms) bump(mesDeMs(ms), 'callMin', (Number(x.segundos) || 0) / 60) }) } catch (_) {}
   const iaUso = t.iaUso || {}
   for (const [mes, n] of Object.entries(iaUso)) bump(mes, 'ia', Number(n) || 0)
@@ -4947,19 +4948,20 @@ exports.adminGetClienteGastos = onCall({ region: 'us-central1', timeoutSeconds: 
 
   const lista = Object.entries(meses).map(([mes, m]) => {
     const custoResend = m.emails * CUSTOS_UNIT.email
-    const custoSms = m.sms * CUSTOS_UNIT.sms
+    const custoSms = m.sms * CUSTOS_UNIT.sms // Telnyx (EUA)
+    const custoSmsBr = m.smsBr * CUSTOS_UNIT.smsBr // SMSDev (Brasil)
     const custoCall = m.callMin * CUSTOS_UNIT.callMin
     const custoGrok = m.ia * CUSTOS_UNIT.ia
     const custoInst = (mes === mesAtual) ? custoInstanciaMes : 0 // instância só no mês atual (sem histórico de contagem)
-    const custoTotal = custoResend + custoSms + custoCall + custoGrok + custoInst
+    const custoTotal = custoResend + custoSms + custoSmsBr + custoCall + custoGrok + custoInst
     return {
-      mes, emails: m.emails, sms: m.sms, callMin: Math.round(m.callMin), ia: m.ia,
-      custoResend, custoSms, custoCall, custoGrok, custoInst, custoTotal,
+      mes, emails: m.emails, sms: m.sms, smsBr: m.smsBr, callMin: Math.round(m.callMin), ia: m.ia,
+      custoResend, custoSms, custoSmsBr, custoCall, custoGrok, custoInst, custoTotal,
       receita: m.receita, mensalidade: m.mensalidade, produtos: m.produtos, lucro: m.receita - custoTotal,
     }
   }).sort((a, b) => (a.mes < b.mes ? 1 : -1))
 
-  const atual = lista.find((x) => x.mes === mesAtual) || { mes: mesAtual, emails: 0, sms: 0, callMin: 0, ia: 0, custoResend: 0, custoSms: 0, custoCall: 0, custoGrok: 0, custoInst: custoInstanciaMes, custoTotal: custoInstanciaMes, receita: 0, mensalidade: 0, produtos: 0, lucro: -custoInstanciaMes }
+  const atual = lista.find((x) => x.mes === mesAtual) || { mes: mesAtual, emails: 0, sms: 0, smsBr: 0, callMin: 0, ia: 0, custoResend: 0, custoSms: 0, custoSmsBr: 0, custoCall: 0, custoGrok: 0, custoInst: custoInstanciaMes, custoTotal: custoInstanciaMes, receita: 0, mensalidade: 0, produtos: 0, lucro: -custoInstanciaMes }
 
   return { custos: CUSTOS_UNIT, instanciasQtd, custoInstanciaMes, mesAtual: atual, meses: lista }
 })
@@ -5019,13 +5021,14 @@ async function scanRiscoTenant(uid, t) {
 
   // 2) Custo (nós) x Receita do mês → margem negativa = prejuízo.
   const emailsMes = await somaMes('emailDisparos', 'enviados')
-  const smsMes = await somaMes('smsDisparos', 'enviados')
+  let smsMes = 0, smsBrMes = 0
+  try { const s = await db.collection(`users/${uid}/smsDisparos`).get(); s.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicioMesMs) { if (x.canal === 'brl') smsBrMes += Number(x.enviados) || 0; else smsMes += Number(x.enviados) || 0 } }) } catch (_) {}
   let callMinMes = 0
   try { const s = await db.collection(`users/${uid}/callLogs`).get(); s.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicioMesMs) callMinMes += (Number(x.segundos) || 0) / 60 }) } catch (_) {}
   const iaMes = Number((t.iaUso || {})[mesStr] || 0)
   let instQtd = 0
   try { instQtd = (await db.collection(`users/${uid}/instances`).count().get()).data().count } catch (_) {}
-  const custoMes = emailsMes * CUSTOS_UNIT.email + smsMes * CUSTOS_UNIT.sms + callMinMes * CUSTOS_UNIT.callMin + iaMes * CUSTOS_UNIT.ia + instQtd * CUSTOS_UNIT.instanciaMes
+  const custoMes = emailsMes * CUSTOS_UNIT.email + smsMes * CUSTOS_UNIT.sms + smsBrMes * CUSTOS_UNIT.smsBr + callMinMes * CUSTOS_UNIT.callMin + iaMes * CUSTOS_UNIT.ia + instQtd * CUSTOS_UNIT.instanciaMes
 
   // 3) Reclamação/bounce (spam) → risco de BAN da conta Resend compartilhada (financeiro + reputação).
   let complained = 0, bounced = 0, enviadosTotal = 0
