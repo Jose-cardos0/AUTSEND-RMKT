@@ -93,7 +93,7 @@ function FaixaPopular({ tema = 'red' }) {
   const icone = () => tema === 'red'
     ? <Globe className="w-2.5 h-2.5 shrink-0" />
     : tema === 'green'
-    ? <Globe className="w-2.5 h-2.5 shrink-0" />
+    ? <Bandeira code="BR" className="w-3 h-auto rounded-sm shrink-0" />
     : <img src={euaFlag} alt="" className="w-3 h-auto object-contain shrink-0" />
   return (
     <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden pointer-events-none z-10">
