@@ -1272,6 +1272,7 @@ exports.smsCriarCheckoutNumero = onCall({ region: 'us-central1', timeoutSeconds:
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: 'embedded_page',
+      allow_promotion_codes: true, // mostra o campo "Adicionar código promocional" no checkout
       mode: 'subscription',
       line_items: [{ price: priceNumero, quantity: numeros.length }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
@@ -1305,6 +1306,7 @@ exports.instanciaCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds:
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: 'embedded_page',
+      allow_promotion_codes: true, // mostra o campo "Adicionar código promocional" no checkout
       mode: 'subscription',
       line_items: [{ price: priceInst, quantity: qtd }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
@@ -1749,6 +1751,7 @@ exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: 'embedded_page',
+      allow_promotion_codes: true, // mostra o campo "Adicionar código promocional" no checkout
       mode: 'payment',
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
@@ -1825,6 +1828,7 @@ exports.emailCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSecon
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: 'embedded_page',
+      allow_promotion_codes: true, // mostra o campo "Adicionar código promocional" no checkout
       mode: 'payment',
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
@@ -1934,6 +1938,7 @@ exports.callCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSecond
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: 'embedded_page',
+      allow_promotion_codes: true, // mostra o campo "Adicionar código promocional" no checkout
       mode: 'payment',
       line_items: [{ price: pacote.priceId, quantity: 1 }],
       ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
@@ -2953,6 +2958,7 @@ exports.planoCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds: 30 
   try {
     const session = await stripe.checkout.sessions.create({
       ui_mode: 'embedded_page',
+      allow_promotion_codes: true, // mostra o campo "Adicionar código promocional" no checkout
       mode: 'subscription',
       line_items: [{ price, quantity: 1 }],
       ...(customer ? { customer } : (email ? { customer_email: email } : {})),
