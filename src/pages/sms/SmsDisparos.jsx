@@ -208,7 +208,7 @@ export default function SmsDisparos() {
               type="text"
               value={nomeDisparo}
               onChange={(e) => setNomeDisparo(e.target.value)}
-              placeholder="Ex: Black Friday US"
+              placeholder={canal === 'brl' ? 'Ex: Black Friday BR' : 'Ex: Black Friday US'}
               className="w-full px-4 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-base"
               autoFocus
             />
@@ -276,7 +276,7 @@ export default function SmsDisparos() {
               <textarea
                 value={lista}
                 onChange={(e) => setLista(e.target.value)}
-                placeholder={'+14155552671\n+442079460958,Mary'}
+                placeholder={canal === 'brl' ? '+5511999998888\n+5521988887777,Maria' : '+14155552671\n+442079460958,Mary'}
                 className="relative z-10 w-full flex-1 p-4 rounded-xl border border-surface-200 bg-transparent focus:border-surface-300 focus:ring-0 outline-none resize-y text-sm font-mono min-h-[220px]"
               />
             </div>

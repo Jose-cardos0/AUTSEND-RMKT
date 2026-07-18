@@ -129,7 +129,9 @@ function EventCard({ event, auto, onSave }) {
               ref={editorRef}
               value={mensagem}
               onChange={setMensagem}
-              placeholder={'Autsend: hey {nome_cliente}, thanks for your interest in {nome_produto}! Reply STOP to opt out.'}
+              placeholder={canal === 'brl'
+                ? 'Autsend: oi {nome_cliente}, tudo bem? Vi seu interesse em {nome_produto}. Qualquer duvida chama! Responda SAIR para nao receber mais.'
+                : 'Autsend: hey {nome_cliente}, thanks for your interest in {nome_produto}! Reply STOP to opt out.'}
               rows={4}
             />
           </div>
@@ -148,7 +150,7 @@ function EventCard({ event, auto, onSave }) {
           </div>
 
           <p className="text-[11px] text-stone-400">
-            {mensagem.length} caractere(s) · <span className={segmentos > 1 ? 'text-amber-600 font-medium' : ''}>{segmentos} segmento(s)</span>. Acentos removidos automaticamente. Só dispara pra leads internacionais (ignora +55).
+            {mensagem.length} caractere(s) · <span className={segmentos > 1 ? 'text-amber-600 font-medium' : ''}>{segmentos} segmento(s)</span>. Acentos removidos automaticamente. {canal === 'brl' ? 'Só dispara pra leads do Brasil (+55).' : 'Só dispara pra leads internacionais (ignora +55).'}
           </p>
 
           <div className="flex flex-wrap gap-2 items-center">
@@ -251,8 +253,8 @@ export default function SmsAutomacoes() {
     const forEvent = autos.filter((a) => a.evento === lead.evento)
     const auto = (grupoLead && forEvent.find((a) => a.grupoId === grupoLead.id)) || forEvent.find((a) => !a.grupoId) || null
     if (!auto?.mensagem) { toast.error('Nenhuma automação de SMS configurada para este evento. Configure primeiro.'); return }
-    const norm = normalizarE164Internacional(lead.telefone, canal === 'api')
-    if (!norm.ok) { toast.error(norm.br ? 'Sua conta EUA não atende números do Brasil (+55).' : 'Número inválido.'); return }
+    const norm = normalizarE164Internacional(lead.telefone, canal === 'api' || canal === 'brl')
+    if (!norm.ok) { toast.error(norm.br ? 'Este canal não atende números do Brasil (+55).' : 'Número inválido.'); return }
     setReenviandoId(lead.id)
     try {
       const fn = httpsCallable(functions, 'reenviarSMSLead')
@@ -275,6 +277,8 @@ export default function SmsAutomacoes() {
   const LEADS_POR_PAGINA = 5
   const filtered = useMemo(() => {
     let list = leads
+    // Canal Brasil só mostra leads com número do Brasil (+55).
+    if (canal === 'brl') list = list.filter((l) => normalizarE164Internacional(l.telefone, false).br === true)
     if (filtroNome.trim()) {
       const q = filtroNome.toLowerCase()
       list = list.filter((l) => (l.nome || '').toLowerCase().includes(q) || (l.email || '').toLowerCase().includes(q) || (l.telefone || '').includes(filtroNome))
@@ -299,7 +303,7 @@ export default function SmsAutomacoes() {
       })
     }
     return list
-  }, [leads, filtroNome, sortKey, sortDir, smsStatusByLead])
+  }, [leads, filtroNome, sortKey, sortDir, smsStatusByLead, canal])
 
   const totalPaginasLeads = Math.max(1, Math.ceil(filtered.length / LEADS_POR_PAGINA))
   const paginaLeadsAtual = Math.min(paginaLeads, totalPaginasLeads)

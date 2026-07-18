@@ -1203,7 +1203,28 @@ exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   const mensagem = String(data.mensagem || '').trim()
   if (!mensagem) throw new HttpsError('invalid-argument', 'Nenhuma automação de SMS configurada para este evento.')
   const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
-  const canal = data.canal === 'api' ? 'api' : 'eua'
+  const canal = ['api', 'brl'].includes(data.canal) ? data.canal : 'eua'
+
+  // ── Canal BRASIL (SMSDev): reenvio via SMSDev, crédito-only. ──
+  if (canal === 'brl') {
+    const smsdevKey = process.env.SMSDEV_API_KEY
+    if (!smsdevKey) throw new HttpsError('failed-precondition', 'SMS Brasil ainda não configurado.')
+    const normBr = normalizarE164(data.telefone, { permitirBR: true })
+    if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) throw new HttpsError('invalid-argument', 'Número do Brasil (+55) inválido.')
+    if (!ehAdmin && (Number(tenant.smsBrCreditos) || 0) < 1) throw new HttpsError('resource-exhausted', 'Sem créditos de SMS Brasil. Recarregue no Perfil.')
+    const customer = { nome: data.nome || '', telefone: normBr.e164, email: data.email || '' }
+    const texto = replaceVariables(mensagem, customer, { nome: data.produto || '' })
+    let ok = true, erroMsg = null
+    try { await enviarSMSDev(smsdevKey, normBr.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
+    if (ok && !ehAdmin) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
+    await db.collection('users').doc(uid).collection('smsLogs').add({
+      leadId: data.leadId || null, evento: data.evento || '', produto: data.produto || '', telefone: normBr.e164, nome: customer.nome, canal: 'brl',
+      status: ok ? 'enviado' : 'erro', erroMsg, mensagem: texto, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+    if (!ok) throw new HttpsError('internal', erroMsg || 'Falha ao enviar SMS.')
+    return { ok: true }
+  }
+
   const rEnvio = await resolverTelnyxEnvio(uid, ehAdmin, canal)
   if (rEnvio.erro) throw new HttpsError('failed-precondition', rEnvio.erro)
   const cfg = rEnvio.cfg

@@ -366,7 +366,7 @@ export default function Layout() {
     return g ? { [g.key]: true } : {}
   })
   // O construtor de e-mail, o funil e o remarketing usam mais largura (lista/editor lado a lado)
-  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || /\/sms\/(eua|api)?\/?(funil|automacoes|remarketing|metricas)/.test(location.pathname) || /\/call\/(eua|api)?\/?(campanha|metricas)/.test(location.pathname)
+  const wide = location.pathname.startsWith('/email/construtor') || location.pathname.startsWith('/email/funil') || location.pathname.startsWith('/funil') || location.pathname.startsWith('/remarketing') || location.pathname.startsWith('/automacoes') || location.pathname.startsWith('/email/automacoes') || location.pathname.startsWith('/email/metricas') || location.pathname.startsWith('/metricas') || /\/sms\/(eua|api|brl)?\/?(funil|automacoes|remarketing|metricas)/.test(location.pathname) || /\/call\/(eua|api)?\/?(campanha|metricas)/.test(location.pathname)
 
   // Ao navegar, garante que o grupo da rota atual esteja aberto.
   useEffect(() => {
