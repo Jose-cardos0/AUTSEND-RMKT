@@ -209,6 +209,7 @@ export default function Perfil() {
   const planoLabel = PLANO_LABEL[stats?.plano] || 'Free'
   const fotoURL = stats?.fotoURL || null
   const smsLimiteEfetivo = isAdmin ? -1 : ((stats?.smsLimite || 0) + (stats?.smsCreditos || 0))
+  const smsBrLimiteEfetivo = isAdmin ? -1 : (stats?.smsBrCreditos || 0) // BR é crédito-only
   const callLimiteEfetivo = isAdmin ? -1 : ((stats?.callMinLimite || 0) + Math.floor((stats?.callCreditosSeg || 0) / 60))
   const emailLimiteEfetivo = isAdmin ? -1 : ((stats?.emailsLimite || 0) + (stats?.emailCreditos || 0))
   const iaLimiteEfetivo = isAdmin ? -1 : (stats?.iaLimite || 0)
@@ -262,7 +263,8 @@ export default function Perfil() {
         <Panel title="Uso deste mês" icon={Zap}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <BarraUso icon={Mail} titulo="E-mails" usados={stats?.emailsUsados || 0} limite={emailLimiteEfetivo} cor="primary" />
-            <BarraUso icon={MessageSquare} titulo="SMS" usados={stats?.smsUsados || 0} limite={smsLimiteEfetivo} cor="violet" />
+            <BarraUso icon={MessageSquare} titulo="SMS (EUA)" usados={stats?.smsUsados || 0} limite={smsLimiteEfetivo} cor="violet" />
+            <BarraUso icon={MessageSquare} titulo="SMS (Brasil)" usados={stats?.smsBrUsados || 0} limite={smsBrLimiteEfetivo} cor="emerald" />
             <BarraUso icon={Phone} titulo="Ligação IA (min)" usados={stats?.callMinUsados || 0} limite={callLimiteEfetivo} cor="emerald" />
             <BarraUso icon={Sparkles} titulo="IA Construtor" usados={stats?.iaUsados || 0} limite={iaLimiteEfetivo} cor="amber" />
           </div>

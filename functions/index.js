@@ -941,7 +941,18 @@ async function smsEnviadosNoMes(uid) {
   let total = 0
   try {
     const ds = await db.collection(`users/${uid}/smsDisparos`).get()
-    ds.forEach((d) => { const x = d.data(); const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicio.getTime()) total += Number(x.enviados) || 0 })
+    ds.forEach((d) => { const x = d.data(); if (x.canal === 'brl') return; const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicio.getTime()) total += Number(x.enviados) || 0 })
+  } catch (_) {}
+  return total
+}
+
+/** SMS BRASIL (canal 'brl') enviados no mês. */
+async function smsBrEnviadosNoMes(uid) {
+  const inicio = new Date(); inicio.setDate(1); inicio.setHours(0, 0, 0, 0)
+  let total = 0
+  try {
+    const ds = await db.collection(`users/${uid}/smsDisparos`).get()
+    ds.forEach((d) => { const x = d.data(); if (x.canal !== 'brl') return; const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0); if (cm >= inicio.getTime()) total += Number(x.enviados) || 0 })
   } catch (_) {}
   return total
 }
@@ -2570,7 +2581,7 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
   const t = s.exists ? s.data() : {}
   const lim = limitesDoTenant(t)
   const isAdm = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
-  const [emailsUsados, smsUsados, callSegUsados] = await Promise.all([emailsEnviadosNoMes(uid), smsEnviadosNoMes(uid), callSegundosUsadosNoMes(uid)])
+  const [emailsUsados, smsUsados, callSegUsados, smsBrUsados] = await Promise.all([emailsEnviadosNoMes(uid), smsEnviadosNoMes(uid), callSegundosUsadosNoMes(uid), smsBrEnviadosNoMes(uid)])
   const smsCreditos = Number(t.smsCreditos) || 0
   const emailCreditos = Number(t.emailCreditos) || 0
   const callCreditosSeg = Number(t.callCreditos) || 0
@@ -2581,7 +2592,7 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
     fotoURL: t.fotoURL || null,
     emailsUsados, emailsLimite: isAdm ? -1 : (lim.emailsMes || 0), emailCreditos,
     smsUsados, smsLimite: isAdm ? -1 : (lim.smsMes || 0), smsCreditos,
-    smsBrCreditos: Number(t.smsBrCreditos) || 0,
+    smsBrCreditos: Number(t.smsBrCreditos) || 0, smsBrUsados,
     // IA do construtor de e-mail (criações/edições no mês).
     iaUsados: Number(t?.iaUso?.[mesAtualStr()] || 0), iaLimite: isAdm ? -1 : (Number(lim.iaMes) || 0),
     // Ligação IA: em minutos pra exibição (usados/limite) + crédito comprado em segundos.
