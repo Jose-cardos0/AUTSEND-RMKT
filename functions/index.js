@@ -1080,16 +1080,16 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
       canal: 'brl', contaPropria: false, status: 'enviando',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
-    let enviados = 0, erros = 0
+    let enviados = 0, erros = 0, erroMotivo = null
     for (const v of validos) {
       try {
         const texto = replaceVariables(msgBr, { nome: v.nome, telefone: v.telefone, email: '' }, { nome: v.produto })
         await enviarSMSDev(smsdevKey, v.telefone, texto)
         enviados++
-      } catch (e) { erros++; console.error('enviarSMSDev', e?.message || e) }
+      } catch (e) { erros++; erroMotivo = (e?.message || String(e)).slice(0, 300); console.error('enviarSMSDev', erroMotivo) }
     }
     if (!ehAdminBr && enviados > 0) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-enviados) }, { merge: true })
-    await dispRef.update({ enviados, erros, status: erros === 0 ? 'enviado' : (enviados === 0 ? 'erro' : 'parcial') })
+    await dispRef.update({ enviados, erros, status: erros === 0 ? 'enviado' : (enviados === 0 ? 'erro' : 'parcial'), ...(erroMotivo ? { erroMotivo } : {}) })
     await scanConteudoRisco(uid, tenant, 'sms', msgBr, { ref: dispRef.id })
     return { ok: true, total: validos.length, enviados, canal: 'brl' }
   }

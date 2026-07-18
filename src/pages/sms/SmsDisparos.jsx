@@ -316,7 +316,10 @@ export default function SmsDisparos() {
                       <span className="text-xs text-stone-600">
                         {d.enviados}/{d.total} enviados{d.erros ? ` · ${d.erros} erro(s)` : ''}
                       </span>
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS[d.status] || 'bg-stone-100 text-stone-600'}`}>
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS[d.status] || 'bg-stone-100 text-stone-600'} ${d.erros > 0 && d.erroMotivo ? 'cursor-help' : ''}`}
+                        title={d.erros > 0 && d.erroMotivo ? `Motivo: ${d.erroMotivo}` : undefined}
+                      >
                         {d.status === 'enviado' ? 'Enviado' : d.status === 'enviando' ? 'Enviando' : d.status === 'parcial' ? 'Parcial' : d.status === 'erro' ? 'Erro' : d.status}
                       </span>
                       <button onClick={() => handleExcluir(d.id)} className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir">
@@ -330,6 +333,9 @@ export default function SmsDisparos() {
                         <p className="text-stone-700 font-medium">Mensagem enviada:</p>
                         <p className="whitespace-pre-wrap break-words">{d.mensagem}</p>
                         {d.ignoradosBR > 0 && <p className="text-amber-600">{d.ignoradosBR} número(s) do Brasil ignorados neste disparo.</p>}
+                        {d.erros > 0 && d.erroMotivo && (
+                          <p className="text-red-600 mt-1"><b>Motivo do erro:</b> {d.erroMotivo}</p>
+                        )}
                       </div>
                     </div>
                   )}
