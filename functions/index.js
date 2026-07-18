@@ -1024,13 +1024,20 @@ async function enviarSMSDev(key, to, text) {
  * Envia um LOTE de SMS Brasil (SMSDev), sequencial. Debita 1 crédito BR por enviado (exceto admin).
  * Retorna { enviados, erros, erroMotivo }.
  */
-async function enviarLoteSMSDev(uid, smsdevKey, mensagem, recipients, ehAdm, propria) {
+async function enviarLoteSMSDev(uid, smsdevKey, mensagem, recipients, ehAdm, propria, disparoId) {
   let enviados = 0, erros = 0, erroMotivo = null
   for (const v of (recipients || [])) {
     try {
       const texto = replaceVariables(mensagem, { nome: v.nome || '', telefone: v.telefone, email: '' }, { nome: v.produto || '' })
-      await enviarSMSDev(smsdevKey, v.telefone, texto)
+      const out = await enviarSMSDev(smsdevKey, v.telefone, texto)
       enviados++
+      // Rastreio de entrega (DLR): grava a msg + índice id→uid pro smsdevWebhook atualizar depois.
+      if (out.id) {
+        try {
+          await db.doc(`users/${uid}/smsMensagens/${out.id}`).set({ disparoId: disparoId || null, to: v.telefone, canal: 'brl', status: 'enviado', createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+          await db.doc(`smsdevIndex/${out.id}`).set({ uid }, { merge: true })
+        } catch (_) {}
+      }
     } catch (e) { erros++; erroMotivo = (e?.message || String(e)).slice(0, 300); console.error('enviarSMSDev', erroMotivo) }
   }
   if (!ehAdm && !propria && enviados > 0) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-enviados) }, { merge: true })
@@ -1194,7 +1201,7 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
     })
     await scanConteudoRisco(uid, tenant, 'sms', msgBr, { ref: dispRef.id })
     // 1º lote na hora
-    const r0 = await enviarLoteSMSDev(uid, smsdevKey, msgBr, lotesBr[0] || [], ehAdminBr, propriaBr)
+    const r0 = await enviarLoteSMSDev(uid, smsdevKey, msgBr, lotesBr[0] || [], ehAdminBr, propriaBr, dispRef.id)
     // demais lotes na fila
     const intervaloMsBr = intervaloMinBr * 60000
     for (let i = 1; i < lotesBr.length; i++) {
@@ -1390,7 +1397,7 @@ exports.processarLotesSMS = onSchedule(
         if (canal === 'brl') {
           const rSms = await resolverSmsBrEnvio(uid) // BYO (conta do cliente) tem prioridade
           if (rSms.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
-          r = await enviarLoteSMSDev(uid, rSms.key, dd.mensagem || '', lote.recipients || [], await ehUidAdmin(uid), rSms.propria)
+          r = await enviarLoteSMSDev(uid, rSms.key, dd.mensagem || '', lote.recipients || [], await ehUidAdmin(uid), rSms.propria, dispId)
         } else {
           const chave = `${uid}:${canal}`
           if (!cfgCache[chave]) {
@@ -1439,6 +1446,33 @@ exports.telnyxWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, m
     res.status(200).send('ok')
   } catch (err) {
     console.error('telnyxWebhook', err)
+    res.status(200).send('ok')
+  }
+})
+
+/**
+ * Webhook de status do SMSDev (DLR: entregue/não entregue) — atualiza smsMensagens pra métricas BR.
+ * Configure a URL desta função no painel do SMSDev (Callback Situação). O id da msg mapeia o uid via smsdevIndex.
+ * Formato flexível (SMSDev varia): tenta id em id/id_sms/message_id e situação em situacao/status/dlr.
+ */
+exports.smsdevWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
+  try {
+    const b = { ...(req.query || {}), ...(req.body || {}) }
+    const id = String(b.id || b.id_sms || b.message_id || b.messageId || '').trim()
+    const situacao = String(b.situacao || b.status || b.dlr || b.descricao || '').toLowerCase()
+    if (id) {
+      let uid = (req.query && req.query.userId) || null
+      if (!uid) { try { const ix = await db.doc(`smsdevIndex/${id}`).get(); if (ix.exists) uid = ix.data().uid } catch (_) {} }
+      if (uid) {
+        const entregue = /entreg|delivered|\bdlvrd\b|success|sucesso/.test(situacao)
+        const falhou = /(nao.?entreg|undeliver|falh|erro|reject|expir|blacklist|invalid)/.test(situacao)
+        const status = entregue ? 'entregue' : (falhou ? 'nao_entregue' : (situacao || 'atualizado'))
+        await db.doc(`users/${uid}/smsMensagens/${id}`).set({ status, dlr: situacao, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      }
+    }
+    res.status(200).send('ok')
+  } catch (err) {
+    console.error('smsdevWebhook', err)
     res.status(200).send('ok')
   }
 })
