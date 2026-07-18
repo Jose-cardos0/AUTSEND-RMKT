@@ -83,3 +83,29 @@ export async function definirPrincipalSMS(tipo, id) {
   const r = await call('smsDefinirPrincipal')({ tipo, id })
   return r.data
 }
+
+// ── SMSDev (SMS Brasil) — contas próprias do cliente (BYO) ──
+
+/** Conecta uma conta SMSDev própria (valida a chave pelo saldo). */
+export async function addSmsdevProvider({ apiKey, nome }) {
+  const r = await call('smsdevAddProvider')({ apiKey, nome })
+  return r.data
+}
+
+/** Lista as contas SMSDev próprias (chave mascarada). */
+export async function listSmsdevProviders() {
+  const r = await call('smsdevListProviders')()
+  return r.data // { provedores: [{ id, nome, principal, apiKeyMasked }] }
+}
+
+/** Define qual conta SMSDev é a principal nos envios BR. */
+export async function setPrincipalSmsdev(id) {
+  const r = await call('smsdevSetPrincipal')({ id })
+  return r.data
+}
+
+/** Remove uma conta SMSDev própria. */
+export async function deleteSmsdevProvider(id) {
+  const r = await call('smsdevDeleteProvider')({ id })
+  return r.data
+}

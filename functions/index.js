@@ -1024,7 +1024,7 @@ async function enviarSMSDev(key, to, text) {
  * Envia um LOTE de SMS Brasil (SMSDev), sequencial. Debita 1 crédito BR por enviado (exceto admin).
  * Retorna { enviados, erros, erroMotivo }.
  */
-async function enviarLoteSMSDev(uid, smsdevKey, mensagem, recipients, ehAdm) {
+async function enviarLoteSMSDev(uid, smsdevKey, mensagem, recipients, ehAdm, propria) {
   let enviados = 0, erros = 0, erroMotivo = null
   for (const v of (recipients || [])) {
     try {
@@ -1033,9 +1033,93 @@ async function enviarLoteSMSDev(uid, smsdevKey, mensagem, recipients, ehAdm) {
       enviados++
     } catch (e) { erros++; erroMotivo = (e?.message || String(e)).slice(0, 300); console.error('enviarSMSDev', erroMotivo) }
   }
-  if (!ehAdm && enviados > 0) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-enviados) }, { merge: true })
+  if (!ehAdm && !propria && enviados > 0) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-enviados) }, { merge: true })
   return { enviados, erros, erroMotivo }
 }
+
+/** Provedor SMSDev PRÓPRIO (BYO) do cliente: o principal, ou o primeiro. */
+async function getSmsdevProviderCliente(uid) {
+  try {
+    const snap = await db.collection(`users/${uid}/smsdevProviders`).get()
+    if (snap.empty) return null
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    return docs.find((d) => d.principal === true) || docs[0]
+  } catch (_) { return null }
+}
+
+/**
+ * Resolve QUAL conta SMSDev usar pro envio BR: a PRÓPRIA do cliente (BYO) tem prioridade;
+ * senão a NOSSA (SMSDEV_API_KEY). `propria:true` = não debita smsBrCreditos (é a conta dele).
+ */
+async function resolverSmsBrEnvio(uid) {
+  const prov = await getSmsdevProviderCliente(uid)
+  if (prov && prov.apiKey) return { key: prov.apiKey, propria: true }
+  const shared = process.env.SMSDEV_API_KEY
+  if (shared) return { key: shared, propria: false }
+  return { erro: 'SMS Brasil ainda não configurado.' }
+}
+
+/** Máscara da key pra exibir sem expor. */
+function mascararKey(k) { const s = String(k || ''); return s.length <= 8 ? '••••' : `${s.slice(0, 4)}••••${s.slice(-4)}` }
+
+/** BYO SMSDev: conecta a conta SMSDev PRÓPRIA do cliente (valida a key pelo saldo). */
+exports.smsdevAddProvider = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertTenantAtivo(uid)
+  const apiKey = String(request.data?.apiKey || '').trim()
+  const nome = String(request.data?.nome || 'Minha conta SMSDev').trim().slice(0, 60)
+  if (apiKey.length < 20) throw new HttpsError('invalid-argument', 'Chave SMSDev inválida (muito curta).')
+  // Valida a chave no SMSDev (consulta de saldo).
+  try {
+    const res = await fetch(`https://api.smsdev.com.br/v1/balance?key=${encodeURIComponent(apiKey)}&action=saldo`)
+    const txt = await res.text()
+    if (/NAO AUTENTICADO|"situacao"\s*:\s*"ERRO"/i.test(txt)) throw new Error('Chave não autenticada no SMSDev. Confira a Chave Key no painel deles.')
+  } catch (e) { throw new HttpsError('failed-precondition', e.message || 'Não consegui validar a chave no SMSDev.') }
+  const existentes = await db.collection(`users/${uid}/smsdevProviders`).limit(1).get()
+  const ref = await db.collection(`users/${uid}/smsdevProviders`).add({
+    apiKey, nome, principal: existentes.empty, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  return { id: ref.id }
+})
+
+/** Lista as contas SMSDev próprias do cliente (key mascarada). */
+exports.smsdevListProviders = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const snap = await db.collection(`users/${uid}/smsdevProviders`).get()
+  const provedores = snap.docs.map((d) => { const x = d.data(); return { id: d.id, nome: x.nome || 'SMSDev', principal: !!x.principal, apiKeyMasked: mascararKey(x.apiKey) } })
+  provedores.sort((a, b) => Number(b.principal) - Number(a.principal))
+  return { provedores }
+})
+
+/** Define qual conta SMSDev é a principal (usada nos envios BR). */
+exports.smsdevSetPrincipal = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  const snap = await db.collection(`users/${uid}/smsdevProviders`).get()
+  const batch = db.batch()
+  snap.docs.forEach((d) => batch.set(d.ref, { principal: d.id === id }, { merge: true }))
+  await batch.commit()
+  return { ok: true }
+})
+
+/** Remove uma conta SMSDev própria. */
+exports.smsdevDeleteProvider = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  const ref = db.doc(`users/${uid}/smsdevProviders/${id}`)
+  const era = (await ref.get()).data()
+  await ref.delete()
+  // Se era o principal, promove outro.
+  if (era?.principal) {
+    const outros = await db.collection(`users/${uid}/smsdevProviders`).limit(1).get()
+    if (!outros.empty) await outros.docs[0].ref.set({ principal: true }, { merge: true })
+  }
+  return { ok: true }
+})
 
 /** Envia um lote de SMS (sequencial, respeitando ~1 msg/s de TPS das faixas de entrada). */
 async function enviarLoteSMS(uid, ctx, recipients) {
@@ -1081,15 +1165,18 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
     const recBr = Array.isArray(request.data?.recipients) ? request.data.recipients : []
     if (!msgBr) throw new HttpsError('invalid-argument', 'Escreva a mensagem do SMS.')
     if (recBr.length === 0) throw new HttpsError('invalid-argument', 'Nenhum destinatário na lista.')
-    const smsdevKey = process.env.SMSDEV_API_KEY
-    if (!smsdevKey) throw new HttpsError('failed-precondition', 'SMS Brasil ainda não configurado.')
+    const rSmsBr = await resolverSmsBrEnvio(uid) // BYO (conta do cliente) tem prioridade
+    if (rSmsBr.erro) throw new HttpsError('failed-precondition', rSmsBr.erro)
+    const smsdevKey = rSmsBr.key
+    const propriaBr = !!rSmsBr.propria
     const validos = []
     for (const r of recBr.slice(0, 20000)) {
       const norm = normalizarE164(r?.telefone || r?.numero || '', { permitirBR: true })
       if (norm.ok && String(norm.e164).replace(/\D/g, '').startsWith('55')) validos.push({ telefone: norm.e164, nome: r.nome || '', produto: r.produto || '' })
     }
     if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum número do Brasil (+55) válido na lista.')
-    if (!ehAdminBr) {
+    // Crédito nosso só quando usa a NOSSA conta (não BYO / não admin).
+    if (!ehAdminBr && !propriaBr) {
       const creditos = Number(tenant.smsBrCreditos) || 0
       if (creditos < validos.length) throw new HttpsError('resource-exhausted', `Você tem ${creditos} crédito(s) de SMS Brasil, mas a lista tem ${validos.length}. Recarregue no Perfil.`)
     }
@@ -1102,12 +1189,12 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
       nomeDisparo: String(request.data?.nomeDisparo || 'Disparo SMS Brasil'),
       mensagem: msgBr, total: validos.length, enviados: 0, erros: 0,
       loteSize: loteSizeBr, intervaloMin: intervaloMinBr, totalLotes: lotesBr.length,
-      canal: 'brl', contaPropria: false, status: 'enviando',
+      canal: 'brl', contaPropria: propriaBr, status: 'enviando',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
     await scanConteudoRisco(uid, tenant, 'sms', msgBr, { ref: dispRef.id })
     // 1º lote na hora
-    const r0 = await enviarLoteSMSDev(uid, smsdevKey, msgBr, lotesBr[0] || [], ehAdminBr)
+    const r0 = await enviarLoteSMSDev(uid, smsdevKey, msgBr, lotesBr[0] || [], ehAdminBr, propriaBr)
     // demais lotes na fila
     const intervaloMsBr = intervaloMinBr * 60000
     for (let i = 1; i < lotesBr.length; i++) {
@@ -1239,16 +1326,16 @@ exports.reenviarSMSLead = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
 
   // ── Canal BRASIL (SMSDev): reenvio via SMSDev, crédito-only. ──
   if (canal === 'brl') {
-    const smsdevKey = process.env.SMSDEV_API_KEY
-    if (!smsdevKey) throw new HttpsError('failed-precondition', 'SMS Brasil ainda não configurado.')
+    const rSms = await resolverSmsBrEnvio(uid) // BYO (conta do cliente) tem prioridade
+    if (rSms.erro) throw new HttpsError('failed-precondition', rSms.erro)
     const normBr = normalizarE164(data.telefone, { permitirBR: true })
     if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) throw new HttpsError('invalid-argument', 'Número do Brasil (+55) inválido.')
-    if (!ehAdmin && (Number(tenant.smsBrCreditos) || 0) < 1) throw new HttpsError('resource-exhausted', 'Sem créditos de SMS Brasil. Recarregue no Perfil.')
+    if (!ehAdmin && !rSms.propria && (Number(tenant.smsBrCreditos) || 0) < 1) throw new HttpsError('resource-exhausted', 'Sem créditos de SMS Brasil. Recarregue no Perfil.')
     const customer = { nome: data.nome || '', telefone: normBr.e164, email: data.email || '' }
     const texto = replaceVariables(mensagem, customer, { nome: data.produto || '' })
     let ok = true, erroMsg = null
-    try { await enviarSMSDev(smsdevKey, normBr.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
-    if (ok && !ehAdmin) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
+    try { await enviarSMSDev(rSms.key, normBr.e164, texto) } catch (err) { ok = false; erroMsg = err.message || 'Falha no envio do SMS' }
+    if (ok && !ehAdmin && !rSms.propria) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
     await db.collection('users').doc(uid).collection('smsLogs').add({
       leadId: data.leadId || null, evento: data.evento || '', produto: data.produto || '', telefone: normBr.e164, nome: customer.nome, canal: 'brl',
       status: ok ? 'enviado' : 'erro', erroMsg, mensagem: texto, createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1301,9 +1388,9 @@ exports.processarLotesSMS = onSchedule(
         const canal = ['api', 'brl'].includes(dd.canal) ? dd.canal : 'eua'
         let r
         if (canal === 'brl') {
-          const smsdevKey = process.env.SMSDEV_API_KEY
-          if (!smsdevKey) { await loteDoc.ref.update({ status: 'erro' }); continue }
-          r = await enviarLoteSMSDev(uid, smsdevKey, dd.mensagem || '', lote.recipients || [], await ehUidAdmin(uid))
+          const rSms = await resolverSmsBrEnvio(uid) // BYO (conta do cliente) tem prioridade
+          if (rSms.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
+          r = await enviarLoteSMSDev(uid, rSms.key, dd.mensagem || '', lote.recipients || [], await ehUidAdmin(uid), rSms.propria)
         } else {
           const chave = `${uid}:${canal}`
           if (!cfgCache[chave]) {
@@ -3711,19 +3798,21 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
 
       // ── Canal BRASIL (SMSDev): só dispara pra +55; crédito-only. ──
       if (canal === 'brl') {
-        const smsdevKey = process.env.SMSDEV_API_KEY
-        if (!smsdevKey) continue
+        const rSms = await resolverSmsBrEnvio(userId) // BYO (conta do cliente) tem prioridade
+        if (rSms.erro) continue
         const normBr = normalizarE164(customer.telefone, { permitirBR: true })
         if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) continue // canal BR ignora não-+55
-        const tSnap = await db.doc(`tenants/${userId}`).get()
-        if (!ehAdm && (Number(tSnap.data()?.smsBrCreditos) || 0) < 1) {
-          await db.collection('users').doc(userId).collection('smsLogs').add({ leadId: leadRef.id, evento, canal: 'brl', produto: product.nome || '', telefone: normBr.e164, nome: customer.nome || '', status: 'erro', erroMsg: 'Sem créditos de SMS Brasil', mensagem: auto.mensagem || '', createdAt: admin.firestore.FieldValue.serverTimestamp() })
-          continue
+        if (!ehAdm && !rSms.propria) {
+          const tSnap = await db.doc(`tenants/${userId}`).get()
+          if ((Number(tSnap.data()?.smsBrCreditos) || 0) < 1) {
+            await db.collection('users').doc(userId).collection('smsLogs').add({ leadId: leadRef.id, evento, canal: 'brl', produto: product.nome || '', telefone: normBr.e164, nome: customer.nome || '', status: 'erro', erroMsg: 'Sem créditos de SMS Brasil', mensagem: auto.mensagem || '', createdAt: admin.firestore.FieldValue.serverTimestamp() })
+            continue
+          }
         }
         const textoBr = replaceVariables(auto.mensagem || '', { ...customer, telefone: normBr.e164 }, product)
         let okBr = true, erroBr = null
-        try { await enviarSMSDev(smsdevKey, normBr.e164, textoBr) } catch (err) { okBr = false; erroBr = err.message || 'Falha no envio do SMS' }
-        if (okBr && !ehAdm) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
+        try { await enviarSMSDev(rSms.key, normBr.e164, textoBr) } catch (err) { okBr = false; erroBr = err.message || 'Falha no envio do SMS' }
+        if (okBr && !ehAdm && !rSms.propria) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
         await db.collection('users').doc(userId).collection('smsLogs').add({ leadId: leadRef.id, evento, canal: 'brl', produto: product.nome || '', telefone: normBr.e164, nome: customer.nome || '', status: okBr ? 'enviado' : 'erro', erroMsg: erroBr, mensagem: textoBr, createdAt: admin.firestore.FieldValue.serverTimestamp() })
         continue
       }
@@ -3841,15 +3930,15 @@ async function enviarMensagemFunilSMS(userId, mensagem, contato, canal) {
   try {
     if (!contato?.telefone || !mensagem) return false
     if (canal === 'brl') {
-      const smsdevKey = process.env.SMSDEV_API_KEY
-      if (!smsdevKey) return false
+      const rSms = await resolverSmsBrEnvio(userId) // BYO (conta do cliente) tem prioridade
+      if (rSms.erro) return false
       const normBr = normalizarE164(contato.telefone, { permitirBR: true })
       if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) return false // funil BR só +55
       const ehAdm = await ehUidAdmin(userId)
-      if (!ehAdm) { const tSnap = await db.doc(`tenants/${userId}`).get(); if ((Number(tSnap.data()?.smsBrCreditos) || 0) < 1) return false }
+      if (!ehAdm && !rSms.propria) { const tSnap = await db.doc(`tenants/${userId}`).get(); if ((Number(tSnap.data()?.smsBrCreditos) || 0) < 1) return false }
       const textoBr = replaceVariables(mensagem, { nome: contato.nome || '', telefone: normBr.e164, email: contato.email || '' }, { nome: contato.produto || '' })
-      await enviarSMSDev(smsdevKey, normBr.e164, textoBr)
-      if (!ehAdm) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
+      await enviarSMSDev(rSms.key, normBr.e164, textoBr)
+      if (!ehAdm && !rSms.propria) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
       return true
     }
     const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId), canal === 'api' ? 'api' : 'eua')

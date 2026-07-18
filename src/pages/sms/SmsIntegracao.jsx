@@ -20,12 +20,17 @@ import {
   definirPrincipalSMS,
   setFromProviderSMS,
   syncProviderSMS,
+  addSmsdevProvider,
+  listSmsdevProviders,
+  setPrincipalSmsdev,
+  deleteSmsdevProvider,
 } from '../../lib/smsNumeros'
 import {
   Phone, Star, Trash2, Loader2, X, Plus, Check, ShoppingCart,
-  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban, KeyRound, Globe,
+  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban, KeyRound, Globe, MessageSquare,
 } from 'lucide-react'
 import Bandeira, { paisDoNumero, nomePais } from '../../components/Bandeira'
+import brflag from '../../assets/flags/br-flag.png'
 import euaflag from '../../assets/euaflag.png'
 import chipastron from '../../assets/chip/chipastron.png'
 import usFlagBg from '../../assets/flags/us-flag.png'
@@ -89,6 +94,13 @@ export default function SmsIntegracao() {
   const [novoApi, setNovoApi] = useState(false) // popup de conectar conta
   const [formApi, setFormApi] = useState({ apiKey: '', nome: '' })
   const [salvandoApi, setSalvandoApi] = useState(false)
+  // SMSDev (SMS Brasil, BYO)
+  const [smsdevProvs, setSmsdevProvs] = useState([])
+  const [smsdevOpen, setSmsdevOpen] = useState(false)
+  const [novoSmsdev, setNovoSmsdev] = useState(false)
+  const [formSmsdev, setFormSmsdev] = useState({ apiKey: '', nome: '' })
+  const [salvandoSmsdev, setSalvandoSmsdev] = useState(false)
+  const [acaoSmsdev, setAcaoSmsdev] = useState(null)
 
   const [popupOpen, setPopupOpen] = useState(false)
   const [disponiveis, setDisponiveis] = useState([])
@@ -102,14 +114,39 @@ export default function SmsIntegracao() {
 
   const carregar = async () => {
     try {
-      const [rn, rp] = await Promise.all([listarNumerosSMS(), listarProvidersSMS().catch(() => ({ provedores: [] }))])
+      const [rn, rp, rs] = await Promise.all([listarNumerosSMS(), listarProvidersSMS().catch(() => ({ provedores: [] })), listSmsdevProviders().catch(() => ({ provedores: [] }))])
       setNumeros(rn?.numeros || [])
       setProvedores(rp?.provedores || [])
+      setSmsdevProvs(rs?.provedores || [])
     } catch (_) {
-      setNumeros([]); setProvedores([])
+      setNumeros([]); setProvedores([]); setSmsdevProvs([])
     } finally {
       setLoading(false)
     }
+  }
+
+  const conectarSmsdev = async () => {
+    if (!formSmsdev.apiKey.trim()) { toast.error('Cole a Chave Key da sua conta SMSDev.'); return }
+    setSalvandoSmsdev(true)
+    try {
+      await addSmsdevProvider({ apiKey: formSmsdev.apiKey.trim(), nome: formSmsdev.nome.trim() })
+      setSmsdevProvs((await listSmsdevProviders()).provedores || [])
+      setNovoSmsdev(false); setFormSmsdev({ apiKey: '', nome: '' })
+      toast.success('Conta SMSDev conectada! Seus envios BR passam a sair dela.')
+    } catch (err) { toast.error(err?.message || 'Falha ao conectar a conta SMSDev.') } finally { setSalvandoSmsdev(false) }
+  }
+
+  const principalSmsdev = async (id) => {
+    setAcaoSmsdev(id)
+    try { await setPrincipalSmsdev(id); setSmsdevProvs((await listSmsdevProviders()).provedores || []) }
+    catch (err) { toast.error(err?.message || 'Erro.') } finally { setAcaoSmsdev(null) }
+  }
+
+  const removerSmsdev = async (p) => {
+    if (!(await confirm({ title: 'Remover conta SMSDev?', message: `Remover "${p.nome}"? Seus envios BR voltam a usar a conta da plataforma (créditos do Perfil).`, confirmLabel: 'Remover', danger: true }))) return
+    setAcaoSmsdev(p.id)
+    try { await deleteSmsdevProvider(p.id); setSmsdevProvs((await listSmsdevProviders()).provedores || []) }
+    catch (err) { toast.error(err?.message || 'Erro ao remover.') } finally { setAcaoSmsdev(null) }
   }
 
   useEffect(() => {
@@ -589,7 +626,7 @@ export default function SmsIntegracao() {
         )}
 
         {/* Aba API's — conta Telnyx PRÓPRIA do cliente (BYO) */}
-        {tab === 'apis' && (
+        {tab === 'apis' && (<>
         <Secao title="Minhas contas Telnyx" icon={Globe} bgIcon={Globe} open={apiOpen} onToggle={() => setApiOpen((v) => !v)}>
           {provedores.length === 0 ? (
             <div className="py-6 text-center">
@@ -674,8 +711,62 @@ export default function SmsIntegracao() {
             </div>
           )}
         </Secao>
-        )}
+
+        {/* Minhas contas SMSDev (SMS Brasil · BYO) */}
+        <Secao title="Minhas contas SMSDev" icon={MessageSquare} bgIcon={MessageSquare} open={smsdevOpen} onToggle={() => setSmsdevOpen((v) => !v)}>
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <p className="text-xs text-stone-500">Conecte sua conta SMSDev pra enviar <b>SMS Brasil (+55)</b> pela SUA conta — não consome os créditos da plataforma.</p>
+            <button onClick={() => { setFormSmsdev({ apiKey: '', nome: '' }); setNovoSmsdev(true) }} className="btn-primary text-xs min-h-[36px] px-3 shrink-0"><Plus className="w-4 h-4" /> Conectar SMSDev</button>
+          </div>
+          {smsdevProvs.length === 0 ? (
+            <div className="py-6 text-center">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
+              <p className="text-sm text-stone-500">Nenhuma conta SMSDev conectada. Você usa a conta da plataforma (créditos do Perfil).</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {smsdevProvs.map((p) => (
+                <div key={p.id} className={`relative flex items-center gap-2.5 p-3 sm:p-4 rounded-xl border-2 transition ${p.principal ? 'border-emerald-300 bg-emerald-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
+                  {p.principal && <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm"><Star className="w-2.5 h-2.5" /> Principal</span>}
+                  <img src={brflag} alt="BR" className="w-5 h-auto rounded-sm shrink-0" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-stone-800 truncate">{p.nome}</span>
+                    <span className="block text-[11px] text-stone-400 font-mono">{p.apiKeyMasked}</span>
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {!p.principal && <button onClick={() => principalSmsdev(p.id)} disabled={acaoSmsdev === p.id} className="p-2 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-60" title="Definir como principal">{acaoSmsdev === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}</button>}
+                    <button onClick={() => removerSmsdev(p)} disabled={acaoSmsdev === p.id} className="p-2 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-60" title="Remover"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Secao>
+        </>)}
       </div>
+
+      {/* Popup: conectar conta SMSDev (Apelido + Chave Key) */}
+      {novoSmsdev && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => !salvandoSmsdev && setNovoSmsdev(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 shrink-0"><MessageSquare className="w-5 h-5" /></span>
+              <h3 className="text-base font-semibold text-stone-800">Conectar conta SMSDev</h3>
+              <button onClick={() => setNovoSmsdev(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-xs text-stone-500">Cole a <b>Chave Key</b> da sua conta SMSDev (painel → Minha Conta → Parâmetros Envio/Recebimento). Deixe o campo <b>IP's API</b> em branco lá.</p>
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Apelido (opcional)</label>
+              <input value={formSmsdev.nome} onChange={(e) => setFormSmsdev((f) => ({ ...f, nome: e.target.value }))} placeholder="Minha conta SMSDev" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px]" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Chave Key (SMSDev)</label>
+              <input value={formSmsdev.apiKey} onChange={(e) => setFormSmsdev((f) => ({ ...f, apiKey: e.target.value }))} placeholder="Cole a Chave Key aqui" className="w-full px-3 py-2.5 rounded-xl border border-surface-200 bg-surface-50/50 text-sm min-h-[44px] font-mono" />
+            </div>
+            <button onClick={conectarSmsdev} disabled={salvandoSmsdev} className="btn-primary w-full min-h-[44px]">{salvandoSmsdev ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{salvandoSmsdev ? 'Validando...' : 'Conectar'}</button>
+          </div>
+        </div>
+      )}
 
       {/* Popup: conectar conta Telnyx (só Apelido + API Key) */}
       {novoApi && (
