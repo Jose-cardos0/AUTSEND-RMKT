@@ -53,9 +53,9 @@ const STATUS = {
 export default function SmsDisparos() {
   const [user] = useAuthState(auth)
   const { canal: canalParam } = useParams()
-  const canal = canalParam === 'api' ? 'api' : 'eua'
+  const canal = ['api', 'brl'].includes(canalParam) ? canalParam : 'eua'
   const { temFeature, limiteDe } = usePlano()
-  const podeSms = temFeature('smsDisparos') && (canal === 'api' || limiteDe('smsMes') > 0)
+  const podeSms = temFeature('smsDisparos') && (canal === 'api' || canal === 'brl' || limiteDe('smsMes') > 0)
 
   const [loading, setLoading] = useState(true)
   const [historico, setHistorico] = useState([])
@@ -79,7 +79,7 @@ export default function SmsDisparos() {
       .finally(() => setLoading(false))
   }, [user?.uid, canal])
 
-  const linhas = useMemo(() => parseLista(lista, canal === 'api'), [lista, canal])
+  const linhas = useMemo(() => parseLista(lista, canal === 'api' || canal === 'brl'), [lista, canal])
   const validos = useMemo(() => linhas.filter((l) => l.ok), [linhas])
   const brExcluidos = useMemo(() => linhas.filter((l) => l.motivo === 'brasil').length, [linhas])
 
@@ -180,7 +180,7 @@ export default function SmsDisparos() {
   return (
     <PageShell
       compact
-      badge={`SMS · Disparos · ${canal === 'api' ? "API's" : 'EUA'}`}
+      badge={`SMS · Disparos · ${canal === 'api' ? "API's" : canal === 'brl' ? 'Brasil' : 'EUA'}`}
       title="Disparos de SMS"
       right={
         <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">

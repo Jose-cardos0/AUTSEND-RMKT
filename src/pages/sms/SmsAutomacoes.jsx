@@ -172,9 +172,9 @@ function EventCard({ event, auto, onSave }) {
 export default function SmsAutomacoes() {
   const [user] = useAuthState(auth)
   const { canal: canalParam } = useParams()
-  const canal = canalParam === 'api' ? 'api' : 'eua'
+  const canal = ['api', 'brl'].includes(canalParam) ? canalParam : 'eua'
   const { temFeature, limiteDe } = usePlano()
-  const podeSms = temFeature('smsDisparos') && (canal === 'api' || limiteDe('smsMes') > 0)
+  const podeSms = temFeature('smsDisparos') && (canal === 'api' || canal === 'brl' || limiteDe('smsMes') > 0)
 
   const [loading, setLoading] = useState(true)
   const [autos, setAutos] = useState([])
@@ -310,7 +310,7 @@ export default function SmsAutomacoes() {
   return (
     <PageShell
       className="!space-y-0 pb-12 sm:pb-14"
-      badge={`SMS · Automações · ${canal === 'api' ? "API's" : 'EUA'}`}
+      badge={`SMS · Automações · ${canal === 'api' ? "API's" : canal === 'brl' ? 'Brasil' : 'EUA'}`}
       right={
         <button onClick={reload} className="btn-secondary text-sm w-full sm:w-auto min-h-[44px] touch-manipulation">
           <RefreshCw className="w-4 h-4" /> Atualizar

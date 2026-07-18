@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
-import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, criarCheckoutCreditoCall, criarCheckoutInstancia, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_EMAIL, PACOTES_CREDITO_CALL } from '../lib/perfil'
+import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, criarCheckoutCreditoCall, criarCheckoutCreditoSmsBr, criarCheckoutInstancia, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_SMS_BR, PACOTES_CREDITO_EMAIL, PACOTES_CREDITO_CALL } from '../lib/perfil'
 import { usePlano } from '../lib/PlanoContext'
 import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck, Globe, Phone } from 'lucide-react'
 import img500 from '../assets/chip/emailautsend.png'
@@ -18,6 +18,9 @@ import imgCall60 from '../assets/minutes/60minutes.png'
 import imgCall120 from '../assets/minutes/120minutes.png'
 import globoIcon from '../assets/global.png'
 import euaFlag from '../assets/flags/euaflaglarge.png'
+import imgSmsBr500 from '../assets/chip/500sms-brl.png'
+import imgSmsBr1000 from '../assets/chip/1000sms-brl.png'
+import imgSmsBr2500 from '../assets/chip/2500sms-brl.png'
 import Bandeira from '../components/Bandeira'
 import CheckoutModal from '../components/CheckoutModal'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
@@ -25,6 +28,7 @@ import instanciaWhats from '../assets/whtatsicons/instancia-whats.png'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
 const PACOTE_IMG = { 500: img500, 1000: img1000, 2500: img2500 }
+const PACOTE_IMG_SMS_BR = { 500: imgSmsBr500, 1000: imgSmsBr1000, 2500: imgSmsBr2500 }
 const PACOTE_IMG_EMAIL = { 5000: imgEmail5000, 10000: imgEmail10000, 25000: imgEmail25000 }
 const PACOTE_IMG_CALL = { 30: imgCall30, 60: imgCall60, 120: imgCall120 }
 
@@ -82,9 +86,13 @@ function BarraUso({ icon: Icon, titulo, usados, limite, cor = 'primary' }) {
 
 /** Faixa diagonal "MAIS POPULAR" no canto superior direito, com marquee infinito (ícone intercalado). */
 function FaixaPopular({ tema = 'red' }) {
-  const grad = tema === 'red' ? 'from-rose-500 via-red-500 to-red-600' : 'from-primary-500 via-primary-600 to-violet-600'
-  // E-mail é global → globo branco; SMS → bandeirinha dos EUA (mesma do lado de "SMS").
+  const grad = tema === 'red' ? 'from-rose-500 via-red-500 to-red-600'
+    : tema === 'green' ? 'from-emerald-500 via-emerald-500 to-green-600'
+    : 'from-primary-500 via-primary-600 to-violet-600'
+  // E-mail é global → globo branco; SMS EUA → bandeira EUA; SMS BR → globo (simples).
   const icone = () => tema === 'red'
+    ? <Globe className="w-2.5 h-2.5 shrink-0" />
+    : tema === 'green'
     ? <Globe className="w-2.5 h-2.5 shrink-0" />
     : <img src={euaFlag} alt="" className="w-3 h-auto object-contain shrink-0" />
   return (
@@ -166,7 +174,10 @@ export default function Perfil() {
     const id = `${canal}:${key}`
     setComprando(id)
     try {
-      const r = canal === 'email' ? await criarCheckoutCreditoEmail(key) : canal === 'call' ? await criarCheckoutCreditoCall(key) : await criarCheckoutCreditoSMS(key)
+      const r = canal === 'email' ? await criarCheckoutCreditoEmail(key)
+        : canal === 'call' ? await criarCheckoutCreditoCall(key)
+        : canal === 'smsbr' ? await criarCheckoutCreditoSmsBr(key)
+        : await criarCheckoutCreditoSMS(key)
       if (r?.clientSecret) setCheckoutSecret(r.clientSecret) // abre o pagamento dentro do app
       else toast.error('Não consegui abrir o checkout. Tente de novo.')
     } catch (err) {
@@ -351,6 +362,35 @@ export default function Perfil() {
                     disabled={!!comprando}
                     className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60"
                   >
+                    {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {comprando === id ? 'Abrindo…' : 'Comprar'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </Panel>
+
+        {/* Recarga de SMS BRASIL (SMSDev) */}
+        <Panel title="Recarregar créditos de SMS (Brasil)" icon={MessageSquare}>
+          {stats?.smsBrCreditos > 0 && (
+            <p className="text-xs text-stone-500 -mt-1 mb-1">Você tem <b>{(stats.smsBrCreditos || 0).toLocaleString('pt-BR')}</b> crédito(s) de SMS Brasil.</p>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {PACOTES_CREDITO_SMS_BR.map((p) => {
+              const id = `smsbr:${p.key}`
+              return (
+                <div key={p.key} className={`relative overflow-hidden flex flex-col p-5 rounded-2xl border-2 transition ${p.destaque ? 'border-emerald-400 bg-emerald-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
+                  {p.destaque && <FaixaPopular tema="green" />}
+                  <div className="text-center">
+                    <img src={PACOTE_IMG_SMS_BR[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
+                    <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                      <Bandeira code="BR" className="w-4 h-auto rounded-sm" /> SMS Brasil
+                    </p>
+                    <p className="text-lg font-bold text-emerald-600 mt-2">{p.valor}</p>
+                  </div>
+                  <button onClick={() => comprar('smsbr', p.key)} disabled={!!comprando} className="w-full mt-4 min-h-[42px] inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition disabled:opacity-60">
                     {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     {comprando === id ? 'Abrindo…' : 'Comprar'}
                   </button>

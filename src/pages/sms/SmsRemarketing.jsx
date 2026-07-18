@@ -29,9 +29,9 @@ function normalizarE164Internacional(raw, permitirBR) {
 export default function SmsRemarketing() {
   const [user] = useAuthState(auth)
   const { canal: canalParam } = useParams()
-  const canal = canalParam === 'api' ? 'api' : 'eua'
+  const canal = ['api', 'brl'].includes(canalParam) ? canalParam : 'eua'
   const { temFeature, limiteDe } = usePlano()
-  const podeSms = temFeature('smsDisparos') && (canal === 'api' || limiteDe('smsMes') > 0)
+  const podeSms = temFeature('smsDisparos') && (canal === 'api' || canal === 'brl' || limiteDe('smsMes') > 0)
 
   const [carts, setCarts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -162,7 +162,7 @@ export default function SmsRemarketing() {
   return (
     <PageShell
       fill
-      badge={`SMS · Remarketing · ${canal === 'api' ? "API's" : 'EUA'}`}
+      badge={`SMS · Remarketing · ${canal === 'api' ? "API's" : canal === 'brl' ? 'Brasil' : 'EUA'}`}
       right={
         <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
           <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">

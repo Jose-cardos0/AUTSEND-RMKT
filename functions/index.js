@@ -991,6 +991,22 @@ async function enviarSMSTelnyx(cfg, to, text) {
   return { ok: true, id: data?.data?.id || null }
 }
 
+/**
+ * Envia 1 SMS via SMSDev (Brasil). `to` = E.164 (+55DDDNUM); SMSDev quer só dígitos (55DDDNUM).
+ * type=9 é o envio padrão. Sem acento (economiza crédito: 160 chars/crédito). Retorna { ok, id } ou lança.
+ */
+async function enviarSMSDev(key, to, text) {
+  const number = String(to || '').replace(/\D/g, '') // 5511999999999
+  const msg = semAcentos(text).slice(0, 160)
+  const url = `https://api.smsdev.com.br/v1/send?key=${encodeURIComponent(key)}&type=9&number=${encodeURIComponent(number)}&msg=${encodeURIComponent(msg)}`
+  const res = await fetch(url)
+  const data = await res.json().catch(() => ({}))
+  if (String(data?.situacao || '').toUpperCase() !== 'OK') {
+    throw new Error(data?.descricao || `SMSDev HTTP ${res.status}`)
+  }
+  return { ok: true, id: data?.id || null }
+}
+
 /** Envia um lote de SMS (sequencial, respeitando ~1 msg/s de TPS das faixas de entrada). */
 async function enviarLoteSMS(uid, ctx, recipients) {
   let enviados = 0
@@ -1027,6 +1043,45 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
   await assertTermosAceito(request, tenant)
+
+  // ── Canal BRASIL (SMSDev): só +55, crédito-only (sem cota de plano). ──
+  if ((request.data?.canal) === 'brl') {
+    const ehAdminBr = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
+    const msgBr = String(request.data?.mensagem || '').trim()
+    const recBr = Array.isArray(request.data?.recipients) ? request.data.recipients : []
+    if (!msgBr) throw new HttpsError('invalid-argument', 'Escreva a mensagem do SMS.')
+    if (recBr.length === 0) throw new HttpsError('invalid-argument', 'Nenhum destinatário na lista.')
+    const smsdevKey = process.env.SMSDEV_API_KEY
+    if (!smsdevKey) throw new HttpsError('failed-precondition', 'SMS Brasil ainda não configurado.')
+    const validos = []
+    for (const r of recBr.slice(0, 20000)) {
+      const norm = normalizarE164(r?.telefone || r?.numero || '', { permitirBR: true })
+      if (norm.ok && String(norm.e164).replace(/\D/g, '').startsWith('55')) validos.push({ telefone: norm.e164, nome: r.nome || '', produto: r.produto || '' })
+    }
+    if (validos.length === 0) throw new HttpsError('invalid-argument', 'Nenhum número do Brasil (+55) válido na lista.')
+    if (!ehAdminBr) {
+      const creditos = Number(tenant.smsBrCreditos) || 0
+      if (creditos < validos.length) throw new HttpsError('resource-exhausted', `Você tem ${creditos} crédito(s) de SMS Brasil, mas a lista tem ${validos.length}. Recarregue no Perfil.`)
+    }
+    const dispRef = await db.collection('users').doc(uid).collection('smsDisparos').add({
+      nomeDisparo: String(request.data?.nomeDisparo || 'Disparo SMS Brasil'),
+      mensagem: msgBr, total: validos.length, enviados: 0, erros: 0,
+      canal: 'brl', contaPropria: false, status: 'enviando',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+    let enviados = 0, erros = 0
+    for (const v of validos) {
+      try {
+        const texto = replaceVariables(msgBr, { nome: v.nome, telefone: v.telefone, email: '' }, { nome: v.produto })
+        await enviarSMSDev(smsdevKey, v.telefone, texto)
+        enviados++
+      } catch (e) { erros++; console.error('enviarSMSDev', e?.message || e) }
+    }
+    if (!ehAdminBr && enviados > 0) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-enviados) }, { merge: true })
+    await dispRef.update({ enviados, erros, status: erros === 0 ? 'enviado' : (enviados === 0 ? 'erro' : 'parcial') })
+    await scanConteudoRisco(uid, tenant, 'sms', msgBr, { ref: dispRef.id })
+    return { ok: true, total: validos.length, enviados, canal: 'brl' }
+  }
 
   const data = request.data || {}
   const mensagem = String(data.mensagem || '').trim()
@@ -1716,13 +1771,30 @@ exports.smsDefinirPrincipal = onCall({ region: 'us-central1' }, async (request) 
 
 // ───────────────── SMS — Recarga de créditos (pagamento único via Stripe) ─────────────────
 
-/** Pacotes de recarga: chave → { priceId, quantidade, valor }. */
+/** Pacotes de recarga SMS EUA (Telnyx): chave → { priceId, quantidade, valor }. */
 function pacotesCreditoSMS() {
   return {
-    '500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_500, quantidade: 500, valor: 29.9 },
-    '1000': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_1000, quantidade: 1000, valor: 49.9 },
-    '2500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_2500, quantidade: 2500, valor: 99.9 },
+    '500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_500, quantidade: 500, valor: 49 },
+    '1000': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_1000, quantidade: 1000, valor: 89 },
+    '2500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_2500, quantidade: 2500, valor: 199 },
   }
+}
+
+/** Pacotes de recarga SMS BRASIL (SMSDev): chave → { priceId, quantidade, valor }. */
+function pacotesCreditoSmsBr() {
+  return {
+    '500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_500_BR, quantidade: 500, valor: 119 },
+    '1000': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_1000_BR, quantidade: 1000, valor: 199 },
+    '2500': { priceId: process.env.STRIPE_PRICE_CREDITO_SMS_2500_BR, quantidade: 2500, valor: 449 },
+  }
+}
+
+/** priceId de crédito SMS BR → quantidade (usado no webhook). */
+function creditosSmsBrDoPriceStripe(priceId) {
+  if (!priceId) return 0
+  const p = pacotesCreditoSmsBr()
+  for (const k of Object.keys(p)) { if (p[k].priceId && p[k].priceId === priceId) return p[k].quantidade }
+  return 0
 }
 
 /** priceId de crédito → quantidade de SMS (usado no webhook). */
@@ -1762,6 +1834,37 @@ exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds
     return { clientSecret: session.client_secret }
   } catch (e) {
     console.error('smsCriarCheckoutCredito', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+/** Cria o checkout Stripe embutido pra recarregar créditos de SMS BRASIL (SMSDev). */
+exports.smsBrCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const pacote = pacotesCreditoSmsBr()[String(request.data?.pacote || '')]
+  if (!pacote || !pacote.priceId) throw new HttpsError('invalid-argument', 'Pacote de crédito inválido.')
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) throw new HttpsError('failed-precondition', 'Recarga ainda não configurada.')
+  const stripe = require('stripe')(key)
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'credito_sms_br', uid, quantidade: String(pacote.quantidade) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      ui_mode: 'embedded_page',
+      allow_promotion_codes: true,
+      mode: 'payment',
+      line_items: [{ price: pacote.priceId, quantity: 1 }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      payment_intent_data: { metadata: meta, description: `Autsend · ${pacote.quantidade} créditos de SMS (Brasil)` },
+      redirect_on_completion: 'never',
+    })
+    return { clientSecret: session.client_secret }
+  } catch (e) {
+    console.error('smsBrCriarCheckoutCredito', e)
     throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
   }
 })
@@ -2478,6 +2581,7 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
     fotoURL: t.fotoURL || null,
     emailsUsados, emailsLimite: isAdm ? -1 : (lim.emailsMes || 0), emailCreditos,
     smsUsados, smsLimite: isAdm ? -1 : (lim.smsMes || 0), smsCreditos,
+    smsBrCreditos: Number(t.smsBrCreditos) || 0,
     // IA do construtor de e-mail (criações/edições no mês).
     iaUsados: Number(t?.iaUso?.[mesAtualStr()] || 0), iaLimite: isAdm ? -1 : (Number(lim.iaMes) || 0),
     // Ligação IA: em minutos pra exibição (usados/limite) + crédito comprado em segundos.
@@ -3032,6 +3136,20 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
         await registrarFaturamento(uidC, { tipo: 'credito_sms', descricao: `${quantidade} créditos de SMS`, quantidade, valor: (session.amount_total || 0) / 100, stripeId: session.id })
         res.status(200).json({ ok: true, creditado: quantidade, uid: uidC }); return
+      }
+
+      // ── Recarga de crédito de SMS BRASIL (SMSDev) — soma smsBrCreditos no tenant. ──
+      if (session.metadata?.tipo === 'credito_sms_br') {
+        const uidC = session.metadata.uid
+        let quantidade = Number(session.metadata.quantidade) || 0
+        if (!quantidade) quantidade = creditosSmsBrDoPriceStripe((session.line_items?.data?.[0]?.price?.id) || null)
+        if (!uidC || !quantidade) { res.status(200).json({ ok: true, ignored: 'credito_sms_br sem uid/quantidade' }); return }
+        const recRef = db.doc(`tenants/${uidC}/recargasSmsBr/${session.id}`)
+        if ((await recRef.get()).exists) { res.status(200).json({ ok: true, ja: true }); return }
+        await db.doc(`tenants/${uidC}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
+        await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        await registrarFaturamento(uidC, { tipo: 'credito_sms', descricao: `${quantidade} créditos de SMS (Brasil)`, quantidade, valor: (session.amount_total || 0) / 100, stripeId: session.id })
+        res.status(200).json({ ok: true, creditadoSmsBr: quantidade, uid: uidC }); return
       }
 
       // ── Recarga de crédito de E-MAIL (pagamento único) — soma créditos no tenant. ──

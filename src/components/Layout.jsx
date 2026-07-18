@@ -11,6 +11,7 @@ import { signOut } from 'firebase/auth'
 import clsx from 'clsx'
 import sendlyLogo from '../assets/autsendlogo.png'
 import euaflag from '../assets/euaflag.png'
+import brlflag from '../assets/flags/brl-flag.png'
 import WhatsAppIcon from './WhatsAppIcon'
 import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
@@ -76,6 +77,19 @@ const navGroups = [
           { to: '/sms/eua/disparos', label: 'Disparos', icon: Send },
           { to: '/sms/eua/funil', label: 'Funil', icon: GitBranch },
           { to: '/sms/eua/metricas', label: 'Métricas', icon: BarChart3 },
+        ],
+      },
+      {
+        // SMS Brasil (+55) via SMSDev — crédito-only.
+        key: 'sms-brl',
+        label: 'BRL',
+        img: brlflag,
+        items: [
+          { to: '/sms/brl/automacoes', label: 'Automações', icon: Zap },
+          { to: '/sms/brl/remarketing', label: 'Remarketing', icon: MessageCircle },
+          { to: '/sms/brl/disparos', label: 'Disparos', icon: Send },
+          { to: '/sms/brl/funil', label: 'Funil', icon: GitBranch },
+          { to: '/sms/brl/metricas', label: 'Métricas', icon: BarChart3 },
         ],
       },
       {

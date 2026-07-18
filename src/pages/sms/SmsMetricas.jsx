@@ -61,7 +61,7 @@ const TIPO_LABEL = {
 export default function SmsMetricas() {
   const [user] = useAuthState(auth)
   const { canal: canalParam } = useParams()
-  const canal = canalParam === 'api' ? 'api' : 'eua'
+  const canal = ['api', 'brl'].includes(canalParam) ? canalParam : 'eua'
   const [loading, setLoading] = useState(true)
   const [leads, setLeads] = useState([])
   const [grupos, setGrupos] = useState([])
@@ -183,7 +183,7 @@ export default function SmsMetricas() {
 
   return (
     <PageShell
-      badge={`SMS · Métricas · ${canal === 'api' ? "API's" : 'EUA'}`}
+      badge={`SMS · Métricas · ${canal === 'api' ? "API's" : canal === 'brl' ? 'Brasil' : 'EUA'}`}
       right={
         <div className="flex flex-wrap gap-2 items-center">
           {grupos.length > 0 && (

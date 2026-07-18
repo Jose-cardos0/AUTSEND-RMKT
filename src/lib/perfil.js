@@ -17,10 +17,23 @@ export async function salvarFotoPerfil(dataUrl) {
 
 /** Pacotes de recarga de crédito SMS (só EUA). */
 export const PACOTES_CREDITO = [
-  { key: '500', quantidade: 500, valor: 'R$ 29,90' },
-  { key: '1000', quantidade: 1000, valor: 'R$ 49,90', destaque: true },
-  { key: '2500', quantidade: 2500, valor: 'R$ 99,90' },
+  { key: '500', quantidade: 500, valor: 'R$ 49,00' },
+  { key: '1000', quantidade: 1000, valor: 'R$ 89,00', destaque: true },
+  { key: '2500', quantidade: 2500, valor: 'R$ 199,00' },
 ]
+
+/** Pacotes de recarga de SMS BRASIL (SMSDev). */
+export const PACOTES_CREDITO_SMS_BR = [
+  { key: '500', quantidade: 500, valor: 'R$ 119,00' },
+  { key: '1000', quantidade: 1000, valor: 'R$ 199,00', destaque: true },
+  { key: '2500', quantidade: 2500, valor: 'R$ 449,00' },
+]
+
+/** Cria o checkout Stripe embutido pra recarregar créditos de SMS Brasil (SMSDev). */
+export async function criarCheckoutCreditoSmsBr(pacote) {
+  const r = await call('smsBrCriarCheckoutCredito')({ pacote })
+  return r.data // { clientSecret }
+}
 
 /** Pacotes de recarga de crédito de e-mail. */
 export const PACOTES_CREDITO_EMAIL = [

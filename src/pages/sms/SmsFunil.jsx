@@ -91,7 +91,7 @@ const novoInicio = () => ({ id: `inicio_${Date.now()}`, type: 'inicio', position
 export default function SmsFunil() {
   const [user] = useAuthState(auth)
   const { canal: canalParam } = useParams()
-  const canal = canalParam === 'api' ? 'api' : 'eua'
+  const canal = ['api', 'brl'].includes(canalParam) ? canalParam : 'eua'
   const confirm = useConfirm()
   const [loading, setLoading] = useState(true)
   const [funis, setFunis] = useState([])
@@ -304,7 +304,7 @@ export default function SmsFunil() {
 
   return (
     <PageShell
-      badge={`SMS · Funil · ${canal === 'api' ? "API's" : 'EUA'}`}
+      badge={`SMS · Funil · ${canal === 'api' ? "API's" : canal === 'brl' ? 'Brasil' : 'EUA'}`}
       title="Funil de SMS"
       right={
         <div className="flex flex-wrap gap-2 items-center">

@@ -71,6 +71,7 @@ export const ROTA_FEATURE = {
   '/sms/integracao': 'smsDisparos',
   '/sms/eua/disparos': 'smsDisparos', '/sms/eua/funil': 'smsDisparos', '/sms/eua/automacoes': 'smsDisparos', '/sms/eua/remarketing': 'smsDisparos', '/sms/eua/metricas': 'smsDisparos',
   '/sms/api/disparos': 'smsDisparos', '/sms/api/funil': 'smsDisparos', '/sms/api/automacoes': 'smsDisparos', '/sms/api/remarketing': 'smsDisparos', '/sms/api/metricas': 'smsDisparos',
+  '/sms/brl/disparos': 'smsDisparos', '/sms/brl/funil': 'smsDisparos', '/sms/brl/automacoes': 'smsDisparos', '/sms/brl/remarketing': 'smsDisparos', '/sms/brl/metricas': 'smsDisparos',
 }
 
 /** Limites + features efetivos do tenant (plano + overrides do admin). */
