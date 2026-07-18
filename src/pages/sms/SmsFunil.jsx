@@ -222,22 +222,26 @@ export default function SmsFunil() {
 
   const inscreverLista = async () => {
     if (!selectedId) { toast.error('Salve o funil primeiro para poder inscrever.'); return }
-    let brIgnorados = 0
+    let brIgnorados = 0, naoBrIgnorados = 0
     const recipients = enrollList.split(/\n/).map((l) => l.trim()).filter(Boolean).map((line) => {
       const parts = line.split(/[\t,;]/).map((p) => p.trim()).filter(Boolean)
       const numeroRaw = parts.find((p) => p.replace(/\D/g, '').length >= 8) || parts[0] || ''
       const nomeC = parts.filter((p) => p !== numeroRaw).join(' ')
-      const norm = normalizarE164Internacional(numeroRaw)
-      if (norm.br) brIgnorados++
-      return { telefone: norm.ok ? norm.e164 : '', nome: nomeC, ok: norm.ok }
+      const norm = normalizarE164Internacional(numeroRaw, canal === 'brl' || canal === 'api')
+      const ehBr = norm.ok && String(norm.e164).replace(/\D/g, '').startsWith('55')
+      let ok = norm.ok
+      if (canal === 'brl' && norm.ok && !ehBr) { ok = false; naoBrIgnorados++ } // funil BR só +55
+      if (canal !== 'brl' && norm.br) brIgnorados++ // funil EUA/API ignora +55
+      return { telefone: ok ? norm.e164 : '', nome: nomeC, ok }
     }).filter((r) => r.ok).map((r) => ({ telefone: r.telefone, nome: r.nome }))
-    if (recipients.length === 0) { toast.error('Nenhum número internacional válido na lista. SMS não atende números do Brasil (+55).'); return }
+    if (recipients.length === 0) { toast.error(canal === 'brl' ? 'Nenhum número do Brasil (+55) válido na lista.' : 'Nenhum número internacional válido na lista. SMS não atende números do Brasil (+55).'); return }
     setInscrevendo(true)
     try {
       const fn = httpsCallable(functions, 'enrollFunnel')
       const res = await fn({ funnelId: selectedId, recipients, canal: 'sms' })
       toast.success(`${res.data?.inscritos || 0} contato(s) inscrito(s) no funil.`)
-      if (brIgnorados > 0) toast(`${brIgnorados} número(s) do Brasil foram ignorados (SMS só internacional).`, { icon: '🇧🇷' })
+      if (canal === 'brl' && naoBrIgnorados > 0) toast(`${naoBrIgnorados} número(s) não-BR ignorados (canal Brasil só +55).`, { icon: '🇧🇷' })
+      else if (brIgnorados > 0) toast(`${brIgnorados} número(s) do Brasil foram ignorados (SMS só internacional).`, { icon: '🇧🇷' })
       setShowEnroll(false)
       setEnrollList('')
     } catch (err) {

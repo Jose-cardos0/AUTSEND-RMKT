@@ -3655,8 +3655,8 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
     const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const grupo = acharGrupo(grupos, produtos, product)
     const ehAdm = await ehUidAdmin(userId)
-    // Cada canal é independente: EUA (nossa conta) e API (conta do cliente). Ambos podem disparar.
-    for (const canal of ['eua', 'api']) {
+    // Cada canal é independente: EUA (nossa conta Telnyx), API (Telnyx do cliente) e BRL (SMSDev, +55).
+    for (const canal of ['eua', 'api', 'brl']) {
       let auto = null
       if (grupo) {
         let s = await db.doc(`users/${userId}/smsAutomations/${canal}__${grupo.id}__${evento}`).get()
@@ -3669,6 +3669,26 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
         if (s.exists) { const d = s.data(); if (d.ativo === true && d.mensagem && !d.grupoId && !d.produto) auto = d }
       }
       if (!auto) continue
+
+      // ── Canal BRASIL (SMSDev): só dispara pra +55; crédito-only. ──
+      if (canal === 'brl') {
+        const smsdevKey = process.env.SMSDEV_API_KEY
+        if (!smsdevKey) continue
+        const normBr = normalizarE164(customer.telefone, { permitirBR: true })
+        if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) continue // canal BR ignora não-+55
+        const tSnap = await db.doc(`tenants/${userId}`).get()
+        if (!ehAdm && (Number(tSnap.data()?.smsBrCreditos) || 0) < 1) {
+          await db.collection('users').doc(userId).collection('smsLogs').add({ leadId: leadRef.id, evento, canal: 'brl', produto: product.nome || '', telefone: normBr.e164, nome: customer.nome || '', status: 'erro', erroMsg: 'Sem créditos de SMS Brasil', mensagem: auto.mensagem || '', createdAt: admin.firestore.FieldValue.serverTimestamp() })
+          continue
+        }
+        const textoBr = replaceVariables(auto.mensagem || '', { ...customer, telefone: normBr.e164 }, product)
+        let okBr = true, erroBr = null
+        try { await enviarSMSDev(smsdevKey, normBr.e164, textoBr) } catch (err) { okBr = false; erroBr = err.message || 'Falha no envio do SMS' }
+        if (okBr && !ehAdm) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
+        await db.collection('users').doc(userId).collection('smsLogs').add({ leadId: leadRef.id, evento, canal: 'brl', produto: product.nome || '', telefone: normBr.e164, nome: customer.nome || '', status: okBr ? 'enviado' : 'erro', erroMsg: erroBr, mensagem: textoBr, createdAt: admin.firestore.FieldValue.serverTimestamp() })
+        continue
+      }
+
       const rEnvio = await resolverTelnyxEnvio(userId, ehAdm, canal)
       if (rEnvio.erro) continue
       const cfg = rEnvio.cfg
@@ -3777,10 +3797,22 @@ async function enviarMensagemFunil(userId, mensagem, contato) {
   } catch (err) { console.error('enviarMensagemFunil', err); return false }
 }
 
-/** Envia um SMS (Telnyx) de um nó de funil. canal: 'eua' (nossa conta) | 'api' (conta do cliente). */
+/** Envia um SMS de um nó de funil. canal: 'eua'/'api' (Telnyx) | 'brl' (SMSDev, +55, crédito-only). */
 async function enviarMensagemFunilSMS(userId, mensagem, contato, canal) {
   try {
     if (!contato?.telefone || !mensagem) return false
+    if (canal === 'brl') {
+      const smsdevKey = process.env.SMSDEV_API_KEY
+      if (!smsdevKey) return false
+      const normBr = normalizarE164(contato.telefone, { permitirBR: true })
+      if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) return false // funil BR só +55
+      const ehAdm = await ehUidAdmin(userId)
+      if (!ehAdm) { const tSnap = await db.doc(`tenants/${userId}`).get(); if ((Number(tSnap.data()?.smsBrCreditos) || 0) < 1) return false }
+      const textoBr = replaceVariables(mensagem, { nome: contato.nome || '', telefone: normBr.e164, email: contato.email || '' }, { nome: contato.produto || '' })
+      await enviarSMSDev(smsdevKey, normBr.e164, textoBr)
+      if (!ehAdm) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
+      return true
+    }
     const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId), canal === 'api' ? 'api' : 'eua')
     if (rEnvio.erro) return false
     const cfg = rEnvio.cfg
@@ -4172,12 +4204,15 @@ exports.customWebhook = onRequest(
           if (funnel.ativo !== true || !grupoOk(funnel)) continue
           await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome }, 'whatsapp')
         }
-        // Funis de SMS (canais EUA e API são funis independentes; funnel.smsCanal define a conta usada no envio).
+        // Funis de SMS por canal (funnel.smsCanal): BRL (SMSDev) só pega +55; EUA/API (Telnyx) só internacional.
         const funisSmsSnap = await db.collection('users').doc(userId).collection('smsFunnels')
           .where('gatilhoEvento', '==', evento).limit(20).get()
+        const normLeadSms = normalizarE164(customer.telefone, { permitirBR: true })
+        const leadEhBr = normLeadSms.ok && String(normLeadSms.e164).replace(/\D/g, '').startsWith('55')
         for (const fdoc of funisSmsSnap.docs) {
           const funnel = fdoc.data()
           if (funnel.ativo !== true || !grupoOk(funnel)) continue
+          if ((funnel.smsCanal === 'brl') !== leadEhBr) continue // casa o país: funil BR ↔ lead +55
           await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome }, 'sms')
         }
       }
@@ -4283,7 +4318,7 @@ async function processarFunnelRun(userId, runRef, run, cache) {
         }
       } else if (run.canal === 'sms') {
         if (node.data?.mensagem) {
-          const smsCanal = funnel.smsCanal === 'api' ? 'api' : 'eua' // conta EUA (nossa) ou API (do cliente)
+          const smsCanal = ['api', 'brl'].includes(funnel.smsCanal) ? funnel.smsCanal : 'eua' // EUA (nossa Telnyx) · API (Telnyx do cliente) · BRL (SMSDev +55)
           const ok = await enviarMensagemFunilSMS(userId, node.data.mensagem, run.contato, smsCanal)
           try {
             await db.collection('users').doc(userId).collection('funnelSends').add({

@@ -58,8 +58,10 @@ export default function SmsRemarketing() {
     getLeads(user.uid).then((leadsData) => {
       // EUA: só internacional (sem BR). API (conta própria): qualquer país.
       const list = (leadsData || []).map((l) => {
-        const norm = normalizarE164Internacional(l.telefone, canal === 'api')
+        const norm = normalizarE164Internacional(l.telefone, canal === 'api' || canal === 'brl')
         if (!norm.ok) return null
+        // Canal BR só mostra +55; EUA já exclui BR (permitirBR false acima).
+        if (canal === 'brl' && !String(norm.e164).replace(/\D/g, '').startsWith('55')) return null
         return {
           id: `lead_${l.id}`,
           nome: l.nome,
