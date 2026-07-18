@@ -71,7 +71,7 @@ function SmsStatusBadge({ status, erroMsg }) {
   )
 }
 
-function EventCard({ event, auto, onSave }) {
+function EventCard({ event, auto, onSave, canal }) {
   const [expanded, setExpanded] = useState(false)
   const [mensagem, setMensagem] = useState(auto?.mensagem || '')
   const [ativo, setAtivo] = useState(auto?.ativo ?? false)
@@ -383,7 +383,7 @@ export default function SmsAutomacoes() {
               {autoMsgAberto && (
                 <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 border-t border-surface-100">
                   {KIWIFY_EVENTS.map((event) => (
-                    <EventCard key={event.id} event={event} auto={autoMap[event.id]} onSave={handleSave} />
+                    <EventCard key={event.id} event={event} auto={autoMap[event.id]} onSave={handleSave} canal={canal} />
                   ))}
                 </div>
               )}

@@ -969,6 +969,7 @@ async function quotaSMSUsadaNoMes(uid) {
     ds.forEach((d) => {
       const x = d.data()
       if (x.contaPropria === true) return // envio pela conta Telnyx do próprio cliente não consome nossa cota
+      if (x.canal === 'brl') return // SMS Brasil é crédito-only (SMSDev), não consome a cota EUA do plano
       const cm = x.createdAt?.toMillis ? x.createdAt.toMillis() : (x.createdAt || 0)
       if (cm >= inicio.getTime()) {
         const totalDisp = Number(x.total) || 0
