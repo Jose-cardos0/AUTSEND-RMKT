@@ -355,7 +355,7 @@ export default function Perfil() {
                     <img src={PACOTE_IMG[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
                     <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
                     <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1">
-                      <img src={euaFlag} alt="EUA" className="w-4 h-auto object-contain" /> SMS
+                      <img src={euaFlag} alt="EUA" className="w-4 h-auto object-contain" /> SMS EUA
                     </p>
                     <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
                   </div>
@@ -402,7 +402,7 @@ export default function Perfil() {
           </div>
         </Panel>
 
-        <Panel title="Comprar minutos de Ligação e WhatsApp IA" icon={Phone}>
+        <Panel title="Comprar minutos de Ligação (EUA)" icon={Phone}>
           {stats?.callCreditosSeg > 0 && (
             <p className="text-xs text-stone-500 -mt-1 mb-1">Você tem <b>{Math.floor((stats.callCreditosSeg || 0) / 60)} min</b> em crédito.</p>
           )}
@@ -418,8 +418,7 @@ export default function Perfil() {
                     <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1.5">
                       <Phone className="w-3.5 h-3.5" />
                       <Bandeira code="US" className="w-4 h-auto rounded-sm" />
-                      <Bandeira code="BR" className="w-4 h-auto rounded-sm" />
-                      minutos de ligação
+                      Ligação (EUA)
                     </p>
                     <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
                   </div>
