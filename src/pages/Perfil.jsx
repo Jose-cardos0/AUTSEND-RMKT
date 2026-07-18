@@ -407,7 +407,7 @@ export default function Perfil() {
           onComplete={() => {
             setCheckoutSecret(null)
             setInstModalOpen(false)
-            toast.success('Pagamento concluído! Em instantes você já pode criar a nova instância.')
+            toast.success('Pagamento concluído! Seu saldo é atualizado em instantes.')
             setTimeout(carregar, 2500)
           }}
         />
