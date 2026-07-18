@@ -714,14 +714,13 @@ export default function SmsIntegracao() {
 
         {/* Minhas contas SMSDev (SMS Brasil · BYO) */}
         <Secao title="Minhas contas SMSDev" icon={MessageSquare} bgIcon={MessageSquare} open={smsdevOpen} onToggle={() => setSmsdevOpen((v) => !v)}>
-          <div className="flex items-start justify-between gap-2 mb-3">
-            <p className="text-xs text-stone-500">Conecte sua conta SMSDev pra enviar <b>SMS Brasil (+55)</b> pela SUA conta — não consome os créditos da plataforma.</p>
+          <div className="flex items-start justify-end gap-2 mb-3">
             <button onClick={() => { setFormSmsdev({ apiKey: '', nome: '' }); setNovoSmsdev(true) }} className="btn-primary text-xs min-h-[36px] px-3 shrink-0"><Plus className="w-4 h-4" /> Conectar SMSDev</button>
           </div>
           {smsdevProvs.length === 0 ? (
             <div className="py-6 text-center">
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
-              <p className="text-sm text-stone-500">Nenhuma conta SMSDev conectada. Você usa a conta da plataforma (créditos do Perfil).</p>
+              <p className="text-sm text-stone-500">Nenhuma conta SMSDev conectada.</p>
             </div>
           ) : (
             <div className="space-y-2.5">

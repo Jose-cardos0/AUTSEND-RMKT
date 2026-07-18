@@ -324,7 +324,7 @@ export default function EmailAutomacoes() {
                     <td className="px-4 py-2.5 text-stone-600 truncate max-w-[120px]">{l.produto || '-'}</td>
                     <td className="px-4 py-2.5">
                       {l.status === 'enviado' ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700"><CheckCircle2 className="w-3.5 h-3.5" /> Enviado{l.canal === 'email' ? ' (e-mail)' : ''}</span>
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700"><CheckCircle2 className="w-3.5 h-3.5" /> {(l.reenvios || 0) + 1}x Enviado{l.canal === 'email' ? ' (e-mail)' : ''}</span>
                       ) : l.status === 'erro' ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600" title={l.erroMsg || ''}><XCircle className="w-3.5 h-3.5" /> Erro</span>
                       ) : l.status === 'cancelado_recovery' ? (

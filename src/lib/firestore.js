@@ -13,7 +13,8 @@ import {
   orderBy,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
-import { db, functions } from './firebase'
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
+import { db, functions, storage } from './firebase'
 
 export function userRef(uid) {
   return doc(db, 'users', uid)
@@ -597,6 +598,27 @@ export async function deleteSmsDisparo(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'smsDisparos', id))
 }
 
+/**
+ * Status de ENTREGA por disparo (DLR). Lê users/{uid}/smsMensagens com disparoId == id
+ * e resume: entregue / nao_entregue / pendente (enviado/em trânsito). Vale BR (SMSDev) e EUA (Telnyx).
+ * Retorna { total, entregue, naoEntregue, pendente, mensagens:[{ to, status }] }.
+ */
+export async function getSmsEntregas(uid, disparoId) {
+  if (!uid || !disparoId) return null
+  const q = query(collection(db, 'users', uid, 'smsMensagens'), where('disparoId', '==', disparoId))
+  const snap = await getDocs(q)
+  let entregue = 0, naoEntregue = 0, pendente = 0
+  const mensagens = snap.docs.map((d) => {
+    const m = d.data()
+    const st = m.status || 'enviado'
+    if (st === 'entregue') entregue++
+    else if (st === 'nao_entregue') naoEntregue++
+    else pendente++
+    return { to: m.to || '', status: st }
+  })
+  return { total: mensagens.length, entregue, naoEntregue, pendente, mensagens }
+}
+
 // ── Eventos de E-mail (aberturas, cliques, entregas — vindos do Resend) ──
 
 export async function getEmailEvents(uid) {
@@ -682,6 +704,64 @@ export async function saveSmsFunnel(uid, id, data) {
 
 export async function deleteSmsFunnel(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'smsFunnels', id))
+}
+
+// ── Funis de Ligação IA (callFunnels) — canal eua/api ──
+
+export async function getCallFunnels(uid, canal) {
+  const snap = await getDocs(collection(db, 'users', uid, 'callFunnels'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((d) => !canal || (d.callCanal || 'eua') === canal)
+    .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
+}
+
+export async function saveCallFunnel(uid, id, data) {
+  if (id) {
+    await setDoc(doc(db, 'users', uid, 'callFunnels', id), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(collection(db, 'users', uid, 'callFunnels'), removeUndefined({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+  return ref.id
+}
+
+export async function deleteCallFunnel(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'callFunnels', id))
+}
+
+// ── Templates de áudio (Ligação IA) — voz gravada/enviada pelo cliente ──
+
+/** Faz upload de um Blob de áudio pro Storage e devolve { url, path } (a Telnyx busca essa URL pra tocar). */
+export async function uploadCallAudio(uid, blob, ext = 'wav', contentType = 'audio/wav') {
+  const path = `users/${uid}/callAudios/${Date.now()}_${Math.round(Math.random() * 1e6)}.${ext}`
+  const r = storageRef(storage, path)
+  await uploadBytes(r, blob, { contentType })
+  const url = await getDownloadURL(r)
+  return { url, path }
+}
+
+/** Lista os templates de áudio do cliente. */
+export async function getAudioTemplates(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'audioTemplates'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
+}
+
+/** Salva/atualiza o metadado do template de áudio (o arquivo já foi pro Storage via uploadCallAudio). */
+export async function saveAudioTemplate(uid, id, data) {
+  if (id) {
+    await setDoc(doc(db, 'users', uid, 'audioTemplates', id), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+    return id
+  }
+  const ref = await addDoc(collection(db, 'users', uid, 'audioTemplates'), removeUndefined({ ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
+  return ref.id
+}
+
+/** Exclui o template de áudio (doc + arquivo no Storage). */
+export async function deleteAudioTemplate(uid, t) {
+  try { if (t.storagePath) await deleteObject(storageRef(storage, t.storagePath)) } catch (_) {}
+  await deleteDoc(doc(db, 'users', uid, 'audioTemplates', t.id))
 }
 
 // ── Automações de SMS (por grupo de produto × evento) ──
@@ -797,6 +877,24 @@ export async function getCallLogs(uid, canal) {
       const tb = b.createdAt?.toMillis?.() ?? b.createdAt ?? 0
       return tb - ta
     })
+}
+
+// ── Automações de Ligação IA (callAutomations) ──
+
+/** Lista as automações de ligação do canal (eua/api). */
+export async function getCallAutomations(uid, canal) {
+  const snap = await getDocs(collection(db, 'users', uid, 'callAutomations'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((d) => !canal || (d.canal || 'eua') === canal)
+}
+
+/** Salva/atualiza a automação de ligação de um grupo+evento. Chave namespaced por canal (legado sem prefixo = eua). */
+export async function saveCallAutomationGrupo(uid, grupoId, evento, data, canal = 'eua') {
+  const key = canal === 'eua' ? `${grupoId}__${evento}` : `${canal}__${grupoId}__${evento}`
+  const ref = doc(db, 'users', uid, 'callAutomations', key)
+  await setDoc(ref, removeUndefined({ grupoId, evento, canal, ...data, updatedAt: serverTimestamp() }), { merge: true })
+  return key
 }
 
 // ── Logs de E-mail ──

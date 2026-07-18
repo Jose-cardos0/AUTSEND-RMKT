@@ -5,7 +5,7 @@ import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth, functions } from '../../lib/firebase'
-import { getSmsDisparos, deleteSmsDisparo } from '../../lib/firestore'
+import { getSmsDisparos, deleteSmsDisparo, getSmsEntregas } from '../../lib/firestore'
 import { usePlano } from '../../lib/PlanoContext'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
@@ -70,6 +70,22 @@ export default function SmsDisparos() {
   const [pHist, setPHist] = useState(1)
   const [expanded, setExpanded] = useState(null)
   const [histOpen, setHistOpen] = useState(false)
+  const [entregas, setEntregas] = useState({}) // { [disparoId]: { total, entregue, naoEntregue, pendente, mensagens } | 'loading' }
+
+  // Ao expandir um disparo, carrega o status de entrega (DLR) das mensagens dele.
+  async function abrirDisparo(id) {
+    if (expanded === id) { setExpanded(null); return }
+    setExpanded(id)
+    if (entregas[id] === undefined) {
+      setEntregas((e) => ({ ...e, [id]: 'loading' }))
+      try {
+        const r = await getSmsEntregas(user.uid, id)
+        setEntregas((e) => ({ ...e, [id]: r || { total: 0 } }))
+      } catch (_) {
+        setEntregas((e) => ({ ...e, [id]: { total: 0, erro: true } }))
+      }
+    }
+  }
 
   useEffect(() => {
     if (!user?.uid) return
@@ -305,7 +321,7 @@ export default function SmsDisparos() {
               return (
                 <div key={d.id}>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-4">
-                    <button onClick={() => setExpanded(aberto ? null : d.id)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    <button onClick={() => abrirDisparo(d.id)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
                       <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${aberto ? 'rotate-180' : ''}`} />
                       <div className="min-w-0">
                         <p className="font-medium text-stone-800 text-sm truncate">{d.nomeDisparo}</p>
@@ -315,6 +331,8 @@ export default function SmsDisparos() {
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-stone-600">
                         {d.enviados}/{d.total} enviados{d.erros ? ` · ${d.erros} erro(s)` : ''}
+                        {d.entregues > 0 && <span className="text-green-600"> · {d.entregues} entregue(s)</span>}
+                        {d.naoEntregues > 0 && <span className="text-red-600"> · {d.naoEntregues} não entregue(s)</span>}
                       </span>
                       <span
                         className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS[d.status] || 'bg-stone-100 text-stone-600'} ${d.erros > 0 && d.erroMotivo ? 'cursor-help' : ''}`}
@@ -328,7 +346,7 @@ export default function SmsDisparos() {
                     </div>
                   </div>
                   {aberto && (
-                    <div className="px-4 pb-4">
+                    <div className="px-4 pb-4 space-y-2">
                       <div className="text-xs text-stone-500 p-3 bg-surface-50 rounded-xl space-y-1">
                         <p className="text-stone-700 font-medium">Mensagem enviada:</p>
                         <p className="whitespace-pre-wrap break-words">{d.mensagem}</p>
@@ -337,6 +355,30 @@ export default function SmsDisparos() {
                           <p className="text-red-600 mt-1"><b>Motivo do erro:</b> {d.erroMotivo}</p>
                         )}
                       </div>
+                      {/* Status de entrega (DLR) */}
+                      {(() => {
+                        const ent = entregas[d.id]
+                        if (ent === 'loading') return <p className="text-xs text-stone-400 px-1">Carregando status de entrega…</p>
+                        if (!ent || ent.erro) return null
+                        if (ent.total === 0) return <p className="text-xs text-stone-400 px-1">Status de entrega ainda não disponível (chega em instantes após o envio).</p>
+                        return (
+                          <div className="text-xs p-3 bg-surface-50 rounded-xl space-y-2">
+                            <p className="text-stone-700 font-medium">Status de entrega:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {ent.entregue > 0 && <span className="inline-flex px-2 py-0.5 rounded-full bg-green-100 text-green-700">{ent.entregue} entregue(s)</span>}
+                              {ent.naoEntregue > 0 && <span className="inline-flex px-2 py-0.5 rounded-full bg-red-100 text-red-700">{ent.naoEntregue} não entregue(s)</span>}
+                              {ent.pendente > 0 && <span className="inline-flex px-2 py-0.5 rounded-full bg-stone-100 text-stone-600">{ent.pendente} pendente(s)</span>}
+                            </div>
+                            {ent.mensagens.some((m) => m.status === 'nao_entregue') && (
+                              <div className="text-red-600 space-y-0.5">
+                                {ent.mensagens.filter((m) => m.status === 'nao_entregue').map((m, i) => (
+                                  <p key={i}>✗ {m.to} — não entregue</p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>

@@ -33,6 +33,8 @@ import SmsRemarketing from './pages/sms/SmsRemarketing'
 import SmsMetricas from './pages/sms/SmsMetricas'
 import CallIntegracao from './pages/call/CallIntegracao'
 import CallCampanha from './pages/call/CallCampanha'
+import CallAutomacoes from './pages/call/CallAutomacoes'
+import CallFunil from './pages/call/CallFunil'
 import CallMetricas from './pages/call/CallMetricas'
 import PageLoader from './components/PageLoader'
 import { ConfirmProvider } from './components/ConfirmDialog'
@@ -181,6 +183,8 @@ export default function App() {
           {/* Call Marketing IA — canal eua (nossa conta) | api (Telnyx do cliente). */}
           <Route path="call/:canal/integracao" element={<CallIntegracao />} />
           <Route path="call/:canal/campanha" element={<CallCampanha />} />
+          <Route path="call/:canal/automacoes" element={<CallAutomacoes />} />
+          <Route path="call/:canal/funil" element={<CallFunil />} />
           <Route path="call/:canal/metricas" element={<CallMetricas />} />
           <Route path="call/integracao" element={<Navigate to="/call/eua/integracao" replace />} />
           <Route path="call/campanha" element={<Navigate to="/call/eua/campanha" replace />} />

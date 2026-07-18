@@ -18,6 +18,7 @@ import GerarMensagemIA from '../components/GerarMensagemIA'
 import TemplatePicker from '../components/TemplatePicker'
 import MessageEditor from '../components/MessageEditor'
 import CollapsibleSearch from '../components/CollapsibleSearch'
+import ErroTip from '../components/ErroTip'
 import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
 
 const eventoLabel = (id) => KIWIFY_EVENTS.find((e) => e.id === id)?.label
@@ -459,7 +460,9 @@ export default function WhatsappFunil() {
                       {s.status === 'enviado' ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700"><CheckCircle2 className="w-3.5 h-3.5" /> Enviado</span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600"><XCircle className="w-3.5 h-3.5" /> Falhou</span>
+                        <ErroTip msg={s.erroMsg || ''}>
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600"><XCircle className="w-3.5 h-3.5" /> Falhou</span>
+                        </ErroTip>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-stone-500 whitespace-nowrap">{formatDate(s.createdAt)}</td>

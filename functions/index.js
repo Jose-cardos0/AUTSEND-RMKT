@@ -1455,19 +1455,60 @@ exports.telnyxWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, m
  * Configure a URL desta função no painel do SMSDev (Callback Situação). O id da msg mapeia o uid via smsdevIndex.
  * Formato flexível (SMSDev varia): tenta id em id/id_sms/message_id e situação em situacao/status/dlr.
  */
+/** Motivo legível de um DLR de falha do SMSDev (o callback só dá o rótulo genérico). */
+function motivoDlrSmsdev(situacao) {
+  const t = String(situacao || '').toLowerCase()
+  if (/black.?list/.test(t)) return 'Número na blacklist da operadora'
+  if (/cancel/.test(t)) return 'Envio cancelado'
+  if (/expir/.test(t)) return 'Expirou antes de entregar'
+  if (/invalid|erro|error|reject/.test(t)) return 'Número inválido ou rejeitado pela operadora'
+  return 'Não entregue pela operadora'
+}
+
 exports.smsdevWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
   try {
     const b = { ...(req.query || {}), ...(req.body || {}) }
+    const { key: _k, ...semKey } = b // não logar a key da conta SMSDev
+    console.log('smsdevWebhook DLR recebido:', req.method, JSON.stringify(semKey))
     const id = String(b.id || b.id_sms || b.message_id || b.messageId || '').trim()
     const situacao = String(b.situacao || b.status || b.dlr || b.descricao || '').toLowerCase()
     if (id) {
       let uid = (req.query && req.query.userId) || null
       if (!uid) { try { const ix = await db.doc(`smsdevIndex/${id}`).get(); if (ix.exists) uid = ix.data().uid } catch (_) {} }
       if (uid) {
-        const entregue = /entreg|delivered|\bdlvrd\b|success|sucesso/.test(situacao)
-        const falhou = /(nao.?entreg|undeliver|falh|erro|reject|expir|blacklist|invalid)/.test(situacao)
+        // Valores reais do SMSDev (campo `situacao` do callback): RECEBIDA=entregue, SENT=em trânsito,
+        // QUEUE/APPROVAL=pendente, ERROR/CANCELED/BLACK LIST=falha. Checa falha primeiro (evita que
+        // "nao entregue" case com /entreg/).
+        const falhou = /(erro|error|cancel|black.?list|reject|expir|invalid|undeliver|\bfalh|nao.?entreg)/.test(situacao)
+        const entregue = !falhou && /(receb|entreg|delivered|\bdlvrd\b|success|sucesso)/.test(situacao)
         const status = entregue ? 'entregue' : (falhou ? 'nao_entregue' : (situacao || 'atualizado'))
-        await db.doc(`users/${uid}/smsMensagens/${id}`).set({ status, dlr: situacao, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        const ref = db.doc(`users/${uid}/smsMensagens/${id}`)
+        const prev = await ref.get()
+        const prevStatus = prev.exists ? prev.data().status : null
+        const disparoId = prev.exists ? prev.data().disparoId : null
+        const smsLogId = prev.exists ? prev.data().smsLogId : null
+        if (prevStatus !== status) {
+          await ref.set({ status, dlr: situacao, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+          // Consolida a contagem de entrega no doc do disparo (idempotente: só conta transições de estado FINAL).
+          if (disparoId) {
+            const inc = {}
+            if (prevStatus === 'entregue') inc.entregues = admin.firestore.FieldValue.increment(-1)
+            if (prevStatus === 'nao_entregue') inc.naoEntregues = admin.firestore.FieldValue.increment(-1)
+            if (status === 'entregue') inc.entregues = admin.firestore.FieldValue.increment(1)
+            if (status === 'nao_entregue') inc.naoEntregues = admin.firestore.FieldValue.increment(1)
+            if (Object.keys(inc).length) {
+              try { await db.doc(`users/${uid}/smsDisparos/${disparoId}`).set(inc, { merge: true }) } catch (_) {}
+            }
+          }
+          // Auto-send BR: propaga o resultado de entrega pro smsLog (aparece no relatório com motivo no hover).
+          const patchEntrega = status === 'nao_entregue'
+            ? { status: 'erro', erroMsg: motivoDlrSmsdev(situacao), entregue: false }
+            : (status === 'entregue' ? { entregue: true } : null)
+          if (smsLogId && patchEntrega) { try { await db.doc(`users/${uid}/smsLogs/${smsLogId}`).set(patchEntrega, { merge: true }) } catch (_) {} }
+          // Funil BR: idem pro funnelSend.
+          const funnelSendId = prev.exists ? prev.data().funnelSendId : null
+          if (funnelSendId && patchEntrega) { try { await db.doc(`users/${uid}/funnelSends/${funnelSendId}`).set(patchEntrega, { merge: true }) } catch (_) {} }
+        }
       }
     }
     res.status(200).send('ok')
@@ -2451,13 +2492,17 @@ exports.limparCacheAudioCall = onSchedule({ schedule: 'every 24 hours', region: 
  * pro webhook saber o que falar e como debitar. Retorna { ok, ccid } ou lança.
  */
 async function iniciarLigacaoTorpedo(cfg, to, ctx) {
-  // 1) Gera o áudio emendando trechos do cache (só o nome/produto é gerado por valor único).
-  const audioB64 = await gerarAudioContatoB64(
+  // 1) Áudio: se veio um template de áudio PRÓPRIO (audioUrl), a Telnyx toca esse mp3/wav direto —
+  //    sem gerar na IA. Senão, gera o áudio da voz IA emendando trechos do cache.
+  const usarAudioProprio = !!ctx.audioUrl
+  const audioB64 = usarAudioProprio ? null : await gerarAudioContatoB64(
     ctx.texto,
     { nome: ctx.nome || '', produto: ctx.produto || '', telefone: to, email: ctx.email || '' },
     ctx.voz || CALL_VOZ_PADRAO, ctx.velocidade, ctx.canal,
   )
-  const mensagemLog = replaceVariables(ctx.texto, { nome: ctx.nome || '', telefone: to, email: ctx.email || '' }, { nome: ctx.produto || '' })
+  const mensagemLog = usarAudioProprio
+    ? `[Áudio: ${ctx.audioNome || 'template'}]`
+    : replaceVariables(ctx.texto, { nome: ctx.nome || '', telefone: to, email: ctx.email || '' }, { nome: ctx.produto || '' })
   // 2) Cria a chamada na Telnyx.
   const res = await fetch('https://api.telnyx.com/v2/calls', {
     method: 'POST',
@@ -2475,6 +2520,7 @@ async function iniciarLigacaoTorpedo(cfg, to, ctx) {
   await db.doc(`callPending/${ccid}`).set({
     uid: ctx.uid, apiKey: cfg.apiKey, from: cfg.from, to,
     texto: mensagemLog, voz: ctx.voz || CALL_VOZ_PADRAO, velocidade: ctx.velocidade || 1, audioB64,
+    audioUrl: ctx.audioUrl || null,
     canal: ctx.canal || 'eua', contaPropria: !!ctx.contaPropria,
     leadId: ctx.leadId || null, produto: ctx.produto || '', nome: ctx.nome || '', agenteNome: ctx.agenteNome || '',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2538,7 +2584,9 @@ exports.telnyxVoiceWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
 
     if (tipo === 'call.answered') {
       await pendRef.set({ answeredAtMs: Date.now(), status: 'atendida' }, { merge: true })
-      if (p.audioB64) {
+      if (p.audioUrl) {
+        await telnyxPlayback(p.apiKey, ccid, p.audioUrl) // áudio próprio do cliente (mp3/wav no Storage)
+      } else if (p.audioB64) {
         await telnyxPlayback(p.apiKey, ccid, `${AUDIO_BASE_URL}?ccid=${encodeURIComponent(ccid)}`) // voz humanizada (ElevenLabs)
       } else {
         await telnyxSpeak(p.apiKey, ccid, montarSSMLCall(p.texto || '', p.velocidade), p.voz) // fallback TTS
@@ -2638,6 +2686,10 @@ exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300 }, as
   const contatos = Array.isArray(d.contatos) ? d.contatos.slice(0, 500) : []
   if (!contatos.length) throw new HttpsError('invalid-argument', 'Nenhum contato para ligar.')
 
+  // Áudio próprio (template de voz): a Telnyx toca esse mp3/wav; dispensa roteiro/voz/velocidade.
+  const audioUrl = String(d.audioUrl || '').trim() || null
+  const audioNome = String(d.audioNome || '').trim()
+
   // Roteiro/voz: do agente salvo ou passado direto.
   let texto = String(d.texto || '').trim()
   let voz = d.voz || CALL_VOZ_PADRAO
@@ -2646,7 +2698,7 @@ exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300 }, as
     const ag = await db.doc(`users/${uid}/callAgents/${d.agenteId}`).get()
     if (ag.exists) { const a = ag.data(); texto = String(a.texto || texto); voz = a.voz || voz; velocidade = Number(a.velocidade) || velocidade }
   }
-  if (!texto) throw new HttpsError('invalid-argument', 'Escreva ou gere o roteiro da ligação primeiro.')
+  if (!audioUrl && !texto) throw new HttpsError('invalid-argument', 'Escreva ou gere o roteiro da ligação primeiro.')
   if (!CALL_VOZES_PTBR.includes(voz)) voz = CALL_VOZ_PADRAO
 
   const rEnvio = await resolverCallEnvio(uid, ehAdmin, canal)
@@ -2668,7 +2720,7 @@ exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300 }, as
     try {
       // Passa o texto CRU (com variáveis) — o stitching gera só o nome/produto por valor e reaproveita o resto do cache.
       await iniciarLigacaoTorpedo(cfg, norm.e164, {
-        uid, texto, voz, velocidade, canal, contaPropria,
+        uid, texto, voz, velocidade, canal, contaPropria, audioUrl, audioNome,
         leadId: c.leadId || null, produto: c.produto || '', nome: c.nome || '', email: c.email || '', agenteNome: d.agenteNome || '',
       })
       iniciadas++
@@ -3797,11 +3849,12 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product, prod
   }
 }
 
-/** Dispara as ações automáticas do evento: WhatsApp e/ou E-mail (cada uma só se configurada e ativa). */
+/** Dispara as ações automáticas do evento: WhatsApp, E-mail, SMS e/ou Ligação IA (cada uma só se configurada e ativa). */
 async function dispararAcoes(userId, leadRef, evento, customer, product, produtos) {
   await tryAutoSend(userId, leadRef, evento, customer, product, produtos)
   await tryAutoSendEmail(userId, leadRef, evento, customer, product, produtos)
   await tryAutoSendSMS(userId, leadRef, evento, customer, product, produtos)
+  await tryAutoSendCall(userId, leadRef, evento, customer, product, produtos)
 }
 
 /**
@@ -3844,10 +3897,17 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
           }
         }
         const textoBr = replaceVariables(auto.mensagem || '', { ...customer, telefone: normBr.e164 }, product)
-        let okBr = true, erroBr = null
-        try { await enviarSMSDev(rSms.key, normBr.e164, textoBr) } catch (err) { okBr = false; erroBr = err.message || 'Falha no envio do SMS' }
+        let okBr = true, erroBr = null, smsdevIdBr = null
+        try { const outBr = await enviarSMSDev(rSms.key, normBr.e164, textoBr); smsdevIdBr = outBr.id } catch (err) { okBr = false; erroBr = err.message || 'Falha no envio do SMS' }
         if (okBr && !ehAdm && !rSms.propria) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
-        await db.collection('users').doc(userId).collection('smsLogs').add({ leadId: leadRef.id, evento, canal: 'brl', produto: product.nome || '', telefone: normBr.e164, nome: customer.nome || '', status: okBr ? 'enviado' : 'erro', erroMsg: erroBr, mensagem: textoBr, createdAt: admin.firestore.FieldValue.serverTimestamp() })
+        const logBrRef = await db.collection('users').doc(userId).collection('smsLogs').add({ leadId: leadRef.id, evento, canal: 'brl', produto: product.nome || '', telefone: normBr.e164, nome: customer.nome || '', status: okBr ? 'enviado' : 'erro', erroMsg: erroBr, mensagem: textoBr, createdAt: admin.firestore.FieldValue.serverTimestamp() })
+        // Rastreio DLR: liga a msg SMSDev ao smsLog pra o status de entrega (não entregue) atualizar o relatório depois.
+        if (okBr && smsdevIdBr) {
+          try {
+            await db.doc(`users/${userId}/smsMensagens/${smsdevIdBr}`).set({ leadId: leadRef.id, smsLogId: logBrRef.id, canal: 'brl', to: normBr.e164, status: 'enviado', createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+            await db.doc(`smsdevIndex/${smsdevIdBr}`).set({ uid: userId }, { merge: true })
+          } catch (_) {}
+        }
         continue
       }
 
@@ -3879,6 +3939,77 @@ async function tryAutoSendSMS(userId, leadRef, evento, customer, product, produt
   }
 }
 
+/**
+ * Auto-liga (Ligação IA) pra um lead quando um evento dispara, se houver automação de call ativa.
+ * Canais 'eua' (nossa conta) e 'api' (conta própria). Não altera o status do lead (canal secundário).
+ * O callLog é gravado pelo webhook de voz ao desligar (status atendida/nao_atendida); falhas imediatas
+ * (número inválido / sem minutos / erro ao criar a chamada) gravam um callLog 'erro' pra aparecer no relatório.
+ */
+async function tryAutoSendCall(userId, leadRef, evento, customer, product, produtos) {
+  try {
+    if (!customer.telefone) return
+    const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
+    const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const grupo = acharGrupo(grupos, produtos, product)
+    const ehAdm = await ehUidAdmin(userId)
+    for (const canal of ['eua', 'api']) {
+      // Automação específica do grupo tem prioridade; senão a genérica do evento. Legado (sem prefixo) = eua.
+      let auto = null
+      if (grupo) {
+        let s = await db.doc(`users/${userId}/callAutomations/${canal}__${grupo.id}__${evento}`).get()
+        if (!s.exists && canal === 'eua') s = await db.doc(`users/${userId}/callAutomations/${grupo.id}__${evento}`).get()
+        if (s.exists) { const d = s.data(); if (d.ativo === true && (d.roteiro || d.audioUrl)) auto = d }
+      }
+      if (!auto) {
+        let s = await db.doc(`users/${userId}/callAutomations/${canal}__${evento}`).get()
+        if (!s.exists && canal === 'eua') s = await db.doc(`users/${userId}/callAutomations/${evento}`).get()
+        if (s.exists) { const d = s.data(); if (d.ativo === true && (d.roteiro || d.audioUrl) && !d.grupoId && !d.produto) auto = d }
+      }
+      if (!auto) continue
+
+      const rEnvio = await resolverCallEnvio(userId, ehAdm, canal)
+      if (rEnvio.erro) continue
+      const cfg = rEnvio.cfg
+      const contaPropria = !!rEnvio.propria
+      const norm = normalizarE164(customer.telefone, { permitirBR: contaPropria })
+      if (!norm.ok) {
+        await db.collection('users').doc(userId).collection('callLogs').add({
+          canal, leadId: leadRef.id, evento, telefone: customer.telefone || '', nome: customer.nome || '', produto: product.nome || '',
+          status: 'erro', erroMsg: motivoNumeroInvalido(norm.motivo), segundos: 0, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+        continue
+      }
+      // Saldo de minutos (só a NOSSA conta consome; admin/própria não).
+      if (!ehAdm && !contaPropria) {
+        const tSnap = await db.doc(`tenants/${userId}`).get()
+        const saldo = await callSaldoDisponivel(userId, tSnap.exists ? tSnap.data() : {}, ehAdm)
+        if (saldo.totalSeg <= 0) {
+          await db.collection('users').doc(userId).collection('callLogs').add({
+            canal, leadId: leadRef.id, evento, telefone: norm.e164, nome: customer.nome || '', produto: product.nome || '',
+            status: 'erro', erroMsg: 'Sem minutos de Ligação IA', segundos: 0, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          })
+          continue
+        }
+      }
+      const voz = CALL_VOZES_PTBR.includes(auto.voz) ? auto.voz : CALL_VOZ_PADRAO
+      try {
+        await iniciarLigacaoTorpedo(cfg, norm.e164, {
+          uid: userId, texto: auto.roteiro || '', voz, velocidade: Number(auto.velocidade) || 1, canal, contaPropria,
+          audioUrl: auto.audioUrl || null, audioNome: auto.audioNome || '',
+          leadId: leadRef.id, produto: product.nome || '', nome: customer.nome || '', email: customer.email || '', agenteNome: 'Automação',
+        })
+      } catch (e) {
+        await db.collection('users').doc(userId).collection('callLogs').add({
+          canal, leadId: leadRef.id, evento, telefone: norm.e164, nome: customer.nome || '', produto: product.nome || '',
+          status: 'erro', erroMsg: traduzErroVoz(e.message), segundos: 0, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      }
+    }
+  } catch (err) {
+    console.error('Erro no auto-call:', err)
+  }
+}
+
 // ───────────────────────── Funil de e-mail: helpers ─────────────────────────
 function acharNode(funnel, id) { return (funnel.nodes || []).find((n) => n.id === id) }
 function nodeInicio(funnel) { return (funnel.nodes || []).find((n) => n.type === 'inicio') }
@@ -3890,15 +4021,15 @@ function proximoNode(funnel, nodeId, handle) {
 /** Envia um template de funil para um contato (com tags de funil para o rastreamento). */
 async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteId) {
   try {
-    if (!contato?.email || !templateId) return false
+    if (!contato?.email || !templateId) return { ok: false, erroMsg: 'Contato sem e-mail ou template não definido' }
     const cfg = await resolverRemetente(userId, remetenteId || null)
     const from = cfg.from
-    if (!cfg?.apiKey || !from) return false
+    if (!cfg?.apiKey || !from) return { ok: false, erroMsg: 'Remetente de e-mail não configurado' }
     // Pausa de risco só bloqueia envios pela NOSSA conta compartilhada (não a API própria do cliente).
     const sharedKeyFn = await getSharedResendKey()
-    if (!!sharedKeyFn && cfg.apiKey === sharedKeyFn && await emailPausadoUid(userId)) return false
+    if (!!sharedKeyFn && cfg.apiKey === sharedKeyFn && await emailPausadoUid(userId)) return { ok: false, erroMsg: 'Envios de e-mail pausados (conta em análise de risco)' }
     const tplSnap = await db.doc(`users/${userId}/emailTemplates/${templateId}`).get()
-    if (!tplSnap.exists) return false
+    if (!tplSnap.exists) return { ok: false, erroMsg: 'Template de e-mail não encontrado' }
     const tpl = tplSnap.data()
     const lead = { nome: contato.nome || '', email: contato.email, telefone: '' }
     const product = { nome: contato.produto || '' }
@@ -3911,20 +4042,50 @@ async function enviarTemplateFunil(userId, templateId, contato, tags, remetenteI
     const r = await sendEmailViaResend({ apiKey: cfg.apiKey, from: replaceVariables(from, lead, product), to: contato.email, subject, html, headers: { 'List-Unsubscribe': `<mailto:${unsub}?subject=Unsubscribe>` }, tags: tagsComUid })
     const funnelId = (tags || []).find((t) => t && t.name === 'funnelId')?.value
     await registrarEmailSend(userId, r?.id, { funnelId })
-    return true
-  } catch (err) { console.error('enviarTemplateFunil', err); return false }
+    return { ok: true }
+  } catch (err) { console.error('enviarTemplateFunil', err); return { ok: false, erroMsg: err.message || 'Falha no envio do e-mail' } }
 }
 
-/** Cria o funnelRun no primeiro passo após o Início. canal: 'email' | 'whatsapp'. */
+/**
+ * Faz uma Ligação IA de um nó de funil. canal 'eua' (nossa conta) | 'api' (própria).
+ * nodeData: { roteiro, voz, velocidade }. Consome minutos (checa saldo). Retorna { ok, erroMsg }.
+ * "ok" = ligação INICIADA (o atendida/não vem depois via callLog); falhas imediatas trazem o motivo.
+ */
+async function enviarLigacaoFunil(userId, contato, canal, nodeData) {
+  try {
+    if (!contato?.telefone || (!nodeData?.roteiro && !nodeData?.audioUrl)) return { ok: false, erroMsg: 'Contato sem telefone ou roteiro/áudio vazio' }
+    const ehAdm = await ehUidAdmin(userId)
+    const rEnvio = await resolverCallEnvio(userId, ehAdm, canal)
+    if (rEnvio.erro) return { ok: false, erroMsg: rEnvio.erro }
+    const cfg = rEnvio.cfg
+    const contaPropria = !!rEnvio.propria
+    const norm = normalizarE164(contato.telefone, { permitirBR: contaPropria })
+    if (!norm.ok) return { ok: false, erroMsg: motivoNumeroInvalido(norm.motivo) }
+    if (!ehAdm && !contaPropria) {
+      const tSnap = await db.doc(`tenants/${userId}`).get()
+      const saldo = await callSaldoDisponivel(userId, tSnap.exists ? tSnap.data() : {}, ehAdm)
+      if (saldo.totalSeg <= 0) return { ok: false, erroMsg: 'Sem minutos de Ligação IA' }
+    }
+    const voz = CALL_VOZES_PTBR.includes(nodeData.voz) ? nodeData.voz : CALL_VOZ_PADRAO
+    await iniciarLigacaoTorpedo(cfg, norm.e164, {
+      uid: userId, texto: nodeData.roteiro || '', voz, velocidade: Number(nodeData.velocidade) || 1, canal, contaPropria,
+      audioUrl: nodeData.audioUrl || null, audioNome: nodeData.audioNome || '',
+      leadId: contato.leadId || null, produto: contato.produto || '', nome: contato.nome || '', email: contato.email || '', agenteNome: 'Funil',
+    })
+    return { ok: true }
+  } catch (err) { console.error('enviarLigacaoFunil', err); return { ok: false, erroMsg: traduzErroVoz(err.message) } }
+}
+
+/** Cria o funnelRun no primeiro passo após o Início. canal: 'email' | 'whatsapp' | 'sms' | 'call'. */
 async function inscreverNoFunil(userId, funnelId, funnel, contato, canal = 'email') {
   const inicio = nodeInicio(funnel)
   const primeiro = inicio ? proximoNode(funnel, inicio.id) : null
-  const idKey = (canal === 'whatsapp' || canal === 'sms') ? (contato?.telefone || '') : (contato?.email || '')
+  const idKey = (canal === 'whatsapp' || canal === 'sms' || canal === 'call') ? (contato?.telefone || '') : (contato?.email || '')
   if (!primeiro || !idKey) return false
   await db.collection('users').doc(userId).collection('funnelRuns').add({
     funnelId,
     canal,
-    contato: { email: contato.email || '', telefone: contato.telefone || '', nome: contato.nome || '', produto: contato.produto || '' },
+    contato: { email: contato.email || '', telefone: contato.telefone || '', nome: contato.nome || '', produto: contato.produto || '', leadId: contato.leadId || null },
     currentNodeId: primeiro,
     status: 'ativo',
     nextRunAt: admin.firestore.Timestamp.now(),
@@ -3936,9 +4097,9 @@ async function inscreverNoFunil(userId, funnelId, funnel, contato, canal = 'emai
 /** Envia uma mensagem de WhatsApp de um nó de funil (via n8n/Evolution). */
 async function enviarMensagemFunil(userId, mensagem, contato) {
   try {
-    if (!contato?.telefone || !mensagem) return false
+    if (!contato?.telefone || !mensagem) return { ok: false, erroMsg: 'Contato sem telefone ou mensagem vazia' }
     const evolution = await getEvolutionConfigForUser(userId)
-    if (!evolution?.nomeInstancia) return false
+    if (!evolution?.nomeInstancia) return { ok: false, erroMsg: 'Nenhuma instância de WhatsApp conectada' }
     const customer = { nome: contato.nome || '', telefone: contato.telefone, email: contato.email || '' }
     const product = { nome: contato.produto || '' }
     const msg = replaceVariables(mensagem, customer, product)
@@ -3955,35 +4116,40 @@ async function enviarMensagemFunil(userId, mensagem, contato) {
       produto: product.nome || '',
     }
     const res = await fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    return res.ok
-  } catch (err) { console.error('enviarMensagemFunil', err); return false }
+    if (!res.ok) return { ok: false, erroMsg: `Falha ao enviar pelo WhatsApp (instância/n8n respondeu ${res.status})` }
+    return { ok: true }
+  } catch (err) { console.error('enviarMensagemFunil', err); return { ok: false, erroMsg: err.message || 'Falha no envio do WhatsApp' } }
 }
 
-/** Envia um SMS de um nó de funil. canal: 'eua'/'api' (Telnyx) | 'brl' (SMSDev, +55, crédito-only). */
+/**
+ * Envia um SMS de um nó de funil. canal: 'eua'/'api' (Telnyx) | 'brl' (SMSDev, +55, crédito-only).
+ * Retorna { ok, erroMsg, smsdevId, to } pra o relatório do funil mostrar o motivo do erro (hover) + rastrear DLR.
+ */
 async function enviarMensagemFunilSMS(userId, mensagem, contato, canal) {
   try {
-    if (!contato?.telefone || !mensagem) return false
+    if (!contato?.telefone || !mensagem) return { ok: false, erroMsg: 'Sem telefone ou mensagem' }
     if (canal === 'brl') {
       const rSms = await resolverSmsBrEnvio(userId) // BYO (conta do cliente) tem prioridade
-      if (rSms.erro) return false
+      if (rSms.erro) return { ok: false, erroMsg: rSms.erro }
       const normBr = normalizarE164(contato.telefone, { permitirBR: true })
-      if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) return false // funil BR só +55
+      if (!normBr.ok || !String(normBr.e164).replace(/\D/g, '').startsWith('55')) return { ok: false, erroMsg: 'Número não é do Brasil (+55) — canal BR só envia para +55.' }
       const ehAdm = await ehUidAdmin(userId)
-      if (!ehAdm && !rSms.propria) { const tSnap = await db.doc(`tenants/${userId}`).get(); if ((Number(tSnap.data()?.smsBrCreditos) || 0) < 1) return false }
+      if (!ehAdm && !rSms.propria) { const tSnap = await db.doc(`tenants/${userId}`).get(); if ((Number(tSnap.data()?.smsBrCreditos) || 0) < 1) return { ok: false, erroMsg: 'Sem créditos de SMS Brasil' } }
       const textoBr = replaceVariables(mensagem, { nome: contato.nome || '', telefone: normBr.e164, email: contato.email || '' }, { nome: contato.produto || '' })
-      await enviarSMSDev(rSms.key, normBr.e164, textoBr)
+      let smsdevId = null
+      try { const out = await enviarSMSDev(rSms.key, normBr.e164, textoBr); smsdevId = out.id } catch (err) { return { ok: false, erroMsg: err.message || 'Falha no envio do SMS' } }
       if (!ehAdm && !rSms.propria) await db.doc(`tenants/${userId}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
-      return true
+      return { ok: true, smsdevId, to: normBr.e164 }
     }
     const rEnvio = await resolverTelnyxEnvio(userId, await ehUidAdmin(userId), canal === 'api' ? 'api' : 'eua')
-    if (rEnvio.erro) return false
+    if (rEnvio.erro) return { ok: false, erroMsg: rEnvio.erro }
     const cfg = rEnvio.cfg
     const norm = normalizarE164(contato.telefone, { permitirBR: !!rEnvio.propria })
-    if (!norm.ok) return false
+    if (!norm.ok) return { ok: false, erroMsg: motivoNumeroInvalido(norm.motivo) }
     const texto = replaceVariables(mensagem, { nome: contato.nome || '', telefone: norm.e164, email: contato.email || '' }, { nome: contato.produto || '' })
-    await enviarSMSTelnyx(cfg, norm.e164, texto)
-    return true
-  } catch (err) { console.error('enviarMensagemFunilSMS', err); return false }
+    try { await enviarSMSTelnyx(cfg, norm.e164, texto) } catch (err) { return { ok: false, erroMsg: err.message || 'Falha no envio do SMS' } }
+    return { ok: true, to: norm.e164 }
+  } catch (err) { console.error('enviarMensagemFunilSMS', err); return { ok: false, erroMsg: err.message || 'Erro interno' } }
 }
 
 /** Condição do funil de WhatsApp: o contato fez uma compra aprovada depois de entrar? (por e-mail ou telefone) */
@@ -4355,7 +4521,7 @@ exports.customWebhook = onRequest(
         for (const fdoc of funisSnap.docs) {
           const funnel = fdoc.data()
           if (funnel.ativo !== true || !grupoOk(funnel)) continue
-          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, nome: customer.nome, produto: product.nome }, 'email')
+          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, nome: customer.nome, produto: product.nome, leadId: leadRef.id }, 'email')
         }
       }
       if (customer.telefone) {
@@ -4364,7 +4530,7 @@ exports.customWebhook = onRequest(
         for (const fdoc of funisWaSnap.docs) {
           const funnel = fdoc.data()
           if (funnel.ativo !== true || !grupoOk(funnel)) continue
-          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome }, 'whatsapp')
+          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome, leadId: leadRef.id }, 'whatsapp')
         }
         // Funis de SMS por canal (funnel.smsCanal): BRL (SMSDev) só pega +55; EUA/API (Telnyx) só internacional.
         const funisSmsSnap = await db.collection('users').doc(userId).collection('smsFunnels')
@@ -4375,7 +4541,17 @@ exports.customWebhook = onRequest(
           const funnel = fdoc.data()
           if (funnel.ativo !== true || !grupoOk(funnel)) continue
           if ((funnel.smsCanal === 'brl') !== leadEhBr) continue // casa o país: funil BR ↔ lead +55
-          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome }, 'sms')
+          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome, leadId: leadRef.id }, 'sms')
+        }
+        // Funis de Ligação IA (funnel.callCanal): eua = internacional (ignora +55) · api = conta própria (aceita +55).
+        const funisCallSnap = await db.collection('users').doc(userId).collection('callFunnels')
+          .where('gatilhoEvento', '==', evento).limit(20).get()
+        for (const fdoc of funisCallSnap.docs) {
+          const funnel = fdoc.data()
+          if (funnel.ativo !== true || !grupoOk(funnel)) continue
+          const callCanal = funnel.callCanal === 'api' ? 'api' : 'eua'
+          if (callCanal === 'eua' && leadEhBr) continue // canal EUA não liga p/ +55
+          await inscreverNoFunil(userId, fdoc.id, funnel, { email: customer.email, telefone: customer.telefone, nome: customer.nome, produto: product.nome, leadId: leadRef.id }, 'call')
         }
       }
     } catch (err) { console.error('Erro ao inscrever em funil:', err) }
@@ -4393,7 +4569,7 @@ exports.enrollFunnel = onCall({ region: 'us-central1', timeoutSeconds: 120 }, as
   await assertTermosAceito(request)
   const { funnelId, recipients, canal } = request.data || {}
   if (!funnelId) throw new HttpsError('invalid-argument', 'Escolha um funil.')
-  const col = canal === 'whatsapp' ? 'whatsappFunnels' : canal === 'sms' ? 'smsFunnels' : 'emailFunnels'
+  const col = canal === 'whatsapp' ? 'whatsappFunnels' : canal === 'sms' ? 'smsFunnels' : canal === 'call' ? 'callFunnels' : 'emailFunnels'
   const fs = await db.doc(`users/${uid}/${col}/${funnelId}`).get()
   if (!fs.exists) throw new HttpsError('not-found', 'Funil não encontrado.')
   const funnel = fs.data()
@@ -4417,6 +4593,18 @@ exports.enrollFunnel = onCall({ region: 'us-central1', timeoutSeconds: 120 }, as
     }
     for (const r of validos) {
       await inscreverNoFunil(uid, funnelId, funnel, r, 'sms')
+      n++
+    }
+  } else if (canal === 'call') {
+    // Ligação IA: canal eua = só internacional (ignora +55); api = conta própria (aceita +55).
+    const permitirBR = funnel.callCanal === 'api'
+    const validos = []
+    for (const r of lista.slice(0, 2000)) {
+      const norm = normalizarE164(r?.telefone || r?.numero || '', { permitirBR })
+      if (norm.ok) validos.push({ telefone: norm.e164, nome: r.nome || '' })
+    }
+    for (const r of validos) {
+      await inscreverNoFunil(uid, funnelId, funnel, r, 'call')
       n++
     }
   } else {
@@ -4449,7 +4637,7 @@ exports.processarFunis = onSchedule(
 )
 
 async function processarFunnelRun(userId, runRef, run, cache) {
-  const funnelCol = run.canal === 'whatsapp' ? 'whatsappFunnels' : run.canal === 'sms' ? 'smsFunnels' : 'emailFunnels'
+  const funnelCol = run.canal === 'whatsapp' ? 'whatsappFunnels' : run.canal === 'sms' ? 'smsFunnels' : run.canal === 'call' ? 'callFunnels' : 'emailFunnels'
   const key = `${userId}/${funnelCol}/${run.funnelId}`
   if (!(key in cache)) {
     const fs = await db.doc(`users/${userId}/${funnelCol}/${run.funnelId}`).get()
@@ -4469,11 +4657,11 @@ async function processarFunnelRun(userId, runRef, run, cache) {
     if (node.type === 'enviar') {
       if (run.canal === 'whatsapp') {
         if (node.data?.mensagem) {
-          const ok = await enviarMensagemFunil(userId, node.data.mensagem, run.contato)
+          const res = await enviarMensagemFunil(userId, node.data.mensagem, run.contato)
           try {
             await db.collection('users').doc(userId).collection('funnelSends').add({
               funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'whatsapp',
-              contato: run.contato || {}, status: ok ? 'enviado' : 'erro',
+              contato: run.contato || {}, status: res.ok ? 'enviado' : 'erro', erroMsg: res.erroMsg || null,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             })
           } catch (_) {}
@@ -4481,17 +4669,34 @@ async function processarFunnelRun(userId, runRef, run, cache) {
       } else if (run.canal === 'sms') {
         if (node.data?.mensagem) {
           const smsCanal = ['api', 'brl'].includes(funnel.smsCanal) ? funnel.smsCanal : 'eua' // EUA (nossa Telnyx) · API (Telnyx do cliente) · BRL (SMSDev +55)
-          const ok = await enviarMensagemFunilSMS(userId, node.data.mensagem, run.contato, smsCanal)
+          const res = await enviarMensagemFunilSMS(userId, node.data.mensagem, run.contato, smsCanal)
+          try {
+            const sendRef = await db.collection('users').doc(userId).collection('funnelSends').add({
+              funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'sms', smsCanal,
+              contato: run.contato || {}, status: res.ok ? 'enviado' : 'erro', erroMsg: res.erroMsg || null,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+            // DLR BR: liga a msg SMSDev ao funnelSend pra o status de entrega (não entregue) atualizar o relatório depois.
+            if (res.ok && res.smsdevId && smsCanal === 'brl') {
+              await db.doc(`users/${userId}/smsMensagens/${res.smsdevId}`).set({ funnelSendId: sendRef.id, canal: 'brl', to: res.to, status: 'enviado', createdAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+              await db.doc(`smsdevIndex/${res.smsdevId}`).set({ uid: userId }, { merge: true })
+            }
+          } catch (_) {}
+        }
+      } else if (run.canal === 'call') {
+        if (node.data?.roteiro) {
+          const callCanal = funnel.callCanal === 'api' ? 'api' : 'eua'
+          const res = await enviarLigacaoFunil(userId, run.contato, callCanal, node.data)
           try {
             await db.collection('users').doc(userId).collection('funnelSends').add({
-              funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'sms', smsCanal,
-              contato: run.contato || {}, status: ok ? 'enviado' : 'erro',
+              funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'call', callCanal,
+              contato: run.contato || {}, status: res.ok ? 'enviado' : 'erro', erroMsg: res.erroMsg || null,
               createdAt: admin.firestore.FieldValue.serverTimestamp(),
             })
           } catch (_) {}
         }
       } else if (node.data?.templateId) {
-        const ok = await enviarTemplateFunil(userId, node.data.templateId, run.contato, [
+        const res = await enviarTemplateFunil(userId, node.data.templateId, run.contato, [
           { name: 'funnelId', value: run.funnelId }, { name: 'tipo', value: 'funil' },
         ], node.data?.remetenteId || null)
         try {
@@ -4502,7 +4707,8 @@ async function processarFunnelRun(userId, runRef, run, cache) {
             templateId: node.data.templateId,
             templateNome: node.data.templateNome || '',
             contato: run.contato || {},
-            status: ok ? 'enviado' : 'erro',
+            status: res.ok ? 'enviado' : 'erro',
+            erroMsg: res.erroMsg || null,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           })
         } catch (_) {}
@@ -4524,7 +4730,7 @@ async function processarFunnelRun(userId, runRef, run, cache) {
     if (node.type === 'condicao') {
       const desde = run.enteredAt?.toMillis ? run.enteredAt.toMillis() : 0
       let ocorreu = false
-      if (run.canal === 'whatsapp' || run.canal === 'sms') {
+      if (run.canal === 'whatsapp' || run.canal === 'sms' || run.canal === 'call') {
         ocorreu = await comprouDesde(userId, run.contato, desde)
       } else {
         const tipo = node.data?.evento || 'opened'

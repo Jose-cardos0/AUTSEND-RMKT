@@ -88,10 +88,12 @@ function StatusBadge({ status, reenvios }) {
     pendente: 'bg-amber-100 text-amber-700',
     cancelado_recovery: 'bg-slate-100 text-slate-600',
   }
+  // Quantas vezes já enviei WhatsApp pra este lead = reenvios + 1 (o primeiro envio + reenvios).
+  const total = (reenvios || 0) + 1
+  const texto = status === 'enviado' ? `${total}x Enviado` : (STATUS_LABELS[status] || status || 'Pendente')
   return (
     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.pendente}`}>
-      {STATUS_LABELS[status] || status || 'Pendente'}
-      {status === 'enviado' && reenvios > 0 ? ` +${reenvios}` : ''}
+      {texto}
     </span>
   )
 }

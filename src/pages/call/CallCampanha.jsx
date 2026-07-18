@@ -11,7 +11,9 @@ import { KIWIFY_EVENTS, TEMPLATE_VARIABLES } from '../../lib/constants'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import { usePlano } from '../../lib/PlanoContext'
-import { Phone, Sparkles, Loader2, Gauge, Search, ChevronLeft, ChevronRight, ChevronDown, X, Check, Braces, Settings2, Package, Target, Smile, Volume2, Square, Bookmark, Trash2, Languages } from 'lucide-react'
+import AudioTemplatePicker from '../../components/AudioTemplatePicker'
+import AudioPlayer from '../../components/AudioPlayer'
+import { Phone, Sparkles, Loader2, Gauge, Search, ChevronLeft, ChevronRight, ChevronDown, X, Check, Braces, Settings2, Package, Target, Smile, Volume2, Square, Bookmark, Trash2, Languages, CheckCircle2, Circle, FolderOpen } from 'lucide-react'
 import imgCamila from '../../assets/atendentes/camila.png'
 import imgVitoria from '../../assets/atendentes/vitoria.png'
 import imgThiago from '../../assets/atendentes/thiago.png'
@@ -80,12 +82,13 @@ function AtendenteFoto({ voz, className = '' }) {
   )
 }
 
-function StatusBadge({ status, erro }) {
+function StatusBadge({ status, erro, count = 0 }) {
   const map = { atendida: 'bg-emerald-100 text-emerald-700', nao_atendida: 'bg-stone-100 text-stone-500', erro: 'bg-red-100 text-red-700' }
   const label = { atendida: 'Atendida', nao_atendida: 'Não atendida', erro: 'Erro' }
+  const prefixo = count > 0 ? `${count}x ` : '' // quantas vezes já liguei pra este lead
   return (
     <span title={status === 'erro' && erro ? erro : undefined} className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-stone-100 text-stone-500'}`}>
-      {label[status] || 'Não ligado'}
+      {prefixo}{label[status] || 'Não ligado'}
     </span>
   )
 }
@@ -158,6 +161,10 @@ export default function CallCampanha() {
     setGruposOpen(true)
   }
   const [salvosOpen, setSalvosOpen] = useState(false) // popup de configs salvas
+  const [audioTpl, setAudioTpl] = useState(null) // { id, nome, url } quando usa áudio próprio
+  const [audioPickerOpen, setAudioPickerOpen] = useState(false)
+  const [salvosQ, setSalvosQ] = useState('') // filtro do popup de configs salvas
+  const [salvosPage, setSalvosPage] = useState(1)
   const [nomeOpen, setNomeOpen] = useState(false) // popup pra nomear a config
   const [nomeCfg, setNomeCfg] = useState('')
 
@@ -219,6 +226,12 @@ export default function CallCampanha() {
   const statusByLead = useMemo(() => {
     const m = {}
     for (const l of callLogs) { if (l.leadId && !(l.leadId in m)) m[l.leadId] = { status: l.status, erro: l.erroMsg } }
+    return m
+  }, [callLogs])
+  // Quantas vezes já liguei pra cada lead (total de tentativas).
+  const countByLead = useMemo(() => {
+    const m = {}
+    for (const l of callLogs) { if (l.leadId) m[l.leadId] = (m[l.leadId] || 0) + 1 }
     return m
   }, [callLogs])
 
@@ -308,8 +321,10 @@ export default function CallCampanha() {
   }
 
   const abrirConfirmar = () => {
-    if (!texto.trim()) { toast.error('Gere ou escreva o roteiro da ligação.'); return }
-    if (!voz) { abrirConfig(3); toast.error('Escolha a voz do atendente.'); return }
+    if (!audioTpl) {
+      if (!texto.trim()) { toast.error('Gere ou escreva o roteiro da ligação.'); return }
+      if (!voz) { abrirConfig(3); toast.error('Escolha a voz do atendente.'); return }
+    }
     if (selValidos === 0) { toast.error('Selecione ao menos um contato válido.'); return }
     setConfirmar(true)
   }
@@ -322,7 +337,8 @@ export default function CallCampanha() {
       const fn = httpsCallable(functions, 'callDisparar')
       const r = await fn({
         canal, texto, voz, velocidade,
-        agenteNome: produtoEfetivo ? `IA · ${produtoEfetivo}` : 'Ligação IA',
+        audioUrl: audioTpl?.url || null, audioNome: audioTpl?.nome || '',
+        agenteNome: audioTpl ? `Áudio · ${audioTpl.nome}` : (produtoEfetivo ? `IA · ${produtoEfetivo}` : 'Ligação IA'),
         contatos: escolhidos.map((l) => ({ telefone: l.telefone, nome: l.nome, produto: l.produto, email: l.email, leadId: l.id })),
       })
       const { iniciadas = 0, erros = [] } = r.data || {}
@@ -348,63 +364,85 @@ export default function CallCampanha() {
         {/* Setup de ligação */}
         <div className="lg:col-span-4">
           <Panel title="Setup de ligação" icon={Sparkles}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Configuração da chamada</span>
-              {temAlgumaConfig && (
-                <button onClick={() => abrirConfig(1)} className={`inline-flex items-center gap-1 text-xs transition-colors ${configCompleta ? 'text-stone-400 hover:text-primary-600' : 'animate-hint'}`}><Settings2 className="w-3.5 h-3.5" /> Editar</button>
-              )}
+            {/* Fonte da voz: config IA (Salvos) ou áudio próprio (Templates) */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={() => { setSalvosQ(''); setSalvosPage(1); setSalvosOpen(true) }} className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-primary-600">
+                <Bookmark className="w-3.5 h-3.5" /> Salvos{configs.length ? ` (${configs.length})` : ''}
+              </button>
+              <button onClick={() => setAudioPickerOpen(true)} className={`inline-flex items-center gap-1.5 text-xs ${audioTpl ? 'text-primary-600 font-medium' : 'text-stone-500 hover:text-primary-600'}`}>
+                <FolderOpen className="w-3.5 h-3.5" /> Templates
+              </button>
             </div>
-            {temAlgumaConfig ? (
-              <div className="flex flex-wrap gap-2">
-                {objetivo && <Tag icon={Target} texto={objLabel(objetivo)} onEdit={() => abrirConfig(1)} onRemove={() => setObjetivo('')} />}
-                {tom && <Tag icon={Smile} texto={tomLabel(tom)} onEdit={() => abrirConfig(1)} onRemove={() => setTom('')} />}
-                {idioma && <Tag icon={Languages} texto={idiomaLabel(idioma)} onEdit={() => abrirConfig(1)} onRemove={() => setIdioma('pt')} />}
-                {grupoNome && <Tag icon={Package} texto={grupoNome} onEdit={() => abrirConfig(2)} onRemove={() => { setGrupoId(''); setGrupoNome('') }} />}
-                {produto.trim() && <Tag icon={Package} texto={produto} onEdit={() => abrirConfig(2)} onRemove={() => setProduto('')} />}
-                {categoria.trim() && <Tag icon={Sparkles} texto={categoria} onEdit={() => abrirConfig(2)} onRemove={() => setCategoria('')} />}
-                {voz && <Tag icon={Phone} texto={vozSel.nome} onEdit={() => abrirConfig(3)} onRemove={() => setVoz('')} />}
+
+            {audioTpl ? (
+              <div className="rounded-xl bg-surface-50 border border-surface-200 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4 text-primary-600 shrink-0" />
+                  <span className="text-sm font-medium text-stone-800 truncate flex-1">Áudio: {audioTpl.nome || 'template'}</span>
+                  <button onClick={() => setAudioTpl(null)} className="text-xs text-red-600 hover:underline shrink-0">Remover</button>
+                </div>
+                <AudioPlayer src={audioTpl.url} />
+                <p className="text-[11px] text-stone-400">Áudio próprio selecionado — é só escolher os contatos e ligar.</p>
               </div>
             ) : (
-              <button onClick={() => abrirConfig(1)} className="btn-secondary w-full min-h-[46px]"><Settings2 className="w-4 h-4" /> Configurar chamada</button>
-            )}
-            <button onClick={() => setSalvosOpen(true)} className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-primary-600 mt-1">
-              <Bookmark className="w-3.5 h-3.5" /> Salvos{configs.length ? ` (${configs.length})` : ''}
-            </button>
-
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex items-center gap-1">
-                <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wide">Roteiro falado</label>
-                <button type="button" onClick={ouvirRoteiro} disabled={carregandoVoz} title={falando ? 'Parar' : 'Ouvir a voz da ligação'} className="p-1 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors disabled:opacity-50">
-                  {carregandoVoz ? <Loader2 className="w-4 h-4 animate-spin" /> : falando ? <Square className="w-3.5 h-3.5 fill-current" /> : <Volume2 className="w-4 h-4" />}
-                </button>
-              </div>
-              <div className="relative">
-                <button type="button" onClick={() => setVarsOpen((o) => !o)} title="Inserir variável" className="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"><Braces className="w-4 h-4" /></button>
-                {varsOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setVarsOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 z-20 w-60 rounded-xl border border-surface-200 bg-white shadow-lg p-1.5">
-                      <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-stone-400">Variáveis</p>
-                      {TEMPLATE_VARIABLES.map((v) => (
-                        <button key={v.key} type="button" onClick={() => inserirVar(v.key)} className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left">
-                          <span className="text-sm text-stone-700">{v.label}</span>
-                          <code className="text-[11px] text-stone-400">{v.key}</code>
-                        </button>
-                      ))}
-                    </div>
-                  </>
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Configuração da chamada</span>
+                  {temAlgumaConfig && (
+                    <button onClick={() => abrirConfig(1)} className={`inline-flex items-center gap-1 text-xs transition-colors ${configCompleta ? 'text-stone-400 hover:text-primary-600' : 'animate-hint'}`}><Settings2 className="w-3.5 h-3.5" /> Editar</button>
+                  )}
+                </div>
+                {temAlgumaConfig ? (
+                  <div className="flex flex-wrap gap-2">
+                    {objetivo && <Tag icon={Target} texto={objLabel(objetivo)} onEdit={() => abrirConfig(1)} onRemove={() => setObjetivo('')} />}
+                    {tom && <Tag icon={Smile} texto={tomLabel(tom)} onEdit={() => abrirConfig(1)} onRemove={() => setTom('')} />}
+                    {idioma && <Tag icon={Languages} texto={idiomaLabel(idioma)} onEdit={() => abrirConfig(1)} onRemove={() => setIdioma('pt')} />}
+                    {grupoNome && <Tag icon={Package} texto={grupoNome} onEdit={() => abrirConfig(2)} onRemove={() => { setGrupoId(''); setGrupoNome('') }} />}
+                    {produto.trim() && <Tag icon={Package} texto={produto} onEdit={() => abrirConfig(2)} onRemove={() => setProduto('')} />}
+                    {categoria.trim() && <Tag icon={Sparkles} texto={categoria} onEdit={() => abrirConfig(2)} onRemove={() => setCategoria('')} />}
+                    {voz && <Tag icon={Phone} texto={vozSel.nome} onEdit={() => abrirConfig(3)} onRemove={() => setVoz('')} />}
+                  </div>
+                ) : (
+                  <button onClick={() => abrirConfig(1)} className="btn-secondary w-full min-h-[46px]"><Settings2 className="w-4 h-4" /> Configurar chamada</button>
                 )}
-              </div>
-            </div>
-            <textarea ref={textoRef} value={texto} onChange={(e) => setTexto(e.target.value)} rows={5} placeholder="Gere com a IA ou escreva você mesmo. Ex.: Olá {nome_cliente}! Vi que você se interessou por {nome_produto}..." className="w-full rounded-xl border border-surface-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-200" />
 
-            <button onClick={gerarRoteiro} disabled={gerando || !configCompleta} className="btn-secondary w-full min-h-[44px] disabled:opacity-50">
-              {gerando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Gerar roteiro com IA
-            </button>
-            <button onClick={abrirConfirmar} disabled={ligando || selValidos === 0 || semVoz || !texto.trim()} className="btn-primary w-full min-h-[46px]">
+                <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center gap-1">
+                    <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wide">Roteiro falado</label>
+                    <button type="button" onClick={ouvirRoteiro} disabled={carregandoVoz} title={falando ? 'Parar' : 'Ouvir a voz da ligação'} className="p-1 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors disabled:opacity-50">
+                      {carregandoVoz ? <Loader2 className="w-4 h-4 animate-spin" /> : falando ? <Square className="w-3.5 h-3.5 fill-current" /> : <Volume2 className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <button type="button" onClick={() => setVarsOpen((o) => !o)} title="Inserir variável" className="p-1.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"><Braces className="w-4 h-4" /></button>
+                    {varsOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setVarsOpen(false)} />
+                        <div className="absolute right-0 top-full mt-1 z-20 w-60 rounded-xl border border-surface-200 bg-white shadow-lg p-1.5">
+                          <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-stone-400">Variáveis</p>
+                          {TEMPLATE_VARIABLES.map((v) => (
+                            <button key={v.key} type="button" onClick={() => inserirVar(v.key)} className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left">
+                              <span className="text-sm text-stone-700">{v.label}</span>
+                              <code className="text-[11px] text-stone-400">{v.key}</code>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <textarea ref={textoRef} value={texto} onChange={(e) => setTexto(e.target.value)} rows={5} placeholder="Gere com a IA ou escreva você mesmo. Ex.: Olá {nome_cliente}! Vi que você se interessou por {nome_produto}..." className="w-full rounded-xl border border-surface-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-200" />
+
+                <button onClick={gerarRoteiro} disabled={gerando || !configCompleta} className="btn-secondary w-full min-h-[44px] disabled:opacity-50">
+                  {gerando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Gerar roteiro com IA
+                </button>
+              </>
+            )}
+            <button onClick={abrirConfirmar} disabled={ligando || selValidos === 0 || semVoz || (!audioTpl && !texto.trim())} className="btn-primary w-full min-h-[46px]">
               <Phone className="w-4 h-4" /> Ligar ({selValidos})
             </button>
-            {temAlgumaConfig && !configCompleta && <p className="text-[11px] text-stone-400 text-center mt-2">Configuração incompleta</p>}
+            {!audioTpl && temAlgumaConfig && !configCompleta && <p className="text-[11px] text-stone-400 text-center mt-2">Configuração incompleta</p>}
+            <AudioTemplatePicker uid={user?.uid} open={audioPickerOpen} onClose={() => setAudioPickerOpen(false)} onPick={(t) => setAudioTpl({ id: t.id, nome: t.nome, url: t.audioUrl })} currentId={audioTpl?.id} />
           </Panel>
         </div>
 
@@ -433,7 +471,11 @@ export default function CallCampanha() {
               <table className="w-full text-sm min-w-[680px]">
                 <thead>
                   <tr className="border-b border-surface-100 text-left text-stone-500">
-                    <th className="px-3 py-2.5 w-10"><input type="checkbox" checked={selValidos > 0 && contatos.filter((l) => e164Valido(l.telefone, permitirBR)).every((l) => sel.has(l.id))} onChange={toggleTodos} className="accent-primary-600" /></th>
+                    <th className="px-3 py-2.5 w-10">
+                      <button type="button" onClick={toggleTodos} aria-label="Selecionar todos" className="inline-flex items-center justify-center p-1 -m-1 rounded-lg text-stone-400 hover:text-primary-500">
+                        {selValidos > 0 && contatos.filter((l) => e164Valido(l.telefone, permitirBR)).every((l) => sel.has(l.id)) ? <CheckCircle2 className="w-5 h-5 text-primary-600" /> : <Circle className="w-5 h-5" />}
+                      </button>
+                    </th>
                     {[['nome', 'Nome'], ['telefone', 'Telefone'], ['produto', 'Produto'], ['evento', 'Evento'], ['status', 'Status']].map(([key, label]) => (
                       <th key={key} onClick={() => toggleSort(key)} className="px-3 py-2.5 font-medium text-xs cursor-pointer select-none hover:text-stone-700 whitespace-nowrap">
                         {label}{sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -449,12 +491,16 @@ export default function CallCampanha() {
                     const st = statusByLead[l.id]
                     return (
                       <tr key={l.id} className="border-b border-surface-50 hover:bg-surface-50/70">
-                        <td className="px-3 py-2.5"><input type="checkbox" disabled={!valido} checked={sel.has(l.id)} onChange={() => toggle(l.id)} className="accent-primary-600 disabled:opacity-30" /></td>
+                        <td className="px-3 py-2.5">
+                          <button type="button" disabled={!valido} onClick={() => toggle(l.id)} aria-label={sel.has(l.id) ? 'Desmarcar contato' : 'Selecionar contato'} className={`inline-flex items-center justify-center p-1 -m-1 rounded-lg ${!valido ? 'opacity-30 cursor-not-allowed text-stone-400' : sel.has(l.id) ? 'text-primary-600' : 'text-stone-400 hover:text-primary-500'}`}>
+                            {sel.has(l.id) ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+                          </button>
+                        </td>
                         <td className="px-3 py-2.5"><div className="font-medium text-stone-800 truncate max-w-[140px]">{l.nome || '—'}</div><div className="text-xs text-stone-400 truncate max-w-[140px]">{l.email || ''}</div></td>
                         <td className="px-3 py-2.5 font-mono text-xs text-stone-600">{l.telefone || '—'}{!valido && <span className="ml-1 text-red-400" title={permitirBR ? 'Inválido' : 'Número BR não é permitido no canal EUA'}>•</span>}</td>
                         <td className="px-3 py-2.5 text-stone-700 truncate max-w-[120px]">{l.produto || '—'}</td>
                         <td className="px-3 py-2.5"><span className="text-xs bg-surface-100 text-stone-600 px-2 py-0.5 rounded-full whitespace-nowrap">{eventLabel(l.evento)}</span></td>
-                        <td className="px-3 py-2.5">{st ? <StatusBadge status={st.status} erro={st.erro} /> : <span className="text-xs text-stone-400">—</span>}</td>
+                        <td className="px-3 py-2.5">{st ? <StatusBadge status={st.status} erro={st.erro} count={countByLead[l.id] || 0} /> : <span className="text-xs text-stone-400">—</span>}</td>
                       </tr>
                     )
                   })}
@@ -629,16 +675,41 @@ export default function CallCampanha() {
               <div className="p-4 space-y-2">
                 {configs.length === 0 ? (
                   <p className="py-8 text-center text-sm text-stone-400">Nenhuma configuração salva ainda.</p>
-                ) : configs.map((c) => (
-                  <div key={c.id} className="flex items-center gap-2 p-3 rounded-xl border border-surface-200 hover:bg-surface-50">
-                    <button onClick={() => usarConfig(c)} className="flex-1 min-w-0 text-left">
-                      <p className="font-medium text-stone-800 truncate">{c.nome}</p>
-                      <p className="text-xs text-stone-400 truncate">{objLabel(c.objetivo)} · {tomLabel(c.tom)} · {(c.grupoNome || c.produto || '')} · {VOZES.find((v) => v.value === c.voz)?.nome || ''}</p>
-                    </button>
-                    <button onClick={() => usarConfig(c)} className="btn-secondary text-xs px-3 min-h-[38px] shrink-0">Usar</button>
-                    <button onClick={() => removerConfig(c)} title="Excluir" className="p-2 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 shrink-0"><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                ))}
+                ) : (() => {
+                  const q = salvosQ.trim().toLowerCase()
+                  const filt = q ? configs.filter((c) => (c.nome || '').toLowerCase().includes(q) || (c.grupoNome || c.produto || '').toLowerCase().includes(q)) : configs
+                  const totPag = Math.max(1, Math.ceil(filt.length / 5))
+                  const pg = Math.min(salvosPage, totPag)
+                  const itens = filt.slice((pg - 1) * 5, pg * 5)
+                  return (
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                        <input value={salvosQ} onChange={(e) => { setSalvosQ(e.target.value); setSalvosPage(1) }} placeholder="Pesquisar configuração..." className="w-full pl-9 pr-3 py-2.5 min-h-[42px] rounded-xl border border-surface-200 text-sm outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-400" />
+                      </div>
+                      {itens.length === 0 && <p className="py-6 text-center text-sm text-stone-400">Nada encontrado</p>}
+                      {itens.map((c) => (
+                        <div key={c.id} className="flex items-center gap-2 p-3 rounded-xl border border-surface-200 hover:bg-surface-50">
+                          <button onClick={() => usarConfig(c)} className="flex-1 min-w-0 text-left">
+                            <p className="font-medium text-stone-800 truncate">{c.nome}</p>
+                            <p className="text-xs text-stone-400 truncate">{objLabel(c.objetivo)} · {tomLabel(c.tom)} · {(c.grupoNome || c.produto || '')} · {VOZES.find((v) => v.value === c.voz)?.nome || ''}</p>
+                          </button>
+                          <button onClick={() => usarConfig(c)} className="btn-secondary text-xs px-3 min-h-[38px] shrink-0">Usar</button>
+                          <button onClick={() => removerConfig(c)} title="Excluir" className="p-2 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 shrink-0"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      ))}
+                      {filt.length > 5 && (
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <span className="text-xs text-stone-500">Página {pg} de {totPag} · {filt.length}</span>
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => setSalvosPage((p) => Math.max(1, p - 1))} disabled={pg <= 1} className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-40"><ChevronLeft className="w-4 h-4" /></button>
+                            <button onClick={() => setSalvosPage((p) => Math.min(totPag, p + 1))} disabled={pg >= totPag} className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-40"><ChevronRight className="w-4 h-4" /></button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </motion.div>
           </motion.div>

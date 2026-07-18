@@ -4,15 +4,18 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { auth, functions } from '../lib/firebase'
-import { getMessageTemplates, saveMessageTemplate, deleteMessageTemplate, getCheckoutStores } from '../lib/firestore'
+import { getMessageTemplates, saveMessageTemplate, deleteMessageTemplate, getCheckoutStores, getAudioTemplates, saveAudioTemplate, deleteAudioTemplate, uploadCallAudio } from '../lib/firestore'
 import { TEMPLATE_VARIABLES } from '../lib/constants'
 import { lojaByKey } from '../lib/lojas'
+import { criarGravador } from '../lib/audioRec'
+import AudioPlayer from '../components/AudioPlayer'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import EmojiPicker from '../components/EmojiPicker'
 import { useConfirm } from '../components/ConfirmDialog'
-import { MessageSquare, Plus, Pencil, Trash2, Loader2, X, Copy, Check, Bold, Italic, Strikethrough, Code, Smile, Braces, ShoppingBag, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MessageSquare, Plus, Pencil, Trash2, Loader2, X, Copy, Check, Bold, Italic, Strikethrough, Code, Smile, Braces, ShoppingBag, Search, ChevronLeft, ChevronRight, Type, AudioLines, Play, Square, Upload, Pause } from 'lucide-react'
+import micImg from '../assets/mic/mic.png'
 
 const EMOJIS = ['😀', '😊', '😍', '🥰', '👍', '🙏', '👋', '❤️', '🔥', '✅', '⚡', '🎉', '⭐', '💰', '🎁', '📢', '⏳', '🚀', '💬', '👇', '🛒', '😱']
 
@@ -71,6 +74,113 @@ export default function MensagemTemplates() {
   const [linkPreview, setLinkPreview] = useState(null)
   const previewCache = useRef(new Map())
 
+  // ── Templates de áudio (Ligação IA) ──
+  const [aba, setAba] = useState('texto') // 'texto' | 'audio'
+  const [audioTemplates, setAudioTemplates] = useState([])
+  const [showAudioEditor, setShowAudioEditor] = useState(false)
+  const [audioNome, setAudioNome] = useState('')
+  const [audioBlob, setAudioBlob] = useState(null) // Blob a subir (wav gravado ou mp3 escolhido)
+  const [audioExt, setAudioExt] = useState('wav')
+  const [audioTipo, setAudioTipo] = useState('gravado') // 'gravado' | 'upload'
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState('')
+  const [gravando, setGravando] = useState(false)
+  const [salvandoAudio, setSalvandoAudio] = useState(false)
+  const [playingId, setPlayingId] = useState(null)
+  const [loadingAudioId, setLoadingAudioId] = useState(null)
+  const gravadorRef = useRef(null)
+  const audioElRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  const iniciarGravacao = async () => {
+    try {
+      const rec = await criarGravador()
+      gravadorRef.current = rec
+      rec.start()
+      setGravando(true)
+    } catch (err) {
+      toast.error('Não consegui acessar o microfone. Permita o acesso no navegador.')
+    }
+  }
+  const pararGravacao = async () => {
+    const rec = gravadorRef.current
+    if (!rec) return
+    try {
+      const { wavBlob, url } = await rec.stop()
+      rec.dispose()
+      gravadorRef.current = null
+      setGravando(false)
+      setAudioBlob(wavBlob)
+      setAudioExt('wav')
+      setAudioTipo('gravado')
+      if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl)
+      setAudioPreviewUrl(url)
+    } catch (err) {
+      setGravando(false)
+      toast.error('Erro ao finalizar a gravação.')
+    }
+  }
+  const escolherArquivo = (e) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (!/audio\/(mpeg|mp3|wav|x-wav)/.test(f.type) && !/\.(mp3|wav)$/i.test(f.name)) {
+      toast.error('Escolha um arquivo MP3 ou WAV.'); return
+    }
+    if (f.size > 10 * 1024 * 1024) { toast.error('Áudio muito grande (máx. 10 MB).'); return }
+    if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl)
+    setAudioBlob(f)
+    setAudioExt(/\.wav$/i.test(f.name) ? 'wav' : 'mp3')
+    setAudioTipo('upload')
+    setAudioPreviewUrl(URL.createObjectURL(f))
+    if (!audioNome.trim()) setAudioNome(f.name.replace(/\.[^.]+$/, ''))
+  }
+  const abrirNovoAudio = () => {
+    setAudioNome(''); setAudioBlob(null); setAudioExt('wav'); setAudioTipo('gravado')
+    if (audioPreviewUrl) { URL.revokeObjectURL(audioPreviewUrl); setAudioPreviewUrl('') }
+    setGravando(false)
+    setShowAudioEditor(true)
+  }
+  const fecharAudioEditor = () => {
+    if (gravadorRef.current) { try { gravadorRef.current.dispose() } catch (_) {} gravadorRef.current = null }
+    setGravando(false)
+    setShowAudioEditor(false)
+  }
+  const salvarAudio = async () => {
+    if (!audioBlob) { toast.error('Grave ou envie um áudio primeiro.'); return }
+    setSalvandoAudio(true)
+    try {
+      const ct = audioExt === 'mp3' ? 'audio/mpeg' : 'audio/wav'
+      const { url, path } = await uploadCallAudio(user.uid, audioBlob, audioExt, ct)
+      await saveAudioTemplate(user.uid, null, { nome: audioNome.trim() || 'Áudio sem título', audioUrl: url, storagePath: path, tipo: audioTipo, ext: audioExt })
+      setAudioTemplates(await getAudioTemplates(user.uid))
+      fecharAudioEditor()
+      toast.success('Template de áudio salvo.')
+    } catch (err) {
+      toast.error(err.message || 'Erro ao salvar áudio')
+    } finally {
+      setSalvandoAudio(false)
+    }
+  }
+  const excluirAudio = async (t) => {
+    if (!(await confirm({ title: `Excluir "${t.nome || 'áudio'}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir' }))) return
+    try {
+      await deleteAudioTemplate(user.uid, t)
+      setAudioTemplates(await getAudioTemplates(user.uid))
+      toast.success('Áudio excluído.')
+    } catch (err) { toast.error(err.message || 'Erro ao excluir') }
+  }
+  const tocarAudio = (t) => {
+    if (playingId === t.id) { audioElRef.current?.pause(); return }
+    if (audioElRef.current) audioElRef.current.pause()
+    const a = new Audio(t.audioUrl)
+    audioElRef.current = a
+    a.onended = () => { setPlayingId(null); setLoadingAudioId(null) }
+    a.onpause = () => setPlayingId((cur) => (cur === t.id ? null : cur))
+    a.onplaying = () => { setLoadingAudioId(null); setPlayingId(t.id) }
+    setLoadingAudioId(t.id)
+    a.play().catch(() => { setLoadingAudioId(null); toast.error('Não consegui tocar o áudio.') })
+  }
+
   // Envolve a seleção (negrito/itálico/etc.)
   const insertAtCursor = (before, after = '') => {
     const ta = textareaRef.current
@@ -95,8 +205,9 @@ export default function MensagemTemplates() {
   const carregar = async () => {
     if (!user?.uid) return
     setLoading(true)
-    const [tpls, stores] = await Promise.all([getMessageTemplates(user.uid), getCheckoutStores(user.uid)])
+    const [tpls, stores, audios] = await Promise.all([getMessageTemplates(user.uid), getCheckoutStores(user.uid), getAudioTemplates(user.uid)])
     setTemplates(tpls)
+    setAudioTemplates(audios)
     const flat = (stores || [])
       .filter((s) => s.ativo !== false)
       .flatMap((s) => (s.produtos || []).filter((p) => p.link).map((p) => ({ ...p, loja: s.loja })))
@@ -165,11 +276,53 @@ export default function MensagemTemplates() {
   return (
     <PageShell
       badge="Geral · Templates"
-      title="Templates de mensagens"
+      title="Templates"
       right={
-        <button onClick={abrirNovo} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Criar template</button>
+        <button onClick={aba === 'audio' ? abrirNovoAudio : abrirNovo} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Criar template</button>
       }
     >
+      {/* Abas Texto / Áudio */}
+      <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-surface-100 mb-4">
+        <button onClick={() => setAba('texto')} className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition ${aba === 'texto' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+          <Type className="w-4 h-4" /> Texto {templates.length > 0 && <span className="text-[11px] text-stone-400">({templates.length})</span>}
+        </button>
+        <button onClick={() => setAba('audio')} className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition ${aba === 'audio' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+          <AudioLines className="w-4 h-4" /> Áudio {audioTemplates.length > 0 && <span className="text-[11px] text-stone-400">({audioTemplates.length})</span>}
+        </button>
+      </div>
+
+      {aba === 'audio' ? (
+        audioTemplates.length === 0 ? (
+          <Panel>
+            <div className="flex flex-col items-center justify-center text-center gap-3 py-12">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-100 to-violet-100 text-primary-600"><AudioLines className="w-7 h-7" /></span>
+              <h2 className="text-lg font-semibold text-stone-800">Nenhum áudio ainda</h2>
+              <p className="text-sm text-stone-500 max-w-md leading-relaxed">
+                Grave ou envie um MP3 pra usar como voz da <strong>Ligação IA</strong>.
+              </p>
+              <button onClick={abrirNovoAudio} className="btn-primary min-h-[44px]"><Plus className="w-4 h-4" /> Criar template</button>
+            </div>
+          </Panel>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {audioTemplates.map((t) => (
+              <div key={t.id} className="app-panel rounded-2xl p-4 flex items-center gap-3">
+                <button onClick={() => tocarAudio(t)} className="shrink-0 h-11 w-11 flex items-center justify-center text-primary-600 hover:text-primary-800 transition" title={playingId === t.id ? 'Pausar' : 'Ouvir'}>
+                  {loadingAudioId === t.id ? <Loader2 className="w-5 h-5 animate-spin" /> : playingId === t.id ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-stone-800 text-sm truncate">{t.nome || 'Áudio sem título'}</h3>
+                  <p className="text-[11px] text-stone-400 flex items-center gap-1">
+                    <AudioLines className="w-3 h-3" /> {t.tipo === 'upload' ? 'Enviado' : 'Gravado'} · {(t.ext || 'wav').toUpperCase()}
+                  </p>
+                </div>
+                <button onClick={() => excluirAudio(t)} className="p-2 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0" title="Excluir"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+      <>
       {templates.length === 0 ? (
         <Panel>
           <div className="flex flex-col items-center justify-center text-center gap-3 py-12">
@@ -209,6 +362,8 @@ export default function MensagemTemplates() {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
 
       {/* Popup: criar / editar template */}
@@ -369,6 +524,61 @@ export default function MensagemTemplates() {
                 </>
               )
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* Popup: gravar / subir áudio */}
+      {showAudioEditor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={fecharAudioEditor}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><AudioLines className="w-5 h-5" /></span>
+              <h3 className="text-base font-semibold text-stone-800">Novo template de áudio</h3>
+              <button onClick={fecharAudioEditor} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-stone-600 mb-1.5">Nome do áudio</label>
+              <input value={audioNome} onChange={(e) => setAudioNome(e.target.value)} placeholder="Ex.: Oferta carrinho abandonado" className="w-full px-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 text-sm" />
+            </div>
+
+            {/* Gravar */}
+            <div className="flex flex-col items-center gap-2 py-2">
+              <button
+                type="button"
+                onClick={gravando ? pararGravacao : iniciarGravacao}
+                className={`flex items-center justify-center transition ${gravando ? 'animate-pulse' : 'hover:scale-105'}`}
+                title={gravando ? 'Parar gravação' : 'Gravar'}
+              >
+                {gravando ? <span className="w-12 h-12 rounded-2xl bg-red-500 shadow-lg" /> : <img src={micImg} alt="Gravar" className="w-20 h-20 object-contain" />}
+              </button>
+              <p className="text-xs text-stone-500">{gravando ? 'Gravando… toque pra parar' : 'Toque no microfone pra gravar'}</p>
+            </div>
+
+            {/* Subir arquivo */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-surface-200" />
+              <span className="text-[11px] text-stone-400">ou</span>
+              <div className="flex-1 h-px bg-surface-200" />
+            </div>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-xl border border-surface-200 text-sm font-medium text-stone-600 hover:bg-surface-50 transition">
+              <Upload className="w-4 h-4" /> Subir áudio (MP3)
+            </button>
+            <input ref={fileInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,.mp3,.wav" onChange={escolherArquivo} className="hidden" />
+
+            {/* Prévia */}
+            {audioPreviewUrl && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-stone-500 flex items-center gap-1"><AudioLines className="w-3.5 h-3.5" /> Prévia ({audioTipo === 'upload' ? 'enviado' : 'gravado'})</p>
+                <AudioPlayer src={audioPreviewUrl} />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={fecharAudioEditor} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={salvarAudio} disabled={salvandoAudio || !audioBlob} className="btn-primary min-h-[44px]">{salvandoAudio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar</button>
+            </div>
           </div>
         </div>
       )}
