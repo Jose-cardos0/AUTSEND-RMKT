@@ -1020,6 +1020,23 @@ async function enviarSMSDev(key, to, text) {
   return { ok: true, id: data?.id || null }
 }
 
+/**
+ * Envia um LOTE de SMS Brasil (SMSDev), sequencial. Debita 1 crédito BR por enviado (exceto admin).
+ * Retorna { enviados, erros, erroMotivo }.
+ */
+async function enviarLoteSMSDev(uid, smsdevKey, mensagem, recipients, ehAdm) {
+  let enviados = 0, erros = 0, erroMotivo = null
+  for (const v of (recipients || [])) {
+    try {
+      const texto = replaceVariables(mensagem, { nome: v.nome || '', telefone: v.telefone, email: '' }, { nome: v.produto || '' })
+      await enviarSMSDev(smsdevKey, v.telefone, texto)
+      enviados++
+    } catch (e) { erros++; erroMotivo = (e?.message || String(e)).slice(0, 300); console.error('enviarSMSDev', erroMotivo) }
+  }
+  if (!ehAdm && enviados > 0) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-enviados) }, { merge: true })
+  return { enviados, erros, erroMotivo }
+}
+
 /** Envia um lote de SMS (sequencial, respeitando ~1 msg/s de TPS das faixas de entrada). */
 async function enviarLoteSMS(uid, ctx, recipients) {
   let enviados = 0
@@ -1076,24 +1093,37 @@ exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memor
       const creditos = Number(tenant.smsBrCreditos) || 0
       if (creditos < validos.length) throw new HttpsError('resource-exhausted', `Você tem ${creditos} crédito(s) de SMS Brasil, mas a lista tem ${validos.length}. Recarregue no Perfil.`)
     }
+    // Lotes + fila (igual EUA): 1º lote na hora, o resto processado pelo processarLotesSMS (evita timeout em listas grandes).
+    const loteSizeBr = Math.max(1, Math.min(200, Number(request.data?.loteSize) || 40))
+    const intervaloMinBr = Math.max(1, Math.min(240, Number(request.data?.intervaloMin) || 1))
+    const lotesBr = []
+    for (let i = 0; i < validos.length; i += loteSizeBr) lotesBr.push(validos.slice(i, i + loteSizeBr))
     const dispRef = await db.collection('users').doc(uid).collection('smsDisparos').add({
       nomeDisparo: String(request.data?.nomeDisparo || 'Disparo SMS Brasil'),
       mensagem: msgBr, total: validos.length, enviados: 0, erros: 0,
+      loteSize: loteSizeBr, intervaloMin: intervaloMinBr, totalLotes: lotesBr.length,
       canal: 'brl', contaPropria: false, status: 'enviando',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
-    let enviados = 0, erros = 0, erroMotivo = null
-    for (const v of validos) {
-      try {
-        const texto = replaceVariables(msgBr, { nome: v.nome, telefone: v.telefone, email: '' }, { nome: v.produto })
-        await enviarSMSDev(smsdevKey, v.telefone, texto)
-        enviados++
-      } catch (e) { erros++; erroMotivo = (e?.message || String(e)).slice(0, 300); console.error('enviarSMSDev', erroMotivo) }
-    }
-    if (!ehAdminBr && enviados > 0) await db.doc(`tenants/${uid}`).set({ smsBrCreditos: admin.firestore.FieldValue.increment(-enviados) }, { merge: true })
-    await dispRef.update({ enviados, erros, status: erros === 0 ? 'enviado' : (enviados === 0 ? 'erro' : 'parcial'), ...(erroMotivo ? { erroMotivo } : {}) })
     await scanConteudoRisco(uid, tenant, 'sms', msgBr, { ref: dispRef.id })
-    return { ok: true, total: validos.length, enviados, canal: 'brl' }
+    // 1º lote na hora
+    const r0 = await enviarLoteSMSDev(uid, smsdevKey, msgBr, lotesBr[0] || [], ehAdminBr)
+    // demais lotes na fila
+    const intervaloMsBr = intervaloMinBr * 60000
+    for (let i = 1; i < lotesBr.length; i++) {
+      await dispRef.collection('smsLotes').add({
+        disparoId: dispRef.id, recipients: lotesBr[i],
+        sendAfter: admin.firestore.Timestamp.fromMillis(Date.now() + i * intervaloMsBr),
+        status: 'pendente', createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+    }
+    const soUmLoteBr = lotesBr.length <= 1
+    await dispRef.update({
+      enviados: r0.enviados, erros: r0.erros,
+      status: soUmLoteBr ? (r0.erros === 0 ? 'enviado' : (r0.enviados === 0 ? 'erro' : 'parcial')) : 'enviando',
+      ...(r0.erroMotivo ? { erroMotivo: r0.erroMotivo } : {}),
+    })
+    return { ok: true, total: validos.length, enviados: r0.enviados, lotes: lotesBr.length, canal: 'brl' }
   }
 
   const data = request.data || {}
@@ -1268,16 +1298,23 @@ exports.processarLotesSMS = onSchedule(
       try {
         const dSnap = await db.doc(`users/${uid}/smsDisparos/${dispId}`).get()
         const dd = dSnap.exists ? dSnap.data() : {}
-        const canal = dd.canal === 'api' ? 'api' : 'eua'
-        const chave = `${uid}:${canal}`
-        if (!cfgCache[chave]) {
-          const rEnvio = await resolverTelnyxEnvio(uid, await ehUidAdmin(uid), canal)
-          if (rEnvio.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
-          cfgCache[chave] = { cfg: rEnvio.cfg, permitirBR: !!rEnvio.propria }
+        const canal = ['api', 'brl'].includes(dd.canal) ? dd.canal : 'eua'
+        let r
+        if (canal === 'brl') {
+          const smsdevKey = process.env.SMSDEV_API_KEY
+          if (!smsdevKey) { await loteDoc.ref.update({ status: 'erro' }); continue }
+          r = await enviarLoteSMSDev(uid, smsdevKey, dd.mensagem || '', lote.recipients || [], await ehUidAdmin(uid))
+        } else {
+          const chave = `${uid}:${canal}`
+          if (!cfgCache[chave]) {
+            const rEnvio = await resolverTelnyxEnvio(uid, await ehUidAdmin(uid), canal)
+            if (rEnvio.erro) { await loteDoc.ref.update({ status: 'erro' }); continue }
+            cfgCache[chave] = { cfg: rEnvio.cfg, permitirBR: !!rEnvio.propria }
+          }
+          const cfg = cfgCache[chave].cfg
+          const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId, permitirBR: cfgCache[chave].permitirBR }
+          r = await enviarLoteSMS(uid, ctx, lote.recipients || [])
         }
-        const cfg = cfgCache[chave].cfg
-        const ctx = { cfg, mensagem: dd.mensagem || '', disparoId: dispId, permitirBR: cfgCache[chave].permitirBR }
-        const r = await enviarLoteSMS(uid, ctx, lote.recipients || [])
         await loteDoc.ref.update({ status: r.erros === 0 ? 'enviado' : 'erro' })
         await db.doc(`users/${uid}/smsDisparos/${dispId}`).set({
           enviados: admin.firestore.FieldValue.increment(r.enviados),
