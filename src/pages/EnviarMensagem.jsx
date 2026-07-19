@@ -223,7 +223,7 @@ export default function EnviarMensagem() {
     setShowNomeDisparoModal(false)
     const contatos = parseLista(lista)
     const evolutionAtual = instances.find((i) => i.id === instanciaId) || (await getEvolutionConfig(user.uid))
-    if (!evolutionAtual?.nomeInstancia || !evolutionAtual?.hash) {
+    if (!evolutionAtual?.nomeInstancia || !evolutionAtual?.conectado) {
       setMsg({ type: 'error', text: 'Nenhuma instância conectada. Conecte e selecione uma instância em Integrações.' })
       toast.error('Selecione uma instância em Integrações.')
       return
@@ -407,7 +407,7 @@ export default function EnviarMensagem() {
         </div>
       )}
 
-      {(!instanciaSelecionada?.nomeInstancia || !instanciaSelecionada?.hash) && (
+      {(!instanciaSelecionada?.nomeInstancia || !instanciaSelecionada?.conectado) && (
         <div className="p-3 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50/50 border border-amber-200/90 text-amber-900 text-xs sm:text-sm shadow-sm">
           Conecte uma instância em <strong>Integrações</strong> para enviar.
         </div>

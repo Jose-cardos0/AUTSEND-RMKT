@@ -1829,10 +1829,14 @@ function parseMsgRecebida(body) {
   const b = body || {}
   const d = b.data || b.message || b
   const instanceName = String(b.instance || b.instanceName || b.nomeInstancia || d.instance || '').trim()
+  const waha = b._waha || {}
   const key = d.key || b.key || {}
   const jid = String(key.remoteJid || b.remoteJid || b.from || d.from || b.telefone || '').trim()
-  const telefone = jid.replace(/@.*/, '').replace(/\D/g, '')
+  // WAHA no motor GOWS entrega o número como @lid (ID interno), não o telefone real. O n8n já resolve
+  // o telefone verdadeiro em _waha.telefone — preferir ele; o jid é só fallback.
+  const telefone = String(waha.telefone || jid.replace(/@.*/, '')).replace(/\D/g, '')
   const fromMe = !!(key.fromMe ?? b.fromMe ?? d.fromMe)
+  const id = String(key.id ?? d.id ?? b.id ?? '').trim()
   const msg = d.message || b.message || {}
   const texto = String(
     (typeof msg === 'string' ? msg : '') ||
@@ -1841,7 +1845,7 @@ function parseMsgRecebida(body) {
   ).trim()
   const nome = String(d.pushName || b.pushName || b.nome || '').trim()
   const ehGrupo = jid.includes('@g.us')
-  return { instanceName, telefone, fromMe, texto, nome, ehGrupo }
+  return { instanceName, telefone, fromMe, texto, nome, ehGrupo, id }
 }
 
 /**
@@ -1855,7 +1859,8 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     const m = parseMsgRecebida(body)
     if (!m.instanceName || !m.telefone || m.ehGrupo) { res.status(200).json({ ok: true, ignored: 'sem instancia/telefone ou grupo' }); return }
 
-    const resolved = await resolverAtendentePorInstancia(m.instanceName, (req.query && req.query.uid) || null)
+    const uidHint = (req.query && req.query.uid) || (body._waha && body._waha.uidCliente) || null
+    const resolved = await resolverAtendentePorInstancia(m.instanceName, uidHint)
     if (!resolved) { res.status(200).json({ ok: true, ignored: 'sem atendente ativo' }); return }
     const { uid, instDoc, atendente } = resolved
 
@@ -1869,16 +1874,30 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     const historico = Array.isArray(conv.messages) ? conv.messages : []
     const agora = Date.now()
 
-    // Handover: o DONO respondeu manual pelo celular → pausa o bot por HANDOVER_HORAS.
-    // O WF2 (WAHA) já resolve isso e manda em _waha: source 'app' = dono no celular; 'api' = o próprio bot.
-    // O eco do bot (source 'api') o n8n descarta antes de chegar aqui — então qualquer fromMe que chega é o dono.
-    const waha = body._waha || {}
-    const ehHandover = waha.handover === true || (m.fromMe && (waha.source ? waha.source === 'app' : true))
-    if (ehHandover) {
+    // Dedup: o WAHA pode reentregar a MESMA mensagem (retry do webhook, ou dispara message E message.any).
+    // Sem isso a IA gera 2 respostas diferentes pro mesmo texto. Claim atômico do messageId (à prova de corrida).
+    if (m.id) {
+      let duplicado = false
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(convRef)
+        if (s.exists && s.data().ultimoMsgId === m.id) { duplicado = true; return }
+        tx.set(convRef, { ultimoMsgId: m.id }, { merge: true })
+      })
+      if (duplicado) { res.status(200).json({ responder: false, ignored: 'mensagem duplicada' }); return }
+    }
+
+    // fromMe = mensagem que SAIU deste número. Pode ser (a) eco do próprio bot, (b) o dono respondendo manual.
+    // ⚠️ O WAHA no motor GOWS NÃO manda 'source' confiável (vem sempre 'app'), então NÃO dá pra usar _waha.source
+    // pra distinguir bot × dono — se usasse, o bot se pausava sozinho após cada resposta.
+    // Detecção por CONTEÚDO: se o texto do fromMe está contido na última resposta da IA → é eco do bot (ignora).
+    // Sem texto (mídia/echo) também ignora. Texto NOVO saindo = o dono respondeu manual → handover (pausa 6h).
+    if (m.fromMe) {
+      const ultima = String(conv.iaUltimaMsg || '')
+      const ehEco = !m.texto || (!!ultima && ultima.includes(m.texto))
+      if (ehEco) { res.status(200).json({ responder: false, ignored: 'eco do bot' }); return }
       await convRef.set({ pausadoAte: agora + HANDOVER_HORAS * 3600000, messages: [...historico, { role: 'dono', text: m.texto, ts: agora }].slice(-30), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
       res.status(200).json({ responder: false, handover: true }); return
     }
-    if (m.fromMe) { res.status(200).json({ responder: false, ignored: 'eco do bot' }); return }
 
     // Bot pausado (dono assumiu) → só guarda a mensagem, não responde.
     const novoHist = [...historico, { role: 'user', text: m.texto, ts: agora }].slice(-30)
