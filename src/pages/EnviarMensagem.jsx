@@ -549,8 +549,7 @@ export default function EnviarMensagem() {
                       <div className="text-xs text-stone-500 p-3 bg-surface-50 rounded-xl space-y-1">
                         <p className="text-stone-700 font-medium">Mensagem enviada:</p>
                         <p className="whitespace-pre-wrap break-words">{item.mensagem || '—'}</p>
-                        {emEnvio && <p className="text-primary-600">Enviando 1 a cada {MINUTOS_POR_MENSAGEM} min · ~{remaining} min restantes</p>}
-                      </div>
+                                      </div>
                     </div>
                   )}
                 </div>
