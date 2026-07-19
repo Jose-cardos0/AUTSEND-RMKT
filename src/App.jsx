@@ -10,6 +10,7 @@ import Landing from './pages/Landing'
 import Integracoes from './pages/Integracoes'
 import Remarketing from './pages/Remarketing'
 import RemarketingGrupos from './pages/RemarketingGrupos'
+import Atendentes from './pages/Atendentes'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
 import Checkouts from './pages/Checkouts'
@@ -129,6 +130,7 @@ export default function App() {
           <Route path="automacoes" element={<Automacoes />} />
           <Route path="remarketing" element={<Remarketing />} />
           <Route path="remarketing-grupos" element={<RemarketingGrupos />} />
+          <Route path="atendentes" element={<Atendentes />} />
           <Route path="enviar-mensagem" element={<EnviarMensagem />} />
           <Route
             path="metricas"

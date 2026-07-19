@@ -25,7 +25,7 @@ export function PlanoProvider({ children }) {
         const ef = planoEfetivo({ plano: r.plano, overrides: r.overrides })
         // Instâncias avulsas compradas somam ao limite do plano/override.
         const extras = Number(r.instanciasExtras) || 0
-        if (extras) ef.limites = { ...ef.limites, instancias: (Number(ef.limites.instancias) || 0) + extras }
+        if (extras) ef.limites = { ...ef.limites, instancias: (Number(ef.limites.instancias) || 0) + extras, atendentes: (Number(ef.limites.atendentes) || 0) + extras }
         const st = { loading: false, isAdmin: !!r.isAdmin, plano: r.plano, status: r.status || 'approved', features: r.isAdmin ? null : ef.features, limites: ef.limites, termosAceito: !!r.isAdmin || r.termosAceito !== false, nome: r.nome || '', documento: r.documento || '', emailCliente: r.email || (user.email || ''), fotoURL: r.fotoURL || null, temSmsApi: !!r.temSmsApi, temCallVoz: !!r.temCallVoz, callMin: r.callMin ?? 0 }
         setState(st)
         try { localStorage.setItem(cacheKey, JSON.stringify(st)) } catch { /* ignore */ }

@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall, Rocket } from 'lucide-react'
+import GlobeCheckIcon from './GlobeCheckIcon'
 import { auth } from '../lib/firebase'
 import { isAdmin, adminGetSecurityReport } from '../lib/admin'
 import { usePlano } from '../lib/PlanoContext'
@@ -43,6 +44,14 @@ const navGroups = [
       { to: '/enviar-mensagem', label: 'Disparos', icon: Send },
       { to: '/funil', label: 'Funil', icon: GitBranch },
       { to: '/metricas', label: 'Métricas', icon: BarChart3 },
+    ],
+  },
+  {
+    key: 'atendentes',
+    label: 'Atendentes',
+    icon: GlobeCheckIcon,
+    items: [
+      { to: '/atendentes', label: 'Atendentes', icon: Rocket },
     ],
   },
   {

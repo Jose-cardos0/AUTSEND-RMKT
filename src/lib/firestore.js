@@ -562,6 +562,33 @@ export async function deleteProductGroup(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'productGroups', id))
 }
 
+// ── Central de Atendentes (bots de IA no WhatsApp) ──
+
+/** Lista os atendentes do cliente. */
+export async function getAtendentes(uid) {
+  const snap = await getDocs(collection(db, 'users', uid, 'atendentes'))
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
+}
+
+/** Cria um atendente (via Cloud Function — trava de plano + 1 por produto/instância). */
+export async function criarAtendente({ nome, grupoId, instanceId }) {
+  const r = await httpsCallable(functions, 'criarAtendente')({ nome, grupoId, instanceId })
+  return r.data // { id }
+}
+
+/** Atualiza um atendente (ativo, nome, eventos…). */
+export async function saveAtendente(uid, id, data) {
+  await setDoc(doc(db, 'users', uid, 'atendentes', id), removeUndefined({ ...data, updatedAt: serverTimestamp() }), { merge: true })
+  return id
+}
+
+/** Exclui um atendente. */
+export async function deleteAtendente(uid, id) {
+  await deleteDoc(doc(db, 'users', uid, 'atendentes', id))
+}
+
 // ── Disparos de E-mail (envio em massa) ──
 
 export async function getEmailDisparos(uid) {

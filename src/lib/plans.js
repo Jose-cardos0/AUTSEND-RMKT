@@ -6,7 +6,7 @@ export const PLANOS = {
     nome: 'Free',
     // Free tem o mínimo pra rodar automações de compra aprovada: 1 template, 1 grupo de produto com 1 produto.
     // Free NÃO usa domínios (só API's/Resend próprio); domínios são capacidade da conta Resend da plataforma.
-    limites: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, iaMes: 0, templates: 1, gruposProduto: 1, produtosPorGrupo: 1 },
+    limites: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, iaMes: 0, atendentes: 0, templates: 1, gruposProduto: 1, produtosPorGrupo: 1 },
     features: {
       bancoLeads: false, produtos: true, checkouts: false, templates: false,
       waIntegracoes: false, waAutomacoes: false, waRemarketing: false, waGrupos: false, waDisparos: false, waFunil: false, waMetricas: false,
@@ -17,7 +17,7 @@ export const PLANOS = {
   inicial: {
     nome: 'Inicial',
     // Tudo do Free + WhatsApp + 500 e-mails/mês + 1 domínio.
-    limites: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, iaMes: 30 },
+    limites: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, iaMes: 30, atendentes: 1 },
     features: {
       bancoLeads: true, produtos: true, checkouts: true, templates: true,
       waIntegracoes: true, waAutomacoes: true, waRemarketing: true, waGrupos: true, waDisparos: true, waFunil: true, waMetricas: true,
@@ -27,7 +27,7 @@ export const PLANOS = {
   },
   padrao: {
     nome: 'Padrão',
-    limites: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, iaMes: 100 },
+    limites: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, iaMes: 100, atendentes: 2 },
     features: {
       bancoLeads: true, produtos: true, checkouts: true, templates: true,
       waIntegracoes: true, waAutomacoes: true, waRemarketing: true, waGrupos: true, waDisparos: true, waFunil: true, waMetricas: true,
@@ -37,7 +37,7 @@ export const PLANOS = {
   },
   pro: {
     nome: 'Pro',
-    limites: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, iaMes: 200 },
+    limites: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, iaMes: 200, atendentes: 4 },
     features: {
       bancoLeads: true, produtos: true, checkouts: true, templates: true,
       waIntegracoes: true, waAutomacoes: true, waRemarketing: true, waGrupos: true, waDisparos: true, waFunil: true, waMetricas: true,

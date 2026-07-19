@@ -18,6 +18,7 @@ service cloud.firestore {
         // Demais coleções (leads, produtos, webhooks Kiwify, etc.) seguem criáveis pelo dono.
         allow create: if isOwner()
           && coll != 'instances'
+          && coll != 'atendentes'
           && !(coll == 'webhooks' && request.resource.data.tipo == 'custom');
 
         // UPDATE liberado, exceto "virar" um webhook em tracker (tipo→'custom') pra burlar a trava.

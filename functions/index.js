@@ -51,17 +51,22 @@ async function assertTermosAceito(request, tenant) {
 const PLAN_LIMITS = {
   // callMin = minutos de Ligação IA grátis por mês (pagos por nós, isca). Editável via overrides.
   // iaMes = criações/edições de e-mail com IA (Grok) no construtor, por mês.
-  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, callMin: 0, iaMes: 0 },
-  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, callMin: 5, iaMes: 30 },
-  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, callMin: 10, iaMes: 100 },
-  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, callMin: 15, iaMes: 200 },
+  // atendentes = bots de IA no WhatsApp (Central de Atendentes). 1 por produto e 1 por instância;
+  // cada instância avulsa comprada libera +1 atendente (somado abaixo).
+  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, callMin: 0, iaMes: 0, atendentes: 0 },
+  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, callMin: 5, iaMes: 30, atendentes: 1 },
+  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, callMin: 10, iaMes: 100, atendentes: 2 },
+  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, callMin: 15, iaMes: 200, atendentes: 4 },
 }
 function limitesDoTenant(t) {
   const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
   const ov = (t && t.overrides && t.overrides.limites) || {}
   const merged = { plano, ...PLAN_LIMITS[plano], ...ov }
   // Instâncias avulsas compradas (assinatura R$29,90/mês cada) somam ao limite do plano/override.
-  merged.instancias = (Number(merged.instancias) || 0) + (Number(t && t.instanciasExtras) || 0)
+  const extras = Number(t && t.instanciasExtras) || 0
+  merged.instancias = (Number(merged.instancias) || 0) + extras
+  // Comprar instância libera +1 atendente (a sacada comercial: 1 atendente por instância).
+  merged.atendentes = (Number(merged.atendentes) || 0) + extras
   return merged
 }
 
@@ -1654,6 +1659,39 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
   return { id: ref.id, base64, hash, instanceId }
+})
+
+// ═════════════════════ CENTRAL DE ATENDENTES — bot de IA no WhatsApp por produto ═════════════════════
+
+/**
+ * Cria um atendente (bot de IA). Trava de plano (atendentesMax = base + instâncias extras) +
+ * regra: 1 atendente por produto (grupoId) e 1 por instância (instanceId).
+ */
+exports.criarAtendente = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  const d = request.data || {}
+  const nome = String(d.nome || '').trim() || 'Atendente'
+  const grupoId = String(d.grupoId || '').trim()
+  const instanceId = String(d.instanceId || '').trim()
+  if (!grupoId) throw new HttpsError('invalid-argument', 'Escolha o produto (grupo) do atendente.')
+  if (!instanceId) throw new HttpsError('invalid-argument', 'Escolha a instância de WhatsApp do atendente.')
+
+  const snap = await db.collection(`users/${uid}/atendentes`).get()
+  const existentes = snap.docs.map((x) => ({ id: x.id, ...x.data() }))
+  // Trava de contagem por plano.
+  assertPodeCriarRecurso(request, tenant, 'atendentes', existentes.length, 'atendente(s) de IA')
+  // 1 atendente por produto e por instância.
+  if (existentes.some((a) => a.grupoId === grupoId)) throw new HttpsError('failed-precondition', 'Esse produto já tem um atendente. Cada produto só pode ter um.')
+  if (existentes.some((a) => a.instanceId === instanceId)) throw new HttpsError('failed-precondition', 'Essa instância já está em uso por outro atendente. Cada instância só pode ter um atendente.')
+
+  const ref = await db.collection(`users/${uid}/atendentes`).add({
+    nome, grupoId, instanceId, ativo: false,
+    eventos: [], // eventos Kiwify em que puxa conversa (Fase 3)
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  return { id: ref.id }
 })
 
 /** Checa (no servidor, sem cache) se o cliente ainda pode criar instância. Usado antes de abrir o form. */
