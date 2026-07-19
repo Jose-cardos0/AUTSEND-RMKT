@@ -22,7 +22,19 @@ export async function criarInstancia(nomeInstancia, numeroWhatsapp = '') {
   const numero = (numeroWhatsapp || '').trim().replace(/\D/g, '')
   const call = httpsCallable(functions, 'waCriarInstancia')
   const r = await call({ nomeInstancia: (nomeInstancia || '').trim(), numeroWhatsapp: numero })
-  return r.data // { id, base64, hash, instanceId }
+  return r.data // { id, base64 (data URI do QR), nomeInstancia (normalizado p/ WAHA), hash:null, instanceId:null }
+}
+
+/** Renova o QR de uma sessão WAHA (o anterior expira em ~60s / 20s). Retorna { sucesso, qrcodeBase64 }. */
+export async function obterQr(nomeInstancia) {
+  const res = await fetch(WEBHOOK_EVOLUTION, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tipoAcao: 'obter_qr', nomeInstancia: nomeInstancia || '' }),
+  })
+  const data = await parseJsonResponse(res)
+  if (!res.ok) throw new Error(data?.erro || data?.message || 'Falha ao obter QR')
+  return data
 }
 
 /** Checa no servidor (sem cache) se o cliente ainda pode criar instância. */

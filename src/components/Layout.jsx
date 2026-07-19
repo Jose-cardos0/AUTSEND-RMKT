@@ -40,7 +40,8 @@ const navGroups = [
       { to: '/integracoes', label: 'Integrações', icon: Link2 },
       { to: '/automacoes', label: 'Automações', icon: Zap },
       { to: '/remarketing', label: 'Remarketing', icon: MessageCircle },
-      { to: '/remarketing-grupos', label: 'Grupos', icon: Users },
+      // Disparo para grupos removido (não portado pro WAHA — não vamos mais usar).
+      // { to: '/remarketing-grupos', label: 'Grupos', icon: Users },
       { to: '/enviar-mensagem', label: 'Disparos', icon: Send },
       { to: '/funil', label: 'Funil', icon: GitBranch },
       { to: '/metricas', label: 'Métricas', icon: BarChart3 },

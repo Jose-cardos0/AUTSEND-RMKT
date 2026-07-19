@@ -6,7 +6,7 @@ admin.initializeApp()
 
 const db = admin.firestore()
 
-const N8N_REMARKETING_URL = 'https://n8n.iacodenxt.online/webhook/REMARKETING'
+const N8N_REMARKETING_URL = 'https://n8n.autsend.online/webhook/remarketing'
 
 // ── Admin (torre de comando) ──
 const ADMIN_EMAIL = 'josedeveloperjs@gmail.com'
@@ -93,7 +93,7 @@ function assertPodeCriarRecurso(request, tenant, chave, atual, rotulo) {
 }
 
 // Webhook do Evolution (n8n) — espelho de src/lib/constants.js. Usado pela trava de criação de instância.
-const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.iacodenxt.online/webhook/HUBNXTEVOPAI'
+const WEBHOOK_EVOLUTION = process.env.WEBHOOK_EVOLUTION || 'https://n8n.autsend.online/webhook/instancia-waha'
 
 /**
  * Log de FATURAMENTO por cliente (append-only) — histórico de TUDO que gera custo/receita:
@@ -1628,8 +1628,10 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
   // Trava: quantas instâncias o cliente já tem.
   const snap = await db.collection(`users/${uid}/instances`).get()
   assertPodeCriarRecurso(request, tenant, 'instancias', snap.size, 'instância(s) de WhatsApp')
-  // Passou na trava → cria no Evolution.
-  const payload = { tipoAcao: 'criar_instancia', nomeInstancia: nome }
+  // Passou na trava → cria a sessão no WAHA (WF3). nomeInstancia vira o ID da sessão no WAHA:
+  // só letras/números/hífen/underline (espaço ou acento quebram a URL). Normaliza antes de enviar.
+  const sessao = nome.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || `instancia-${Date.now()}`
+  const payload = { tipoAcao: 'criar_instancia', nomeInstancia: sessao, uid }
   if (numero) payload.numeroWhatsApp = numero
   let data
   try {
@@ -1639,26 +1641,24 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
       body: JSON.stringify(payload),
     })
     data = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(data?.message || data?.error || 'Falha ao criar instância')
+    if (!res.ok && data?._ok !== true) throw new Error(data?.erro || data?.message || data?.error || 'Falha ao criar instância')
   } catch (e) {
     console.error('waCriarInstancia', e)
-    throw new HttpsError('internal', e.message || 'Falha ao criar a instância no Evolution.')
+    throw new HttpsError('internal', e.message || 'Falha ao criar a instância no WhatsApp.')
   }
-  // Grava o doc no servidor (client não cria mais — a coleção é bloqueada nas rules).
-  const base64 = data.base64 ?? data.qrCodeBase64 ?? data.qrcode ?? null
-  const hash = data.hash ?? data.instanceId ?? data.code ?? null
-  const instanceId = data.instanciaId ?? data.instanceId ?? hash ?? null
+  // WAHA não tem hash/instanceId por sessão (auth é uma API key global no n8n). O ID é o próprio nomeInstancia.
+  const base64 = data.qrcodeBase64 ?? data.base64 ?? data.qrCodeBase64 ?? data.qrcode ?? null
   const ref = await db.collection(`users/${uid}/instances`).add({
-    nomeInstancia: nome,
+    nomeInstancia: sessao,
     numeroWhatsapp: numero,
-    hash,
+    hash: null,
     qrCodeBase64: base64,
-    instanceId,
+    instanceId: null,
     conectado: false,
     grupos: [],
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   })
-  return { id: ref.id, base64, hash, instanceId }
+  return { id: ref.id, base64, hash: null, instanceId: null, nomeInstancia: sessao }
 })
 
 // ═════════════════════ CENTRAL DE ATENDENTES — bot de IA no WhatsApp por produto ═════════════════════
@@ -1710,50 +1710,96 @@ function montarSystemAtendente(grupo) {
   const planos = Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []
   const planosTxt = planos.length
     ? planos.map((p) => `- ${p.nome}${p.preco ? ` (${p.preco})` : ''}${p.descricao ? `: ${p.descricao}` : ''} → pra enviar o link deste, escreva o marcador [CHECKOUT: ${p.nome}]`).join('\n')
-    : '(nenhum plano configurado)'
+    : '(nenhum plano avulso configurado)'
+  // Funil de ofertas (VSL/TSL principal → upsells, cada UP com seu downsell pareado)
+  const f = grupo?.iaFunil || {}
+  const ups = Array.isArray(f.upsells) ? f.upsells : []
+  const dws = Array.isArray(f.downsells) ? f.downsells : []
+  let funilTxt = ''
+  if (f.principal) {
+    funilTxt += `\nOFERTA PRINCIPAL (${f.principal.kind === 'vsl' ? 'página VSL com vídeo' : 'página TSL com texto'}${f.principal.grupoNome ? `, produto: ${f.principal.grupoNome}` : ''}): ${f.principal.descricao || ''}`
+    if (f.principal.link) funilTxt += ` | página: ${f.principal.link}`
+    if (f.principal.checkoutLink) funilTxt += ` | pra fechar mande [CHECKOUT: OFERTA PRINCIPAL]`
+  }
+  ups.forEach((u, i) => {
+    funilTxt += `\nUPSELL ${u.nome}${u.grupoNome ? ` (produto: ${u.grupoNome})` : ''}: ${u.descricao || ''}${u.checkoutLink ? ` → [CHECKOUT: ${u.nome}]` : ''}`
+    const dw = dws[i]
+    if (dw && (dw.checkoutLink || dw.descricao)) funilTxt += `\n   ↳ se recusar/sumir, DOWNSELL ${dw.nome} (mesmo produto, mais barato): ${dw.descricao || ''}${dw.checkoutLink ? ` → [CHECKOUT: ${dw.nome}]` : ''}`
+  })
+  // Mensagens de agradecimento por oferta comprada
+  const agr = Array.isArray(grupo?.iaAgradecimentos) ? grupo.iaAgradecimentos : []
+  const agrTxt = agr.length
+    ? '\nMENSAGENS DE AGRADECIMENTO (mande quando o cliente confirmar a compra da oferta correspondente):\n' + agr.map((a) => `  - ao comprar ${(Array.isArray(a.checkouts) ? a.checkouts : []).map((c) => `"${c.nome}"`).join(' ou ') || (a.checkoutNome ? `"${a.checkoutNome}"` : 'uma oferta')}: ${a.texto}`).join('\n')
+    : ''
+
   const linhas = [
     `Você é um(a) vendedor(a) humano(a) atendendo no WhatsApp sobre o produto "${grupo?.nome || ''}". Seu tom é ${persona}.`,
     grupo?.iaObjetivo ? `\nSEU OBJETIVO PRINCIPAL:\n${grupo.iaObjetivo}` : '',
     grupo?.iaContexto ? `\nSOBRE O PRODUTO (use pra tirar dúvidas):\n${grupo.iaContexto}` : '',
     grupo?.iaObjecoes ? `\nCOMO LIDAR COM OBJEÇÕES:\n${grupo.iaObjecoes}` : '',
     grupo?.iaProvaSocial ? `\nPROVA SOCIAL (cite quando ajudar a convencer):\n${grupo.iaProvaSocial}` : '',
-    `\nPLANOS / CHECKOUTS DISPONÍVEIS:\n${planosTxt}`,
+    grupo?.iaSuporte ? `\nSUPORTE (encaminhe pra cá as dúvidas de USO/técnicas — login, configuração, problemas no produto):\n${grupo.iaSuporte}` : '',
+    funilTxt ? `\nFUNIL DE OFERTAS:${funilTxt}` : '',
+    agrTxt,
+    planos.length ? `\nPLANOS / CHECKOUTS AVULSOS:\n${planosTxt}` : '',
     `\nREGRAS OBRIGATÓRIAS:`,
     `- Fale CURTO e humanizado, como uma pessoa real no zap (1 a 3 frases). Nada de textão nem de robô.`,
     `- Responda SEMPRE no mesmo idioma que o cliente escrever.`,
-    `- Quando o cliente quiser comprar/pagar/assinar, mande o link do plano certo usando EXATAMENTE o marcador [CHECKOUT: nome exato do plano]. NUNCA invente uma URL.`,
-    `- Não prometa nada que não esteja no contexto acima.`,
+    `- NUNCA invente nada: sem promoções, trials/testes grátis, descontos, prazos ou funções que não estejam escritos aqui. Se não está no contexto, não existe.`,
+    `- Quando o cliente quiser comprar/pagar/assinar, mande o link certo usando EXATAMENTE o marcador [CHECKOUT: nome exato]. NUNCA escreva uma URL você mesmo.`,
+    (f.principal || ups.length) ? `- ESCADA DE VENDAS: venda primeiro a OFERTA PRINCIPAL. Quando o cliente CONFIRMAR que comprou/pagou a principal, agradeça e ofereça o 1º UPSELL. Regra da escada: se ele COMPRAR o upsell, pule pro PRÓXIMO upsell; se RECUSAR ou sumir, ofereça o DOWNSELL daquele upsell (mesmo produto, mais barato); se recusar o downsell também, passe pro próximo upsell. Quando acabarem as ofertas, agradeça e ENCERRE.` : '',
+    (f.principal || ups.length) ? `- FIM DO FUNIL: quando o cliente já passou por todas as ofertas (comprou ou recusou tudo), PARE de empurrar venda — não fique insistindo. Só volte a vender se ELE demonstrar que quer comprar algo.` : '',
+    grupo?.iaSuporte ? `- DÚVIDA DE USO/TÉCNICA (como logar, configurar, algo não funciona no produto): NÃO tente resolver nem invente — encaminhe educadamente pro suporte informado acima.` : '',
+    `- NUNCA ofereça upsell/downsell antes da compra da oferta principal.`,
     grupo?.iaRegras ? `- ${grupo.iaRegras.replace(/\n/g, '\n- ')}` : '',
     `- Se não souber ou for um caso complexo, seja honesto e diga que vai chamar um atendente humano.`,
   ]
   return linhas.filter(Boolean).join('\n')
 }
 
-/** Troca os marcadores [CHECKOUT: nome] pelo link real do plano correspondente. */
+/** Troca os marcadores [CHECKOUT: nome] pelo link real (plano OU oferta do funil). */
 function injetarCheckouts(texto, grupo) {
-  const planos = Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []
+  const map = {}
+  const add = (nome, link) => { if (nome && link) map[String(nome).trim().toLowerCase()] = link }
+  ;(Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []).forEach((p) => add(p.nome, p.checkoutLink))
+  const f = grupo?.iaFunil || {}
+  if (f.principal) { add('oferta principal', f.principal.checkoutLink); add(f.principal.nome, f.principal.checkoutLink) }
+  ;(Array.isArray(f.upsells) ? f.upsells : []).forEach((u) => add(u.nome, u.checkoutLink))
+  ;(Array.isArray(f.downsells) ? f.downsells : []).forEach((d) => add(d.nome, d.checkoutLink))
   return String(texto || '').replace(/\[CHECKOUT:\s*([^\]]+)\]/gi, (m, nome) => {
     const alvo = nome.trim().toLowerCase()
-    const p = planos.find((x) => (x.nome || '').trim().toLowerCase() === alvo) || planos.find((x) => (x.nome || '').trim().toLowerCase().includes(alvo))
-    return p?.checkoutLink || ''
+    if (map[alvo]) return map[alvo]
+    const hit = Object.entries(map).find(([k]) => k.includes(alvo) || alvo.includes(k))
+    return hit ? hit[1] : ''
   }).replace(/\n{3,}/g, '\n\n').trim()
 }
 
-/** Envia uma mensagem de WhatsApp por uma instância ESPECÍFICA (via n8n). */
-async function enviarWhatsAppInstancia(inst, telefone, nome, mensagem) {
-  const numeroWhatsApp = (inst?.numeroWhatsapp || inst?.numeroWhatsApp || '').toString().replace(/\D/g, '')
+/** Blocos de 1 texto simples (contrato WF1/WAHA). */
+function blocosTexto(texto) { return [{ tipo: 'texto', conteudo: String(texto || '') }] }
+
+/**
+ * Envio via WF1 (WAHA/n8n) — POST /webhook/remarketing.
+ * O n8n resolve chatId (check-exists), picota, simula digitação e espaça os contatos.
+ * @param {{ sessao: string, contatos: Array<{telefone:string, nome?:string, blocos?:any[]}>, blocos: any[], campanhaId?: string }} args
+ */
+async function enviarWAHA({ sessao, contatos, blocos, campanhaId }) {
   const payload = {
-    tipoAcao: 'enviar_remarketing',
-    contatos: [{ nome: nome || '', telefone, email: '' }],
-    mensagem,
-    nomeInstancia: inst?.nomeInstancia || '',
-    hash: inst?.hash || '',
-    instanciaId: inst?.instanceId || inst?.hash || '',
-    numeroWhatsApp: numeroWhatsApp || undefined,
-    evento: 'atendente',
-    produto: '',
+    sessao: sessao || '',
+    campanhaId: campanhaId || '',
+    blocos: Array.isArray(blocos) ? blocos : [],
+    contatos: Array.isArray(contatos) ? contatos : [],
   }
-  const res = await fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  return fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+}
+
+/** Envia uma mensagem de WhatsApp por uma instância ESPECÍFICA (via WF1/WAHA). */
+async function enviarWhatsAppInstancia(inst, telefone, nome, mensagem) {
+  const res = await enviarWAHA({
+    sessao: inst?.nomeInstancia || '',
+    contatos: [{ telefone, nome: nome || '' }],
+    blocos: blocosTexto(mensagem),
+    campanhaId: 'atendente',
+  })
   return res.ok
 }
 
@@ -1823,20 +1869,24 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     const historico = Array.isArray(conv.messages) ? conv.messages : []
     const agora = Date.now()
 
-    // Handover: mensagem do DONO (fromMe) que NÃO é o eco da última que a IA mandou → pausa o bot.
-    if (m.fromMe) {
-      if (m.texto && m.texto === conv.iaUltimaMsg) { res.status(200).json({ ok: true, ignored: 'eco da ia' }); return }
+    // Handover: o DONO respondeu manual pelo celular → pausa o bot por HANDOVER_HORAS.
+    // O WF2 (WAHA) já resolve isso e manda em _waha: source 'app' = dono no celular; 'api' = o próprio bot.
+    // O eco do bot (source 'api') o n8n descarta antes de chegar aqui — então qualquer fromMe que chega é o dono.
+    const waha = body._waha || {}
+    const ehHandover = waha.handover === true || (m.fromMe && (waha.source ? waha.source === 'app' : true))
+    if (ehHandover) {
       await convRef.set({ pausadoAte: agora + HANDOVER_HORAS * 3600000, messages: [...historico, { role: 'dono', text: m.texto, ts: agora }].slice(-30), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-      res.status(200).json({ ok: true, handover: true }); return
+      res.status(200).json({ responder: false, handover: true }); return
     }
+    if (m.fromMe) { res.status(200).json({ responder: false, ignored: 'eco do bot' }); return }
 
     // Bot pausado (dono assumiu) → só guarda a mensagem, não responde.
     const novoHist = [...historico, { role: 'user', text: m.texto, ts: agora }].slice(-30)
     if (conv.pausadoAte && conv.pausadoAte > agora) {
       await convRef.set({ messages: novoHist, nome: m.nome || conv.nome || '', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-      res.status(200).json({ ok: true, pausado: true }); return
+      res.status(200).json({ responder: false, pausado: true }); return
     }
-    if (!m.texto) { res.status(200).json({ ok: true, ignored: 'sem texto' }); return }
+    if (!m.texto) { res.status(200).json({ responder: false, ignored: 'sem texto' }); return }
 
     // Monta o prompt e chama a Grok
     const messages = [
@@ -1846,9 +1896,9 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     let respostaIA = ''
     try { respostaIA = await callGrok(messages) } catch (e) { console.error('atendente Grok', e?.message || e) }
     respostaIA = injetarCheckouts(respostaIA, grupo)
-    if (!respostaIA) { await convRef.set({ messages: novoHist, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ ok: true, semResposta: true }); return }
+    if (!respostaIA) { await convRef.set({ messages: novoHist, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ responder: false, semResposta: true }); return }
 
-    await enviarWhatsAppInstancia(instDoc, m.telefone, m.nome, respostaIA)
+    // O ENVIO é feito pelo WF2 (n8n/WAHA) com digitação humana. A Cloud Function só devolve o texto pronto.
 
     // Custo de IA (Gastos CRM)
     try { const mesId = new Date(agora).toISOString().slice(0, 7); await db.doc(`tenants/${uid}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
@@ -1859,11 +1909,83 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true })
 
-    res.status(200).json({ ok: true, respondido: true })
+    // Contrato WF2: { responder, mensagem } — o n8n picota e envia com digitação humana.
+    res.status(200).json({ responder: true, mensagem: respostaIA, resposta: respostaIA })
   } catch (err) {
     console.error('waAtendenteWebhook', err?.message || err)
+    res.status(200).json({ responder: false, ok: false })
+  }
+})
+
+/**
+ * Callback do WF1 (WAHA/n8n): registra que um contato de um disparo foi ENVIADO de verdade.
+ * O n8n chama POST {API_SAAS_URL}/disparos com header Authorization: Bearer <API_SAAS_TOKEN>.
+ * Body: { campanhaId, sessao, telefone, chatId, nome, enviadoEm }
+ * Conta a entrega por contato de forma idempotente (doc por telefone) → retry não conta duas vezes.
+ * campanhaId genérico (remarketing/funil/automacao) é ignorado — só conta disparos de verdade.
+ */
+exports.disparos = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
+  try {
+    if (req.method !== 'POST') { res.status(405).json({ ok: false, erro: 'method' }); return }
+    const token = process.env.API_SAAS_TOKEN || ''
+    if (!token || String(req.headers.authorization || '') !== `Bearer ${token}`) {
+      res.status(401).json({ ok: false, erro: 'unauthorized' }); return
+    }
+
+    const b = req.body || {}
+    const campanhaId = String(b.campanhaId || '').trim()
+    const sessao = String(b.sessao || b.nomeInstancia || '').trim()
+    const telefone = String(b.telefone || '').replace(/\D/g, '')
+    if (!campanhaId || !sessao || !telefone) { res.status(200).json({ ok: true, ignored: 'faltam campos' }); return }
+
+    // Resolve o uid dono da instância pelo nome da sessão (mesmo índice do atendente).
+    let uid = null
+    try {
+      const s = await db.collectionGroup('instances').where('nomeInstancia', '==', sessao).limit(1).get()
+      if (!s.empty) uid = s.docs[0].ref.path.split('/')[1]
+    } catch (e) { console.error('disparos collectionGroup (índice?):', e?.message || e) }
+    if (!uid) { res.status(200).json({ ok: true, ignored: 'sessao sem dono' }); return }
+
+    // Só contabiliza se o disparo existir (idempotente: 1 doc de entrega por telefone).
+    const dRef = db.doc(`users/${uid}/disparos/${campanhaId}`)
+    const entregaRef = dRef.collection('entregas').doc(telefone)
+    await db.runTransaction(async (tx) => {
+      const dDoc = await tx.get(dRef)
+      if (!dDoc.exists) return
+      const eDoc = await tx.get(entregaRef)
+      if (eDoc.exists) return // já contado
+      tx.set(entregaRef, { telefone, nome: b.nome || '', chatId: b.chatId || '', enviadoEm: b.enviadoEm || null, ts: admin.firestore.FieldValue.serverTimestamp() })
+      tx.set(dRef, { entregues: admin.firestore.FieldValue.increment(1), ultimaEntregaEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    })
+
+    res.status(200).json({ ok: true })
+  } catch (err) {
+    console.error('disparos', err?.message || err)
     res.status(200).json({ ok: false })
   }
+})
+
+/**
+ * Simulador de conversa: testa o atendente IA sem WhatsApp (usa o MESMO cérebro).
+ * Recebe o histórico da conversa e devolve a próxima resposta da IA (com checkout injetado).
+ */
+exports.atendenteSimular = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const { grupoId, mensagens } = request.data || {}
+  if (!grupoId) throw new HttpsError('invalid-argument', 'Produto não informado.')
+  const gSnap = await db.doc(`users/${uid}/productGroups/${grupoId}`).get()
+  if (!gSnap.exists) throw new HttpsError('not-found', 'Produto não encontrado.')
+  const grupo = gSnap.data()
+  const hist = Array.isArray(mensagens) ? mensagens.slice(-16) : []
+  const messages = [
+    { role: 'system', content: montarSystemAtendente(grupo) },
+    ...hist.map((x) => ({ role: x.role === 'assistant' ? 'assistant' : 'user', content: String(x.text || '') })),
+  ]
+  let resposta = ''
+  try { resposta = await callGrok(messages) } catch (e) { throw new HttpsError('internal', 'A IA não respondeu agora. Tente de novo.') }
+  resposta = injetarCheckouts(resposta, grupo)
+  return { resposta }
 })
 
 /** Checa (no servidor, sem cache) se o cliente ainda pode criar instância. Usado antes de abrir o form. */
@@ -3917,24 +4039,12 @@ async function tryAutoSend(userId, leadRef, evento, customer, product, produtos)
     if (!evolution?.nomeInstancia || !customer.telefone) return
 
     const mensagemFinal = replaceVariables(autoMsg.mensagem || '', customer, product)
-    const numeroWhatsApp = (evolution.numeroWhatsapp || evolution.numeroWhatsApp || '').toString().replace(/\D/g, '')
 
-    const payload = {
-      tipoAcao: 'enviar_remarketing',
-      contatos: [{ nome: customer.nome, telefone: customer.telefone, email: customer.email }],
-      mensagem: mensagemFinal,
-      nomeInstancia: evolution.nomeInstancia || '',
-      hash: evolution.hash || '',
-      instanciaId: evolution.instanceId || evolution.hash || '',
-      numeroWhatsApp: numeroWhatsApp || undefined,
-      evento,
-      produto: product.nome || '',
-    }
-
-    const n8nRes = await fetch(N8N_REMARKETING_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+    const n8nRes = await enviarWAHA({
+      sessao: evolution.nomeInstancia || '',
+      contatos: [{ telefone: customer.telefone, nome: customer.nome || '' }],
+      blocos: blocosTexto(mensagemFinal),
+      campanhaId: evento || 'automacao',
     })
 
     let body = {}
@@ -4313,19 +4423,12 @@ async function enviarMensagemFunil(userId, mensagem, contato) {
     const customer = { nome: contato.nome || '', telefone: contato.telefone, email: contato.email || '' }
     const product = { nome: contato.produto || '' }
     const msg = replaceVariables(mensagem, customer, product)
-    const numeroWhatsApp = (evolution.numeroWhatsapp || evolution.numeroWhatsApp || '').toString().replace(/\D/g, '')
-    const payload = {
-      tipoAcao: 'enviar_remarketing',
-      contatos: [{ nome: customer.nome, telefone: customer.telefone, email: customer.email }],
-      mensagem: msg,
-      nomeInstancia: evolution.nomeInstancia || '',
-      hash: evolution.hash || '',
-      instanciaId: evolution.instanceId || evolution.hash || '',
-      numeroWhatsApp: numeroWhatsApp || undefined,
-      evento: 'funil',
-      produto: product.nome || '',
-    }
-    const res = await fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    const res = await enviarWAHA({
+      sessao: evolution.nomeInstancia || '',
+      contatos: [{ telefone: customer.telefone, nome: customer.nome || '' }],
+      blocos: blocosTexto(msg),
+      campanhaId: 'funil',
+    })
     if (!res.ok) return { ok: false, erroMsg: `Falha ao enviar pelo WhatsApp (instância/n8n respondeu ${res.status})` }
     return { ok: true }
   } catch (err) { console.error('enviarMensagemFunil', err); return { ok: false, erroMsg: err.message || 'Falha no envio do WhatsApp' } }

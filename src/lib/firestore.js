@@ -598,6 +598,12 @@ export async function deleteAtendente(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'atendentes', id))
 }
 
+/** Simula uma conversa com o atendente IA (mesmo cérebro, sem WhatsApp). Retorna { resposta }. */
+export async function simularAtendente(grupoId, mensagens) {
+  const r = await httpsCallable(functions, 'atendenteSimular')({ grupoId, mensagens })
+  return r.data
+}
+
 // ── Disparos de E-mail (envio em massa) ──
 
 export async function getEmailDisparos(uid) {
@@ -1021,17 +1027,12 @@ export async function reenviarLead(uid, lead, mensagemTemplate, evolution) {
     .replace(/\{email_cliente\}/gi, lead.email || '')
     .replace(/\{nome_produto\}/gi, lead.produto || '')
 
-  const numeroWhatsApp = (evolution?.numeroWhatsapp || evolution?.numeroWhatsApp || '').toString().replace(/\D/g, '')
+  // Contrato WF1 (WAHA): { sessao, campanhaId, blocos, contatos }.
   const payload = {
-    tipoAcao: 'enviar_remarketing',
-    contatos: [{ nome: lead.nome, telefone: lead.telefone, email: lead.email }],
-    mensagem,
-    nomeInstancia: evolution?.nomeInstancia || '',
-    hash: evolution?.hash || '',
-    instanciaId: evolution?.instanceId || evolution?.hash || '',
-    numeroWhatsApp: numeroWhatsApp || undefined,
-    evento: lead.evento,
-    produto: lead.produto,
+    sessao: evolution?.nomeInstancia || '',
+    campanhaId: lead.evento || 'reenvio',
+    blocos: [{ tipo: 'texto', conteudo: mensagem }],
+    contatos: [{ telefone: String(lead.telefone || '').replace(/\D/g, ''), nome: lead.nome || '' }],
   }
 
   const res = await fetch(WEBHOOK_REMARKETING, {

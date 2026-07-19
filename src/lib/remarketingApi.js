@@ -8,28 +8,25 @@ import { WEBHOOK_REMARKETING } from './constants'
  * @param {object} [evolution] - config da instância (nomeInstancia, hash, instanceId) para o n8n
  */
 export async function enviarRemarketing(contatos, mensagem, evolution) {
-  const basePayload = {
-    tipoAcao: 'enviar_remarketing',
-    nomeInstancia: evolution?.nomeInstancia ?? '',
-    hash: evolution?.hash ?? '',
-    instanciaId: evolution?.instanceId ?? evolution?.hash ?? '',
-  }
+  const sessao = evolution?.nomeInstancia ?? ''
 
   for (const contato of contatos) {
     const nome = contato.nome ?? contato.name ?? ''
     const produto = contato.produto ?? contato.nome_produto ?? ''
     const email = contato.email ?? ''
-    const telefone = contato.telefone ?? contato.phone ?? contato.numero ?? ''
+    const telefone = String(contato.telefone ?? contato.phone ?? contato.numero ?? '').replace(/\D/g, '')
     const mensagemPersonalizada = mensagem
       .replace(/\{nome_cliente\}/gi, nome)
       .replace(/\{nome_produto\}/gi, produto)
       .replace(/\{numero_cliente\}/gi, telefone)
       .replace(/\{email_cliente\}/gi, email)
       .replace(/\{nome\}/gi, nome)
+    // Contrato WF1 (WAHA): { sessao, campanhaId, blocos, contatos }. Sem hash/tipoAcao.
     const payload = {
-      ...basePayload,
-      contatos: [contato],
-      mensagem: mensagemPersonalizada,
+      sessao,
+      campanhaId: 'remarketing',
+      blocos: [{ tipo: 'texto', conteudo: mensagemPersonalizada }],
+      contatos: [{ telefone, nome }],
     }
     const res = await fetch(WEBHOOK_REMARKETING, {
       method: 'POST',

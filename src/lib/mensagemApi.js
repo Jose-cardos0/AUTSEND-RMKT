@@ -19,26 +19,20 @@ export function personalizarMensagemComNome(template, nome) {
   return t
 }
 
-function buildEvolutionPayload(evolution) {
-  return {
-    nomeInstancia: evolution?.nomeInstancia ?? '',
-    numeroWhatsApp: (evolution?.numeroWhatsapp ?? evolution?.numeroWhatsApp ?? '').toString().replace(/\D/g, '') || undefined,
-    hash: evolution?.hash ?? '',
-    instanciaId: evolution?.instanceId ?? evolution?.hash ?? '',
-  }
+/** 1 bloco de texto (contrato WF1/WAHA). */
+function blocoTexto(texto) {
+  return [{ tipo: 'texto', conteudo: String(texto ?? '') }]
 }
 
-/** Envia um único lead para o n8n (com disparoId e nomeDisparo). */
+/** Envia um único lead via WF1 (WAHA). */
 export async function enviarUmaMensagemLead(contato, mensagem, evolution, disparoId, nomeDisparo) {
   const nome = normalizeNomeContato(contato.nome || contato.name || '')
+  const telefone = String(contato.telefone || '').replace(/\D/g, '') || contato.telefone
   const payload = {
-    tipoDisparo: 'leads',
-    tipoAcao: 'enviar_mensagem',
-    disparoId,
-    nomeDisparo: nomeDisparo || '',
-    contatos: [{ telefone: String(contato.telefone || '').replace(/\D/g, '') || contato.telefone, nome }],
-    mensagem: personalizarMensagemComNome(mensagem, nome),
-    ...buildEvolutionPayload(evolution),
+    sessao: evolution?.nomeInstancia ?? '',
+    campanhaId: disparoId || nomeDisparo || 'disparo',
+    blocos: blocoTexto(personalizarMensagemComNome(mensagem, nome)),
+    contatos: [{ telefone, nome }],
   }
   const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
     method: 'POST',
@@ -56,39 +50,27 @@ export async function enviarUmaMensagemLead(contato, mensagem, evolution, dispar
 }
 
 /**
- * Um único POST para o n8n com todos os contatos + mensagem (template com {nome}).
- * O n8n deve iterar o array e enviar com pausa (ex.: intervaloMinutos entre cada).
+ * Um único POST para o WF1 (WAHA) com TODOS os contatos. O n8n resolve o chatId de cada um,
+ * picota o texto e espaça 35–75s entre contatos (anti-ban). A personalização por lead vai em
+ * `contatos[].blocos` (o WF1 usa o bloco do contato quando presente; `blocos` no topo é fallback).
  * @param {Array<{ telefone?: string, nome?: string }>} contatos
- * @param {string} mensagem - template; o n8n pode substituir {nome} por contato.nome
+ * @param {string} mensagem - template com {nome}
  * @param {object} evolution
- * @param {{ disparoId?: string, nomeDisparo?: string, intervaloMinutos?: number }} [extra]
+ * @param {{ disparoId?: string, nomeDisparo?: string }} [extra]
  */
 export async function enviarMensagemWhatsApp(contatos, mensagem, evolution, extra = {}) {
-  const { disparoId = '', nomeDisparo = '', intervaloMinutos = 5 } = extra
+  const { disparoId = '', nomeDisparo = '' } = extra
   const contatosPayload = contatos.map((c) => {
     const nome = normalizeNomeContato(c.nome || c.name || '')
     const telefone = String(c.telefone || '').replace(/\D/g, '') || c.telefone
-    return {
-      telefone,
-      nome,
-      mensagem: personalizarMensagemComNome(mensagem, nome),
-    }
+    return { telefone, nome, blocos: blocoTexto(personalizarMensagemComNome(mensagem, nome)) }
   })
-  // 1 contato: body.mensagem já personalizado (muitos fluxos n8n usam só esse campo).
-  // Vários: NÃO enviar template com {nome} no root — senão o WhatsApp recebe literal "{nome}".
-  // Use no n8n: contatos[].mensagem em loop OU o array mensagens (mesma ordem dos contatos).
-  const mensagemRoot = contatosPayload.length === 1 ? contatosPayload[0].mensagem : ''
   const payload = {
-    tipoDisparo: 'leads',
-    tipoAcao: 'enviar_mensagem',
-    disparoId,
-    nomeDisparo,
-    intervaloMinutos,
+    sessao: evolution?.nomeInstancia ?? '',
+    campanhaId: disparoId || nomeDisparo || 'disparo',
+    // Fallback caso o WF1 não leia contatos[].blocos (personalização por lead está em cada contato).
+    blocos: blocoTexto(mensagem || ''),
     contatos: contatosPayload,
-    mensagem: mensagemRoot,
-    mensagens: contatosPayload.map((c) => c.mensagem),
-    mensagemTemplate: mensagem || '',
-    ...buildEvolutionPayload(evolution),
   }
   const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
     method: 'POST',
@@ -104,48 +86,14 @@ export async function enviarMensagemWhatsApp(contatos, mensagem, evolution, extr
     return {}
   }
 }
-
-const ENVIAR_GRUPOS_TIMEOUT_MS = 25000
 
 /**
  * Envia mensagem de remarketing para grupos no WhatsApp.
  * Usa a instância conectada em Integrações: nomeInstancia, numeroWhatsApp, hash, instanciaId.
  * Se o n8n responder 200 dentro do timeout, retorna sucesso. Se der timeout, considera enviado (evita loading infinito).
  */
-export async function enviarMensagemParaGrupos(grupos, mensagemTexto, evolution) {
-  const payload = {
-    tipoDisparo: 'grupos',
-    mensagem: { texto: mensagemTexto },
-    grupos,
-    nomeInstancia: evolution?.nomeInstancia ?? '',
-    numeroWhatsApp: (evolution?.numeroWhatsapp ?? evolution?.numeroWhatsApp ?? '').toString().replace(/\D/g, '') || undefined,
-    hash: evolution?.hash ?? undefined,
-    instanciaId: evolution?.instanceId ?? evolution?.hash ?? undefined,
-  }
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), ENVIAR_GRUPOS_TIMEOUT_MS)
-  try {
-    const res = await fetch(WEBHOOK_MSG_WHATSAPP, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
-    clearTimeout(timeoutId)
-    if (!res.ok) throw new Error('Falha ao enviar mensagem para grupos')
-    const text = await res.text()
-    if (!text?.trim()) return {}
-    try {
-      return JSON.parse(text)
-    } catch {
-      return {}
-    }
-  } catch (err) {
-    clearTimeout(timeoutId)
-    if (err.name === 'AbortError') {
-      // n8n pode demorar; mensagem já foi aceita. Considera enviado para não travar a UI.
-      return {}
-    }
-    throw err
-  }
+export async function enviarMensagemParaGrupos() {
+  // Disparo para GRUPOS ainda não foi portado para o WAHA (o servidor novo não tem esse fluxo).
+  // Assim que o WF1 ganhar suporte a grupos, reativar aqui.
+  throw new Error('Disparo para grupos está temporariamente indisponível (migração WAHA em andamento).')
 }

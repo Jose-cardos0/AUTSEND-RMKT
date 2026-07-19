@@ -535,6 +535,7 @@ export default function EnviarMensagem() {
                     </button>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-stone-600">{enviadosMostrar}/{item.total} enviados</span>
+                      {item.entregues > 0 && <span className="text-xs text-emerald-600 font-medium">{item.entregues} entregue{item.entregues > 1 ? 's' : ''}</span>}
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${WA_STATUS[statusView] || 'bg-stone-100 text-stone-600'}`}>
                         {WA_STATUS_LABEL[statusView] || statusView}
                       </span>

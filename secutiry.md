@@ -1,0 +1,11 @@
+0:00) Se você subir um sas, varbicodado, essa semana, (0:03) provavelmente você vai ter alguma dessas vulnerabilidades que eu vou te falar agora. (0:07) E não é achismo não, tá? (0:09) O que eu tô falando aqui é baseado em testes que a gente realizou nos últimos meses, (0:13) que aconteceram em quase todos os projetos, (0:16) então fica ligado que isso leva minutos pra vocês resolverem. (0:19) Falha número 1, ausência de hitlimit.
+(0:22) No login, MFA, recuperação de senha, tudo sem limite. (0:26) Então, basicamente, você pode fazer um bruteforce ali de graça. (0:29) E dos projetos que a gente pegou, você podia tomar a conta ali e fazer o que você quisesse.
+(0:33) Então, como que a gente consegue corrigir isso aí? (0:37) Limitação por IP, limitação por conta, lockout e um off. (0:44) Segundo, ausência de CORS configurado. (0:47) Eu acho que isso é um dos mais comuns que tem hoje.
+(0:49) Basicamente, pra corrigir isso, é muito simples. (0:51) Configura o CORS e coloca uma list de domínios de origem. (0:54) Terceiro, API devolvendo dados demais, dados sensíveis de usuários.
+(0:58) PII. (0:59) Você pode fazer uma criptografia, uma decriptografia, (1:02) ou somente enviar aquilo que realmente é necessário. (1:05) Nos casos que a gente pegou, tinha até hash de senha passando.
+(1:09) E em quarto, sessão de token JWT. (1:12) Passando no GET, invalidação de token de sessão. (1:16) Então, basicamente, enviar só post, realmente enviar via headers e não enviar via parâmetro.
+(1:22) E invalidar no logout. (1:24) Então, o que muito acontece é você faz uma sessão, (1:27) depois você faz logout, e o logout do sistema só tira do local storage. (1:32) Não invalida ele.
+(1:33) Por quinto, enumeração de usuário. (1:35) Na hora que você vai fazer ali o login, ele fala e-mail não existente. (1:38) Pô, aí você já se matou.
+(1:40) Então, bota uma mensagem genérica, e-mail sem inválido, e tá tudo certo. (1:45) E por fim, SQL Injection. (1:47) Utiliza um RM, pelo amor de Deus.
+(1:49) Não vai me fazer query na mão que vão fazer interpolação e vão catar teu banco. (1:54) E repara bem, de tudo que eu te falei, nada disso é exótico. (1:57) Não tem nada de refinado nisso.
+(1:59) E todas as vulnerabilidades que eu falei, eles foram acontecendo projeto em projeto. (2:04) Então, já salva isso, já corrija isso que vocês vão estar melhor que 90% deles.

@@ -42,12 +42,10 @@ export default function EmailProdutos() {
   const abrirContexto = (grupo) => setCtxPopup(grupo)
   const salvarContextoGraph = async (patch) => {
     if (!ctxPopup) return
-    try {
-      await saveProductGroup(user.uid, ctxPopup.id, patch)
-      setGrupos((prev) => prev.map((g) => (g.id === ctxPopup.id ? { ...g, ...patch } : g)))
-      setCtxPopup(null)
-      toast.success('Atendente salvo.')
-    } catch (err) { toast.error(err.message || 'Erro ao salvar') }
+    // Só grava — quem fecha (ou não) é o editor, pelos botões Salvar/Gravar.
+    await saveProductGroup(user.uid, ctxPopup.id, patch)
+    setGrupos((prev) => prev.map((g) => (g.id === ctxPopup.id ? { ...g, ...patch } : g)))
+    toast.success('Atendente salvo.')
   }
 
   const abrirImg = (grupo) => { setImgTemp(grupo.imagem || ''); setImgPopup(grupo) }
@@ -469,6 +467,7 @@ export default function EmailProdutos() {
       {ctxPopup && (
         <AtendenteFlowEditor
           grupo={ctxPopup}
+          grupos={grupos}
           checkoutsFlat={checkoutsFlat}
           uid={user.uid}
           onClose={() => setCtxPopup(null)}

@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
-import { getCheckoutStores, saveCheckoutStore, deleteCheckoutStore } from '../lib/firestore'
+import { getCheckoutStores, saveCheckoutStore, deleteCheckoutStore, getProductGroups } from '../lib/firestore'
 import { LOJAS, lojaByKey } from '../lib/lojas'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
-import { Plus, Trash2, ChevronDown, Loader2, X, Link2, ShoppingBag, HelpCircle } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, Loader2, X, Link2, ShoppingBag, HelpCircle, Package, Check } from 'lucide-react'
 
 const genId = () => 'p_' + Math.random().toString(36).slice(2, 9)
 
@@ -18,11 +18,32 @@ export default function Checkouts() {
   const [showAddLoja, setShowAddLoja] = useState(false)
   const [novoProduto, setNovoProduto] = useState({})
   const [delLoja, setDelLoja] = useState(null)
+  const [grupos, setGrupos] = useState([]) // grupos de produtos
+  const [grupoPopup, setGrupoPopup] = useState(null) // loja escolhendo grupos
+  const [grupoSel, setGrupoSel] = useState(new Set())
+  const [salvandoGrupos, setSalvandoGrupos] = useState(false)
 
   useEffect(() => {
     if (!user?.uid) return
-    getCheckoutStores(user.uid).then(setStores).finally(() => setLoading(false))
+    Promise.all([getCheckoutStores(user.uid), getProductGroups(user.uid)])
+      .then(([st, gs]) => { setStores(st); setGrupos(gs) })
+      .finally(() => setLoading(false))
   }, [user?.uid])
+
+  const grupoById = (id) => grupos.find((g) => g.id === id)
+  const openGrupoPopup = (store) => { setGrupoSel(new Set(store.grupos || [])); setGrupoPopup(store) }
+  const salvarGrupos = async () => {
+    if (!grupoPopup) return
+    setSalvandoGrupos(true)
+    const arr = [...grupoSel]
+    try {
+      await saveCheckoutStore(user.uid, grupoPopup.id, { grupos: arr })
+      setStores((s) => s.map((x) => (x.id === grupoPopup.id ? { ...x, grupos: arr } : x)))
+      setGrupoPopup(null)
+      toast.success('Grupos do checkout salvos.')
+    } catch (err) { toast.error(err.message || 'Erro ao salvar') }
+    finally { setSalvandoGrupos(false) }
+  }
 
   const reload = async () => setStores(await getCheckoutStores(user.uid))
   const toggleAberto = (id) => setAbertos((o) => ({ ...o, [id]: !o[id] }))
@@ -112,6 +133,21 @@ export default function Checkouts() {
                       <span className="block text-[11px] text-stone-400">{(store.produtos || []).length} produto(s)</span>
                     </span>
                   </button>
+                  {/* Ícones dos grupos vinculados a esse checkout */}
+                  {(store.grupos || []).length > 0 && (
+                    <div className="hidden sm:flex items-center gap-1 shrink-0">
+                      {(store.grupos || []).slice(0, 5).map((gid) => {
+                        const g = grupoById(gid)
+                        if (!g) return null
+                        return (
+                          <span key={gid} title={g.nome} className={`flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden ${g.imagem ? '' : 'bg-surface-50 border border-surface-200'}`}>
+                            {g.imagem ? <img src={g.imagem} alt="" className="h-full w-full object-contain" /> : <Package className="w-3.5 h-3.5 text-stone-400" />}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                  <button onClick={() => openGrupoPopup(store)} className={`p-2 rounded-lg hover:bg-primary-50 hover:text-primary-600 shrink-0 ${(store.grupos || []).length ? 'text-primary-500' : 'text-stone-400'}`} title="Grupos de produtos deste checkout"><Plus className="w-4 h-4" /></button>
                   <button
                     type="button"
                     onClick={() => toggleAtivo(store)}
@@ -212,6 +248,46 @@ export default function Checkouts() {
             <div className="flex justify-end gap-2">
               <button onClick={() => setDelLoja(null)} className="btn-secondary min-h-[44px]">Cancelar</button>
               <button onClick={excluirLoja} className="min-h-[44px] px-4 rounded-xl bg-red-600 text-white text-sm font-medium hover:bg-red-700 flex items-center gap-1.5"><Trash2 className="w-4 h-4" /> Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup: grupos de produtos deste checkout */}
+      {grupoPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setGrupoPopup(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[88dvh] overflow-y-auto p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Package className="w-5 h-5" /></span>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-stone-800 truncate">Grupos de produtos</h3>
+                <p className="text-xs text-stone-500">Selecione os grupos vendidos por <strong>{lojaByKey(grupoPopup.loja)?.nome || grupoPopup.loja}</strong>.</p>
+              </div>
+              <button onClick={() => setGrupoPopup(null)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            {grupos.length === 0 ? (
+              <p className="py-6 text-center text-sm text-stone-500">Nenhum grupo de produtos ainda. Crie em <a href="/produtos" className="text-primary-600 underline">Produtos</a>.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {grupos.map((g) => {
+                  const on = grupoSel.has(g.id)
+                  return (
+                    <button key={g.id} type="button" onClick={() => setGrupoSel((s) => { const n = new Set(s); n.has(g.id) ? n.delete(g.id) : n.add(g.id); return n })} className={`relative flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 transition ${on ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}>
+                      <span className={`flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden ${g.imagem ? '' : 'bg-surface-50'}`}>
+                        {g.imagem ? <img src={g.imagem} alt="" className="h-full w-full object-contain" /> : <Package className="w-5 h-5 text-stone-400" />}
+                      </span>
+                      <span className="text-xs font-medium text-stone-800 text-center leading-tight line-clamp-2">{g.nome}</span>
+                      {on && <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-primary-600 text-white flex items-center justify-center"><Check className="w-2.5 h-2.5" /></span>}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setGrupoPopup(null)} className="btn-secondary min-h-[44px]">Cancelar</button>
+              <button onClick={salvarGrupos} disabled={salvandoGrupos} className="btn-primary min-h-[44px]">{salvandoGrupos ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar</button>
             </div>
           </div>
         </div>

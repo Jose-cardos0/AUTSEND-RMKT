@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import {
   ReactFlow, Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState, Handle, Position,
@@ -8,7 +8,8 @@ import { PERSONAS, personaLabel } from '../lib/atendentePersonas'
 import { uploadAtendenteAsset } from '../lib/firestore'
 import AudioTemplatePicker from './AudioTemplatePicker'
 import AudioPlayer from './AudioPlayer'
-import { Rocket, FileText, Package, ShoppingBag, Plus, Save, Trash2, X, Search, Link2, Loader2, Target, Shield, MessageCircle, Star, Image as ImageIcon, AudioLines, Upload } from 'lucide-react'
+import Select from './Select'
+import { Rocket, FileText, Package, ShoppingBag, Plus, Save, Trash2, X, Search, Link2, Loader2, Target, Shield, MessageCircle, Star, Image as ImageIcon, AudioLines, Upload, Video, TrendingUp, TrendingDown, ChevronDown, Layers, Gift, Copy, ClipboardPaste } from 'lucide-react'
 
 // Blocos de CONHECIMENTO (texto que alimenta o cérebro da IA). Cada um vira um campo derivado ao salvar.
 const CONHECIMENTO = {
@@ -19,6 +20,14 @@ const CONHECIMENTO = {
   provasocial: { label: 'Prova social',     Icon: Star,          border: 'border-yellow-400', text: 'text-yellow-700', ph: 'Depoimentos e resultados que a IA pode citar. Ex.: "+3 mil clientes", print do resultado da Maria...' },
 }
 const ehConhecimento = (t) => t in CONHECIMENTO
+
+// Ofertas do funil (VSL/TSL = página principal; UP = upsell; DW = downsell).
+const OFERTA = {
+  vsl: { label: 'Página VSL', border: 'border-indigo-300', text: 'text-indigo-700', Icon: Video },
+  tsl: { label: 'Página TSL', border: 'border-blue-300', text: 'text-blue-700', Icon: FileText },
+  up: { label: 'Upsell', border: 'border-emerald-300', text: 'text-emerald-700', Icon: TrendingUp },
+  dw: { label: 'Downsell', border: 'border-amber-300', text: 'text-amber-700', Icon: TrendingDown },
+}
 
 /* ─────────── Nós ─────────── */
 function IaNode({ data, selected }) {
@@ -80,7 +89,31 @@ function CheckoutNode({ data, selected }) {
     </div>
   )
 }
-const nodeTypes = { ia: IaNode, contexto: KnowledgeNode, objetivo: KnowledgeNode, regras: KnowledgeNode, objecoes: KnowledgeNode, provasocial: KnowledgeNode, plano: PlanoNode, checkout: CheckoutNode, imagem: MidiaNode, audio: MidiaNode }
+function OfertaNode({ data, selected }) {
+  const cfg = OFERTA[data?.kind] || OFERTA.up
+  const Icon = cfg.Icon
+  const header = (data?.kind === 'up' || data?.kind === 'dw') ? (data?.nome || cfg.label) : cfg.label
+  return (
+    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[170px] max-w-[220px] ${selected ? 'border-primary-500' : cfg.border}`}>
+      <Handle type="target" position={Position.Top} />
+      <div className={`flex items-center gap-2 font-semibold text-sm ${cfg.text}`}><Icon className="w-4 h-4" /> {header}</div>
+      {data?.descricao && <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{data.descricao}</p>}
+      <p className="text-[10px] text-stone-400 mt-1">↓ ligue ao checkout</p>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  )
+}
+function AgradecimentoNode({ data, selected }) {
+  return (
+    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[150px] max-w-[200px] ${selected ? 'border-primary-500' : 'border-teal-300'}`}>
+      <Handle type="target" position={Position.Top} />
+      <div className="flex items-center gap-2 text-teal-700 font-semibold text-sm"><Gift className="w-4 h-4" /> Agradecimento</div>
+      <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{data?.texto ? data.texto : 'Msg de "valeu pela compra"'}</p>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  )
+}
+const nodeTypes = { ia: IaNode, contexto: KnowledgeNode, objetivo: KnowledgeNode, regras: KnowledgeNode, objecoes: KnowledgeNode, provasocial: KnowledgeNode, plano: PlanoNode, checkout: CheckoutNode, imagem: MidiaNode, audio: MidiaNode, oferta: OfertaNode, agradecimento: AgradecimentoNode }
 
 /** Monta o grafo inicial a partir dos campos legados (ou de um iaGraph salvo). */
 function grafoInicial(grupo) {
@@ -108,7 +141,7 @@ function grafoInicial(grupo) {
   return { nodes, edges }
 }
 
-export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, onClose, onSave }) {
+export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat = [], uid, onClose, onSave }) {
   const inicial = useMemo(() => grafoInicial(grupo), [grupo])
   const [nodes, setNodes, onNodesChange] = useNodesState(inicial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(inicial.edges)
@@ -118,7 +151,23 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
   const [ckQ, setCkQ] = useState('')
   const [audioPickerFor, setAudioPickerFor] = useState(null) // id do nó áudio escolhendo template
   const [uploadingImg, setUploadingImg] = useState(false)
+  const [pagMenuOpen, setPagMenuOpen] = useState(false)
   const imgInputRef = useRef(null)
+
+  const addOferta = (kind) => {
+    setPagMenuOpen(false)
+    if ((kind === 'vsl' || kind === 'tsl') && nodes.some((n) => n.type === 'oferta' && (n.data?.kind === 'vsl' || n.data?.kind === 'tsl'))) {
+      toast.error('Você já tem uma página de venda principal (VSL ou TSL). Remova a atual pra trocar.'); return
+    }
+    let nome = OFERTA[kind].label
+    if (kind === 'up' || kind === 'dw') {
+      const n = nodes.filter((x) => x.type === 'oferta' && x.data?.kind === kind).length + 1
+      nome = (kind === 'up' ? 'UP' : 'DW') + n
+    }
+    const id = `oferta_${Date.now()}`
+    setNodes((nds) => [...nds, { id, type: 'oferta', position: posNova(), data: { kind, nome, descricao: '', link: '' } }])
+    setSelId(id)
+  }
 
   const onImgFile = async (e, nodeId) => {
     const f = e.target.files?.[0]; e.target.value = ''
@@ -137,15 +186,31 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
   const onConnect = useCallback((params) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)), [setEdges])
   const sel = useMemo(() => nodes.find((n) => n.id === selId) || null, [nodes, selId])
 
+  // Posição pra um novo bloco: no CENTRO do que o usuário está vendo (respeita zoom/pan).
+  const rfRef = useRef(null)
+  const wrapRef = useRef(null)
+  const posNova = () => {
+    const inst = rfRef.current
+    const wrap = wrapRef.current
+    if (inst?.screenToFlowPosition && wrap) {
+      const r = wrap.getBoundingClientRect()
+      const jx = (Math.random() - 0.5) * 90
+      const jy = (Math.random() - 0.5) * 90
+      return inst.screenToFlowPosition({ x: r.left + r.width / 2 + jx, y: r.top + r.height / 2 + jy })
+    }
+    return { x: 200 + Math.round(Math.random() * 120), y: 200 }
+  }
+
   const upd = (id, patch) => setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)))
   const addNode = (type) => {
     const id = `${type}_${Date.now()}`
     const data = type === 'contexto' ? { titulo: '', texto: '' }
       : ehConhecimento(type) ? { texto: '' }
-      : type === 'plano' ? { nome: '', preco: '', descricao: '' }
+      : type === 'plano' ? { nome: '', preco: '', descricao: '', grupoId: '', grupoNome: '' }
       : (type === 'imagem' || type === 'audio') ? { url: '', nome: '' }
+      : type === 'agradecimento' ? { texto: '' }
       : { nome: '', link: '' }
-    setNodes((nds) => [...nds, { id, type, position: { x: 120 + Math.round(Math.random() * 240), y: 220 + nds.length * 20 }, data }])
+    setNodes((nds) => [...nds, { id, type, position: posNova(), data }])
     setSelId(id)
   }
   const removerNode = (id) => {
@@ -154,25 +219,82 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
     setSelId(null)
   }
 
-  const salvar = async () => {
+  // ── Copiar / Colar blocos (Ctrl+C / Ctrl+V) ──
+  const clipboardRef = useRef({ nodes: [], edges: [] })
+  const copiar = () => {
+    const marcados = nodes.filter((n) => n.selected && n.type !== 'ia') // IA é única, não copia
+    if (!marcados.length) return
+    const ids = new Set(marcados.map((n) => n.id))
+    clipboardRef.current = {
+      nodes: marcados.map((n) => ({ oldId: n.id, type: n.type, position: n.position, data: JSON.parse(JSON.stringify(n.data || {})) })),
+      edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)).map((e) => ({ source: e.source, target: e.target })),
+    }
+    toast.success(`${marcados.length} bloco(s) copiado(s)`)
+  }
+  const colar = () => {
+    const clip = clipboardRef.current
+    if (!clip.nodes?.length) return
+    const stamp = Date.now()
+    const idMap = {}
+    let upN = nodes.filter((n) => n.type === 'oferta' && n.data?.kind === 'up').length
+    let dwN = nodes.filter((n) => n.type === 'oferta' && n.data?.kind === 'dw').length
+    const temPrincipal = nodes.some((n) => n.type === 'oferta' && (n.data?.kind === 'vsl' || n.data?.kind === 'tsl'))
+    const novos = []
+    clip.nodes.forEach((n, i) => {
+      if (n.type === 'oferta' && (n.data?.kind === 'vsl' || n.data?.kind === 'tsl') && temPrincipal) return // não duplica página principal
+      const newId = `${n.type}_${stamp}_${i}`
+      idMap[n.oldId] = newId
+      const data = { ...n.data }
+      if (n.type === 'oferta' && n.data?.kind === 'up') { upN += 1; data.nome = `UP${upN}` }
+      if (n.type === 'oferta' && n.data?.kind === 'dw') { dwN += 1; data.nome = `DW${dwN}` }
+      novos.push({ id: newId, type: n.type, position: { x: (n.position?.x || 0) + 48, y: (n.position?.y || 0) + 48 }, data, selected: true })
+    })
+    if (!novos.length) return
+    const novasEdges = (clip.edges || []).filter((e) => idMap[e.source] && idMap[e.target]).map((e, i) => ({ id: `e_${stamp}_${i}`, source: idMap[e.source], target: idMap[e.target], animated: true }))
+    setNodes((nds) => [...nds.map((x) => ({ ...x, selected: false })), ...novos])
+    setEdges((eds) => [...eds, ...novasEdges])
+    setSelId(null)
+    toast.success(`${novos.length} bloco(s) colado(s)`)
+  }
+  useEffect(() => {
+    const onKey = (e) => {
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) { copiar() }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) { colar() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [nodes, edges])
+
+  const salvar = async (fechar = false) => {
     const iaNode = nodes.find((n) => n.type === 'ia')
     const persona = iaNode?.data?.persona || 'amigavel'
-    const ligadoAIa = (id) => edges.some((e) => e.source === (iaNode?.id) && e.target === id)
-    // Blocos de conhecimento ligados à IA (por tipo)
-    const textoDoTipo = (tipo) => nodes.filter((n) => n.type === tipo && ligadoAIa(n.id)).map((n) => (n.data?.texto || '').trim()).filter(Boolean).join('\n\n')
-    const contextos = nodes.filter((n) => n.type === 'contexto' && ligadoAIa(n.id))
+    // Blocos de conhecimento (por tipo) — coleta TODOS (o usuário monta o fluxo livre; não exige ligação à IA).
+    const textoDoTipo = (tipo) => nodes.filter((n) => n.type === tipo).map((n) => (n.data?.texto || '').trim()).filter(Boolean).join('\n\n')
+    const contextos = nodes.filter((n) => n.type === 'contexto')
     const iaContexto = contextos.map((n) => `${n.data?.titulo ? `[${n.data.titulo}] ` : ''}${n.data?.texto || ''}`.trim()).filter(Boolean).join('\n\n')
+    const iaSuporte = contextos.map((n) => (n.data?.suporte || '').trim()).filter(Boolean).join('\n')
     const iaObjetivo = textoDoTipo('objetivo')
     const iaRegras = textoDoTipo('regras')
     const iaObjecoes = textoDoTipo('objecoes')
     const iaProvaSocial = textoDoTipo('provasocial')
-    // Planos ligados à IA, cada um com o checkout que ele aponta
-    const planoNodes = nodes.filter((n) => n.type === 'plano' && ligadoAIa(n.id))
+    // Planos, cada um com o checkout que ele aponta
+    const planoNodes = nodes.filter((n) => n.type === 'plano')
     const iaPlanos = planoNodes.map((p) => {
-      const ckId = edges.find((e) => e.source === p.id)?.target
-      const ck = nodes.find((n) => n.id === ckId && n.type === 'checkout')
-      return { nome: p.data?.nome || '', preco: p.data?.preco || '', descricao: p.data?.descricao || '', checkoutNome: ck?.data?.nome || '', checkoutLink: ck?.data?.link || '' }
+      const ck = nodes.find((n) => n.id === edges.find((e) => e.source === p.id)?.target && n.type === 'checkout')
+      return { nome: p.data?.nome || '', preco: p.data?.preco || '', descricao: p.data?.descricao || '', grupoNome: p.data?.grupoNome || '', checkoutNome: ck?.data?.nome || '', checkoutLink: ck?.data?.link || '' }
     }).filter((p) => p.nome || p.checkoutLink)
+    // Funil de ofertas (VSL/TSL principal + upsells + downsells), cada oferta com o checkout que aponta.
+    const linkCkDe = (o) => nodes.find((n) => n.id === edges.find((e) => e.source === o.id)?.target && n.type === 'checkout')?.data?.link || ''
+    const ofertas = nodes.filter((n) => n.type === 'oferta')
+    const mapOferta = (o) => ({ nome: o.data?.nome || '', grupoId: o.data?.grupoId || '', grupoNome: o.data?.grupoNome || '', descricao: o.data?.descricao || '', link: o.data?.link || '', checkoutLink: linkCkDe(o) })
+    const principalNode = ofertas.find((o) => o.data?.kind === 'vsl' || o.data?.kind === 'tsl')
+    const iaFunil = {
+      principal: principalNode ? { kind: principalNode.data?.kind, ...mapOferta(principalNode) } : null,
+      upsells: ofertas.filter((o) => o.data?.kind === 'up').map(mapOferta),
+      downsells: ofertas.filter((o) => o.data?.kind === 'dw').map(mapOferta),
+    }
     // Mídias (imagem/áudio): cada uma com o gatilho (bloco de origem) que a dispara.
     const midiaNodes = nodes.filter((n) => n.type === 'imagem' || n.type === 'audio')
     const iaMidias = midiaNodes.map((m) => {
@@ -185,12 +307,18 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
       }
       return { tipo: m.type, url: m.data?.url || '', nome: m.data?.nome || '', gatilho }
     }).filter((m) => m.url)
+    // Agradecimentos: uma mensagem que pode estar ligada a VÁRIOS checkouts (checkout → agradecimento).
+    const iaAgradecimentos = nodes.filter((n) => n.type === 'agradecimento').map((a) => {
+      const cks = edges.filter((e) => e.target === a.id).map((e) => nodes.find((n) => n.id === e.source && n.type === 'checkout')).filter(Boolean)
+      return { texto: a.data?.texto || '', checkouts: cks.map((c) => ({ nome: c.data?.nome || '', link: c.data?.link || '' })) }
+    }).filter((a) => a.texto && a.checkouts.length)
     const cleanNodes = nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data }))
     const cleanEdges = edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))
     setSalvando(true)
     try {
-      await onSave({ iaGraph: { nodes: cleanNodes, edges: cleanEdges }, iaPersona: persona, iaContexto, iaObjetivo, iaRegras, iaObjecoes, iaProvaSocial, iaPlanos, iaMidias })
-    } finally { setSalvando(false) }
+      await onSave({ iaGraph: { nodes: cleanNodes, edges: cleanEdges }, iaPersona: persona, iaContexto, iaSuporte, iaObjetivo, iaRegras, iaObjecoes, iaProvaSocial, iaPlanos, iaFunil, iaAgradecimentos, iaMidias })
+      if (fechar) onClose()
+    } catch (_) { /* onSave já mostra o toast de erro */ } finally { setSalvando(false) }
   }
 
   return (
@@ -200,7 +328,7 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
         <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-100">
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100 text-violet-600 shrink-0"><Rocket className="w-4 h-4" /></span>
           <h3 className="text-sm font-semibold text-stone-800 truncate flex-1">Atendente IA · {grupo?.nome}</h3>
-          <span className="text-xs text-stone-400 hidden sm:flex items-center gap-1">Ligue os blocos à IA · Plano → Checkout</span>
+          <span className="text-xs text-stone-400 hidden lg:flex items-center gap-1">Shift+clique seleciona vários · Ctrl+C / Ctrl+V copia e cola</span>
           <button onClick={onClose} className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
         </div>
 
@@ -213,17 +341,41 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
           <button onClick={() => addNode('objecoes')} className="btn-secondary text-xs min-h-[36px] px-3"><MessageCircle className="w-3.5 h-3.5" /> Objeções</button>
           <button onClick={() => addNode('provasocial')} className="btn-secondary text-xs min-h-[36px] px-3"><Star className="w-3.5 h-3.5" /> Prova social</button>
           <span className="w-px h-5 bg-surface-200 mx-1" />
+          {/* Páginas do funil (VSL/TSL/UP/DW) */}
+          <div className="relative">
+            <button onClick={() => setPagMenuOpen((v) => !v)} className="btn-secondary text-xs min-h-[36px] px-3"><Layers className="w-3.5 h-3.5" /> Páginas <ChevronDown className="w-3 h-3" /></button>
+            {pagMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setPagMenuOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-20 w-52 rounded-xl border border-surface-200 bg-white shadow-lg p-1.5">
+                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-stone-400">Página principal</p>
+                  <button onClick={() => addOferta('vsl')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><Video className="w-4 h-4 text-indigo-500" /> Página VSL <span className="text-[10px] text-stone-400">(vídeo)</span></button>
+                  <button onClick={() => addOferta('tsl')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><FileText className="w-4 h-4 text-blue-500" /> Página TSL <span className="text-[10px] text-stone-400">(texto)</span></button>
+                  <div className="h-px bg-surface-100 my-1" />
+                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-stone-400">Depois da compra</p>
+                  <button onClick={() => addOferta('up')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><TrendingUp className="w-4 h-4 text-emerald-500" /> Upsell (UP)</button>
+                  <button onClick={() => addOferta('dw')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><TrendingDown className="w-4 h-4 text-amber-500" /> Downsell (DW)</button>
+                </div>
+              </>
+            )}
+          </div>
+          <span className="w-px h-5 bg-surface-200 mx-1" />
           <button onClick={() => addNode('plano')} className="btn-secondary text-xs min-h-[36px] px-3"><Package className="w-3.5 h-3.5" /> Plano</button>
           <button onClick={() => addNode('checkout')} className="btn-secondary text-xs min-h-[36px] px-3"><ShoppingBag className="w-3.5 h-3.5" /> Checkout</button>
+          <button onClick={() => addNode('agradecimento')} className="btn-secondary text-xs min-h-[36px] px-3"><Gift className="w-3.5 h-3.5" /> Agradecimento</button>
           <span className="w-px h-5 bg-surface-200 mx-1" />
           <button onClick={() => addNode('imagem')} className="btn-secondary text-xs min-h-[36px] px-3"><ImageIcon className="w-3.5 h-3.5" /> Imagem</button>
           <button onClick={() => addNode('audio')} className="btn-secondary text-xs min-h-[36px] px-3"><AudioLines className="w-3.5 h-3.5" /> Áudio</button>
-          <button onClick={salvar} disabled={salvando} className="btn-primary text-xs min-h-[36px] px-3 ml-auto">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar</button>
+          <span className="w-px h-5 bg-surface-200 mx-1 ml-auto" />
+          <button onClick={copiar} title="Copiar blocos selecionados (Ctrl+C)" className="btn-secondary text-xs min-h-[36px] px-3"><Copy className="w-3.5 h-3.5" /> Copiar</button>
+          <button onClick={colar} title="Colar (Ctrl+V)" className="btn-secondary text-xs min-h-[36px] px-3"><ClipboardPaste className="w-3.5 h-3.5" /> Colar</button>
+          <button onClick={() => salvar(false)} disabled={salvando} title="Grava sem fechar o fluxo" className="inline-flex items-center gap-1.5 text-xs min-h-[36px] px-3 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-600 disabled:opacity-50">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Gravar</button>
         </div>
 
         {/* Canvas */}
-        <div className="relative flex-1 min-h-0">
+        <div ref={wrapRef} className="relative flex-1 min-h-0">
           <ReactFlow
+            onInit={(inst) => { rfRef.current = inst }}
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
@@ -244,7 +396,7 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
             <div className="absolute top-3 right-3 w-[22rem] max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl shadow-xl border border-surface-200 p-4 space-y-3 z-10 max-h-[calc(88vh-8rem)] overflow-y-auto">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-stone-800">
-                  {sel.type === 'ia' ? 'Atendente IA' : ehConhecimento(sel.type) ? CONHECIMENTO[sel.type].label : sel.type === 'plano' ? 'Plano' : sel.type === 'checkout' ? 'Checkout' : sel.type === 'imagem' ? 'Imagem' : 'Áudio'}
+                  {sel.type === 'ia' ? 'Atendente IA' : ehConhecimento(sel.type) ? CONHECIMENTO[sel.type].label : sel.type === 'plano' ? 'Plano' : sel.type === 'checkout' ? 'Checkout' : sel.type === 'imagem' ? 'Imagem' : sel.type === 'audio' ? 'Áudio' : sel.type === 'oferta' ? (OFERTA[sel.data?.kind]?.label || 'Oferta') : sel.type === 'agradecimento' ? 'Agradecimento' : ''}
                 </p>
                 <button onClick={() => setSelId(null)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
               </div>
@@ -275,6 +427,11 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
                     <label className="block text-xs font-medium text-stone-600 mb-1">Texto</label>
                     <textarea value={sel.data?.texto || ''} onChange={(e) => upd(sel.id, { texto: e.target.value })} rows={6} placeholder={CONHECIMENTO.contexto.ph} className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600 mb-1">Suporte <span className="text-stone-400">(e-mails/telefones)</span></label>
+                    <textarea value={sel.data?.suporte || ''} onChange={(e) => upd(sel.id, { suporte: e.target.value })} rows={2} placeholder="Ex.: suporte@empresa.com · WhatsApp (11) 90000-0000" className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
+                    <p className="text-[11px] text-stone-400 mt-1">A IA manda o cliente falar com o suporte pra dúvidas de uso (login, configuração, problemas).</p>
+                  </div>
                 </>
               )}
 
@@ -287,6 +444,10 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
 
               {sel.type === 'plano' && (
                 <>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600 mb-1">Produto (grupo)</label>
+                    <Select value={sel.data?.grupoId || ''} onChange={(v) => { const g = grupos.find((x) => x.id === v); upd(sel.id, { grupoId: v, grupoNome: g?.nome || '', nome: (sel.data?.nome || g?.nome || '') }) }} withThumb title="Selecionar produto" placeholder="Escolher produto" className="w-full" options={grupos.map((g) => ({ value: g.id, label: g.nome, image: g.imagem }))} />
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-stone-600 mb-1">Nome do plano</label>
                     <input value={sel.data?.nome || ''} onChange={(e) => upd(sel.id, { nome: e.target.value })} placeholder="Ex.: Plano Mensal" className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm" />
@@ -345,6 +506,38 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
                 </div>
               )}
 
+              {sel.type === 'oferta' && (
+                <>
+                  <p className="text-xs font-semibold text-stone-500">
+                    {OFERTA[sel.data?.kind]?.label}{(sel.data?.kind === 'up' || sel.data?.kind === 'dw') ? ` · ${sel.data?.nome}` : ' (principal)'}
+                  </p>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600 mb-1">Produto (grupo)</label>
+                    <Select value={sel.data?.grupoId || ''} onChange={(v) => { const g = grupos.find((x) => x.id === v); upd(sel.id, { grupoId: v, grupoNome: g?.nome || '' }) }} withThumb title="Selecionar produto" placeholder="Escolher produto" className="w-full" options={grupos.map((g) => ({ value: g.id, label: g.nome, image: g.imagem }))} />
+                    {(sel.data?.kind === 'dw') && <p className="text-[11px] text-amber-600 mt-1">Downsell = o MESMO produto do upsell, mais barato/com cupom.</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600 mb-1">Descrição da oferta (pitch + preço)</label>
+                    <textarea value={sel.data?.descricao || ''} onChange={(e) => upd(sel.id, { descricao: e.target.value })} rows={4}
+                      placeholder={sel.data?.kind === 'up' ? 'Como a IA vende esse produto + o preço. Ex.: "aquecedor de chip com IA, protege contra ban — R$29,90".' : sel.data?.kind === 'dw' ? 'O mesmo produto com desconto/cupom + o preço menor. Ex.: "leva por R$19,90, promo só pra você".' : 'A oferta principal: o que vende essa página, o que inclui, preço.'}
+                      className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600 mb-1">Link da página {sel.data?.kind === 'vsl' ? 'VSL' : sel.data?.kind === 'tsl' ? 'TSL' : 'da oferta'} <span className="text-stone-400">(opcional)</span></label>
+                    <input value={sel.data?.link || ''} onChange={(e) => upd(sel.id, { link: e.target.value })} placeholder="https://..." className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm" />
+                  </div>
+                  <p className="text-[11px] text-stone-400">Puxe a bolinha de baixo até um bloco <b>Checkout</b> pra ligar o link de pagamento{(sel.data?.kind === 'up' || sel.data?.kind === 'dw') ? '. Só é oferecido DEPOIS da compra da oferta principal.' : '.'}</p>
+                </>
+              )}
+
+              {sel.type === 'agradecimento' && (
+                <div>
+                  <label className="block text-xs font-medium text-stone-600 mb-1">Mensagem de agradecimento</label>
+                  <textarea value={sel.data?.texto || ''} onChange={(e) => upd(sel.id, { texto: e.target.value })} rows={5} placeholder='Ex.: "Muito obrigado pela compra! 🎉 Qualquer dúvida na hora de usar, é só me chamar aqui."' className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
+                  <p className="text-[11px] text-stone-400 mt-1">Ligue um <b>Checkout</b> (bolinha de baixo dele) até aqui. A IA manda essa mensagem quando o cliente comprar aquela oferta.</p>
+                </div>
+              )}
+
               {sel.type !== 'ia' && (
                 <button onClick={() => removerNode(sel.id)} className="w-full text-xs text-red-600 hover:bg-red-50 rounded-lg py-2 flex items-center justify-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Remover bloco</button>
               )}
@@ -355,7 +548,7 @@ export default function AtendenteFlowEditor({ grupo, checkoutsFlat = [], uid, on
         {/* Footer */}
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-surface-100">
           <button onClick={onClose} className="btn-secondary min-h-[40px]">Cancelar</button>
-          <button onClick={salvar} disabled={salvando} className="btn-primary min-h-[40px]">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar</button>
+          <button onClick={() => salvar(true)} disabled={salvando} className="btn-primary min-h-[40px]">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar</button>
         </div>
       </div>
 

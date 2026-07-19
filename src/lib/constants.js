@@ -1,8 +1,9 @@
 export const SUPPORT_WHATSAPP = '5579988521880'
 
-export const WEBHOOK_EVOLUTION = 'https://n8n.iacodenxt.online/webhook/HUBNXTEVOPAI'
-export const WEBHOOK_REMARKETING = 'https://n8n.iacodenxt.online/webhook/REMARKETING'
-export const WEBHOOK_MSG_WHATSAPP = 'https://n8n.iacodenxt.online/webhook/HUBNXTMSGWHATSAPPEVOAPI'
+// WAHA / servidor autsend (WF3 = instâncias, WF1 = envio). Disparo e remarketing usam o MESMO webhook (WF1).
+export const WEBHOOK_EVOLUTION = 'https://n8n.autsend.online/webhook/instancia-waha'
+export const WEBHOOK_REMARKETING = 'https://n8n.autsend.online/webhook/remarketing'
+export const WEBHOOK_MSG_WHATSAPP = 'https://n8n.autsend.online/webhook/remarketing'
 
 export const KIWIFY_EVENTS = [
   { id: 'abandoned_cart', label: 'Carrinho Abandonado', color: 'amber' },

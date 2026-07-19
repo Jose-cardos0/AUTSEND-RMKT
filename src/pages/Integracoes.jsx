@@ -189,11 +189,11 @@ export default function Integracoes() {
       // Se estourar o limite, isto lança e nada é criado.
       const res = await criarInstancia(nome, numeroWhatsapp)
       const base64 = res.base64 ?? res.qrCodeBase64 ?? res.qrcode
-      const codeHash = res.hash ?? res.instanceId ?? res.code
-      const instanceId = res.instanciaId ?? res.instanceId ?? codeHash
+      // WAHA normaliza o nome (sem espaço/acento) e vira o ID da sessão — usa o que a CF devolveu.
+      const nomeFinal = res.nomeInstancia ?? nome
       const newId = res.id
       setQrBase64(base64 || null)
-      setInstanceEmConexao({ id: newId, nomeInstancia: nome, numeroWhatsapp: num })
+      setInstanceEmConexao({ id: newId, nomeInstancia: nomeFinal, numeroWhatsapp: num })
       setShowNovaInst(false)
       if (base64) setShowQrModal(true)
       const list = await getInstances(user.uid)
@@ -201,7 +201,7 @@ export default function Integracoes() {
       if (instances.length === 0) {
         await setSelectedInstance(user.uid, newId)
         setSelectedInstanceId(newId)
-        setEvolution({ id: newId, nomeInstancia: nome, hash: codeHash, instanceId, numeroWhatsapp: num, conectado: false, grupos: [] })
+        setEvolution({ id: newId, nomeInstancia: nomeFinal, hash: null, instanceId: null, numeroWhatsapp: num, conectado: false, grupos: [] })
       }
       toast.success('Instância criada. Escaneie o QR Code no popup.')
     } catch (err) {
@@ -484,21 +484,13 @@ export default function Integracoes() {
                 <button
                   type="button"
                   onClick={() => { handleVerificarStatus(inst) }}
-                  disabled={verificando || !inst.hash}
+                  disabled={verificando || !inst.nomeInstancia}
                   className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition disabled:opacity-50"
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-600 shrink-0">{verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}</span>
                   <span className="text-sm font-semibold text-stone-800">Verificar conexão</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => { handleBuscarGrupos(inst) }}
-                  disabled={buscandoGruposId !== null || !inst.hash || !inst.conectado || gruposPuxados}
-                  className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition disabled:opacity-50"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-600 shrink-0">{buscandoGruposId === inst.id ? <Loader2 className="w-4 h-4 animate-spin" /> : gruposPuxados ? <Check className="w-4 h-4 text-green-600" /> : <Users className="w-4 h-4" />}</span>
-                  <span className="text-sm font-semibold text-stone-800">{gruposPuxados ? 'Grupos já puxados' : 'Puxar grupos'}</span>
-                </button>
+                {/* Disparo para grupos removido (não portado pro WAHA) — botão "Puxar grupos" escondido. */}
                 <button
                   type="button"
                   onClick={() => { setGerenciarInst(null); handleExcluirInstancia(inst) }}
