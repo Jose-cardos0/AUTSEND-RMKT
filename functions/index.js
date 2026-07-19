@@ -1694,6 +1694,178 @@ exports.criarAtendente = onCall({ region: 'us-central1', timeoutSeconds: 30 }, a
   return { id: ref.id }
 })
 
+// ───────────── Cérebro do atendente (Fase 2): recebe msg → Grok → responde ─────────────
+
+const ATENDENTE_TOM = {
+  amigavel: 'simpático, acolhedor e próximo',
+  direta: 'direto e objetivo, sem enrolação',
+  ousada: 'persuasivo e vendedor, usando gatilhos de urgência e escassez com bom senso',
+  consultiva: 'consultivo, tirando as dúvidas com calma antes de oferecer a compra',
+}
+const HANDOVER_HORAS = 6 // pausa o bot por X horas quando o dono responde manual
+
+/** Monta a mensagem de sistema (o "cérebro") a partir do contexto salvo no productGroup. */
+function montarSystemAtendente(grupo) {
+  const persona = ATENDENTE_TOM[grupo?.iaPersona] || ATENDENTE_TOM.amigavel
+  const planos = Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []
+  const planosTxt = planos.length
+    ? planos.map((p) => `- ${p.nome}${p.preco ? ` (${p.preco})` : ''}${p.descricao ? `: ${p.descricao}` : ''} → pra enviar o link deste, escreva o marcador [CHECKOUT: ${p.nome}]`).join('\n')
+    : '(nenhum plano configurado)'
+  const linhas = [
+    `Você é um(a) vendedor(a) humano(a) atendendo no WhatsApp sobre o produto "${grupo?.nome || ''}". Seu tom é ${persona}.`,
+    grupo?.iaObjetivo ? `\nSEU OBJETIVO PRINCIPAL:\n${grupo.iaObjetivo}` : '',
+    grupo?.iaContexto ? `\nSOBRE O PRODUTO (use pra tirar dúvidas):\n${grupo.iaContexto}` : '',
+    grupo?.iaObjecoes ? `\nCOMO LIDAR COM OBJEÇÕES:\n${grupo.iaObjecoes}` : '',
+    grupo?.iaProvaSocial ? `\nPROVA SOCIAL (cite quando ajudar a convencer):\n${grupo.iaProvaSocial}` : '',
+    `\nPLANOS / CHECKOUTS DISPONÍVEIS:\n${planosTxt}`,
+    `\nREGRAS OBRIGATÓRIAS:`,
+    `- Fale CURTO e humanizado, como uma pessoa real no zap (1 a 3 frases). Nada de textão nem de robô.`,
+    `- Responda SEMPRE no mesmo idioma que o cliente escrever.`,
+    `- Quando o cliente quiser comprar/pagar/assinar, mande o link do plano certo usando EXATAMENTE o marcador [CHECKOUT: nome exato do plano]. NUNCA invente uma URL.`,
+    `- Não prometa nada que não esteja no contexto acima.`,
+    grupo?.iaRegras ? `- ${grupo.iaRegras.replace(/\n/g, '\n- ')}` : '',
+    `- Se não souber ou for um caso complexo, seja honesto e diga que vai chamar um atendente humano.`,
+  ]
+  return linhas.filter(Boolean).join('\n')
+}
+
+/** Troca os marcadores [CHECKOUT: nome] pelo link real do plano correspondente. */
+function injetarCheckouts(texto, grupo) {
+  const planos = Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []
+  return String(texto || '').replace(/\[CHECKOUT:\s*([^\]]+)\]/gi, (m, nome) => {
+    const alvo = nome.trim().toLowerCase()
+    const p = planos.find((x) => (x.nome || '').trim().toLowerCase() === alvo) || planos.find((x) => (x.nome || '').trim().toLowerCase().includes(alvo))
+    return p?.checkoutLink || ''
+  }).replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/** Envia uma mensagem de WhatsApp por uma instância ESPECÍFICA (via n8n). */
+async function enviarWhatsAppInstancia(inst, telefone, nome, mensagem) {
+  const numeroWhatsApp = (inst?.numeroWhatsapp || inst?.numeroWhatsApp || '').toString().replace(/\D/g, '')
+  const payload = {
+    tipoAcao: 'enviar_remarketing',
+    contatos: [{ nome: nome || '', telefone, email: '' }],
+    mensagem,
+    nomeInstancia: inst?.nomeInstancia || '',
+    hash: inst?.hash || '',
+    instanciaId: inst?.instanceId || inst?.hash || '',
+    numeroWhatsApp: numeroWhatsApp || undefined,
+    evento: 'atendente',
+    produto: '',
+  }
+  const res = await fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  return res.ok
+}
+
+/** Resolve uid + instância + atendente ATIVO a partir do nome da instância (ou uid dado). */
+async function resolverAtendentePorInstancia(instanceName, uidHint) {
+  let uid = uidHint || null
+  let instDoc = null
+  if (uid) {
+    const s = await db.collection(`users/${uid}/instances`).where('nomeInstancia', '==', instanceName).limit(1).get()
+    if (!s.empty) instDoc = { id: s.docs[0].id, ...s.docs[0].data() }
+  } else {
+    try {
+      const s = await db.collectionGroup('instances').where('nomeInstancia', '==', instanceName).limit(1).get()
+      if (!s.empty) { instDoc = { id: s.docs[0].id, ...s.docs[0].data() }; uid = s.docs[0].ref.path.split('/')[1] }
+    } catch (e) { console.error('collectionGroup instances (índice?):', e?.message || e); return null }
+  }
+  if (!uid || !instDoc) return null
+  const atSnap = await db.collection(`users/${uid}/atendentes`).where('instanceId', '==', instDoc.id).limit(1).get()
+  if (atSnap.empty) return null
+  const atendente = { id: atSnap.docs[0].id, ...atSnap.docs[0].data() }
+  if (atendente.ativo !== true) return null
+  return { uid, instDoc, atendente }
+}
+
+/** Parser flexível do payload de mensagem recebida (Evolution/n8n). */
+function parseMsgRecebida(body) {
+  const b = body || {}
+  const d = b.data || b.message || b
+  const instanceName = String(b.instance || b.instanceName || b.nomeInstancia || d.instance || '').trim()
+  const key = d.key || b.key || {}
+  const jid = String(key.remoteJid || b.remoteJid || b.from || d.from || b.telefone || '').trim()
+  const telefone = jid.replace(/@.*/, '').replace(/\D/g, '')
+  const fromMe = !!(key.fromMe ?? b.fromMe ?? d.fromMe)
+  const msg = d.message || b.message || {}
+  const texto = String(
+    (typeof msg === 'string' ? msg : '') ||
+    msg.conversation || msg?.extendedTextMessage?.text ||
+    b.texto || b.text || b.mensagem || d.text || d.conversation || '',
+  ).trim()
+  const nome = String(d.pushName || b.pushName || b.nome || '').trim()
+  const ehGrupo = jid.includes('@g.us')
+  return { instanceName, telefone, fromMe, texto, nome, ehGrupo }
+}
+
+/**
+ * Webhook do atendente IA: recebe as mensagens que chegam nas instâncias e responde com a Grok.
+ * O Evolution/n8n deve fazer POST aqui a cada mensagem recebida. Aceita ?uid= pra pular o lookup.
+ */
+exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' }, async (req, res) => {
+  try {
+    const body = req.body || {}
+    console.log('waAtendenteWebhook recebido:', JSON.stringify(body).slice(0, 1500))
+    const m = parseMsgRecebida(body)
+    if (!m.instanceName || !m.telefone || m.ehGrupo) { res.status(200).json({ ok: true, ignored: 'sem instancia/telefone ou grupo' }); return }
+
+    const resolved = await resolverAtendentePorInstancia(m.instanceName, (req.query && req.query.uid) || null)
+    if (!resolved) { res.status(200).json({ ok: true, ignored: 'sem atendente ativo' }); return }
+    const { uid, instDoc, atendente } = resolved
+
+    const gSnap = await db.doc(`users/${uid}/productGroups/${atendente.grupoId}`).get()
+    if (!gSnap.exists) { res.status(200).json({ ok: true, ignored: 'sem produto' }); return }
+    const grupo = gSnap.data()
+
+    const convRef = db.doc(`users/${uid}/waConversas/${m.telefone}`)
+    const convSnap = await convRef.get()
+    const conv = convSnap.exists ? convSnap.data() : { messages: [] }
+    const historico = Array.isArray(conv.messages) ? conv.messages : []
+    const agora = Date.now()
+
+    // Handover: mensagem do DONO (fromMe) que NÃO é o eco da última que a IA mandou → pausa o bot.
+    if (m.fromMe) {
+      if (m.texto && m.texto === conv.iaUltimaMsg) { res.status(200).json({ ok: true, ignored: 'eco da ia' }); return }
+      await convRef.set({ pausadoAte: agora + HANDOVER_HORAS * 3600000, messages: [...historico, { role: 'dono', text: m.texto, ts: agora }].slice(-30), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      res.status(200).json({ ok: true, handover: true }); return
+    }
+
+    // Bot pausado (dono assumiu) → só guarda a mensagem, não responde.
+    const novoHist = [...historico, { role: 'user', text: m.texto, ts: agora }].slice(-30)
+    if (conv.pausadoAte && conv.pausadoAte > agora) {
+      await convRef.set({ messages: novoHist, nome: m.nome || conv.nome || '', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      res.status(200).json({ ok: true, pausado: true }); return
+    }
+    if (!m.texto) { res.status(200).json({ ok: true, ignored: 'sem texto' }); return }
+
+    // Monta o prompt e chama a Grok
+    const messages = [
+      { role: 'system', content: montarSystemAtendente(grupo) },
+      ...novoHist.slice(-16).map((x) => ({ role: x.role === 'assistant' ? 'assistant' : 'user', content: x.text })),
+    ]
+    let respostaIA = ''
+    try { respostaIA = await callGrok(messages) } catch (e) { console.error('atendente Grok', e?.message || e) }
+    respostaIA = injetarCheckouts(respostaIA, grupo)
+    if (!respostaIA) { await convRef.set({ messages: novoHist, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ ok: true, semResposta: true }); return }
+
+    await enviarWhatsAppInstancia(instDoc, m.telefone, m.nome, respostaIA)
+
+    // Custo de IA (Gastos CRM)
+    try { const mesId = new Date(agora).toISOString().slice(0, 7); await db.doc(`tenants/${uid}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
+
+    await convRef.set({
+      messages: [...novoHist, { role: 'assistant', text: respostaIA, ts: Date.now() }].slice(-30),
+      iaUltimaMsg: respostaIA, atendenteId: atendente.id, nome: m.nome || conv.nome || '',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true })
+
+    res.status(200).json({ ok: true, respondido: true })
+  } catch (err) {
+    console.error('waAtendenteWebhook', err?.message || err)
+    res.status(200).json({ ok: false })
+  }
+})
+
 /** Checa (no servidor, sem cache) se o cliente ainda pode criar instância. Usado antes de abrir o form. */
 exports.instanciaPodeCriar = onCall({ region: 'us-central1' }, async (request) => {
   const uid = request.auth?.uid

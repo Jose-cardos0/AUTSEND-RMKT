@@ -10,15 +10,8 @@ import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import { usePlano } from '../../lib/PlanoContext'
-import { Package, Plus, Trash2, Loader2, Check, ChevronDown, Pencil, X, Search, Rocket, Link2, ShoppingBag } from 'lucide-react'
-
-// Perfis comerciais (tom que a IA usa no atendimento). Usados na Central de Atendentes (Fase 2).
-export const PERSONAS = [
-  { key: 'amigavel', label: 'Amigável', desc: 'Simpática e acolhedora' },
-  { key: 'direta', label: 'Direta', desc: 'Objetiva, sem enrolação' },
-  { key: 'ousada', label: 'Ousada', desc: 'Persuasiva e vendedora' },
-  { key: 'consultiva', label: 'Consultiva', desc: 'Tira dúvidas com calma' },
-]
+import AtendenteFlowEditor from '../../components/AtendenteFlowEditor'
+import { Package, Plus, Trash2, Loader2, Check, ChevronDown, Pencil, X, Search } from 'lucide-react'
 
 export default function EmailProdutos() {
   const [user] = useAuthState(auth)
@@ -41,44 +34,21 @@ export default function EmailProdutos() {
   const [imgPopup, setImgPopup] = useState(null)
   const [imgTemp, setImgTemp] = useState('')
   const [salvandoImg, setSalvandoImg] = useState(false)
-  // Contexto da IA (atendente) por produto
+  // Atendente IA (editor React Flow) por produto
   const [ctxPopup, setCtxPopup] = useState(null) // grupo em edição
-  const [ctxTexto, setCtxTexto] = useState('')
-  const [ctxPlanos, setCtxPlanos] = useState('') // contexto dos planos (mensal/anual/único...)
-  const [ctxPersona, setCtxPersona] = useState('amigavel')
-  const [ctxCheckouts, setCtxCheckouts] = useState([]) // [{ nome, link }]
-  const [salvandoCtx, setSalvandoCtx] = useState(false)
   const [checkoutsFlat, setCheckoutsFlat] = useState([]) // todos os checkouts de todas as lojas
-  const [ckPickerOpen, setCkPickerOpen] = useState(false)
-  const [ckQ, setCkQ] = useState('')
   const toggleAberto = (id) => setAbertos((a) => ({ ...a, [id]: !a[id] }))
 
-  const abrirContexto = (grupo) => {
-    setCtxTexto(grupo.iaContexto || '')
-    setCtxPlanos(grupo.iaContextoPlanos || '')
-    setCtxPersona(grupo.iaPersona || 'amigavel')
-    setCtxCheckouts(Array.isArray(grupo.iaCheckouts) ? grupo.iaCheckouts : [])
-    setCkQ('')
-    setCtxPopup(grupo)
-  }
-  const salvarContexto = async () => {
+  const abrirContexto = (grupo) => setCtxPopup(grupo)
+  const salvarContextoGraph = async (patch) => {
     if (!ctxPopup) return
-    setSalvandoCtx(true)
     try {
-      const patch = { iaContexto: ctxTexto.trim(), iaContextoPlanos: ctxPlanos.trim(), iaPersona: ctxPersona, iaCheckouts: ctxCheckouts }
       await saveProductGroup(user.uid, ctxPopup.id, patch)
       setGrupos((prev) => prev.map((g) => (g.id === ctxPopup.id ? { ...g, ...patch } : g)))
       setCtxPopup(null)
-      toast.success('Contexto do produto salvo.')
+      toast.success('Atendente salvo.')
     } catch (err) { toast.error(err.message || 'Erro ao salvar') }
-    finally { setSalvandoCtx(false) }
   }
-  const addCheckoutCtx = (c) => {
-    if (ctxCheckouts.some((x) => x.link === c.link)) { toast('Esse checkout já está na lista.', { icon: 'ℹ️' }); return }
-    setCtxCheckouts((prev) => [...prev, { nome: c.nome || 'Checkout', link: c.link }])
-    setCkPickerOpen(false)
-  }
-  const removeCheckoutCtx = (i) => setCtxCheckouts((prev) => prev.filter((_, idx) => idx !== i))
 
   const abrirImg = (grupo) => { setImgTemp(grupo.imagem || ''); setImgPopup(grupo) }
   const onImgFile = (file) => {
@@ -295,7 +265,7 @@ export default function EmailProdutos() {
                   )}
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => openLojaPopup(grupo)} className="p-2 rounded-lg text-stone-400 hover:bg-primary-50 hover:text-primary-600" title="Definir lojas"><Plus className="w-4 h-4" /></button>
-                    <button onClick={() => abrirContexto(grupo)} className={`p-2 rounded-lg hover:bg-violet-50 hover:text-violet-600 ${grupo.iaContexto ? 'text-violet-500' : 'text-stone-400'}`} title="Contexto da IA (atendente)"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => abrirContexto(grupo)} className={`p-2 rounded-lg hover:bg-violet-50 hover:text-violet-600 ${(grupo.iaGraph || grupo.iaContexto) ? 'text-violet-500' : 'text-stone-400'}`} title="Atendente IA (contexto)"><Pencil className="w-4 h-4" /></button>
                     <button onClick={() => setConfirmExcluir(grupo)} className="p-2 rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir grupo"><Trash2 className="w-4 h-4" /></button>
                     <button onClick={() => toggleAberto(grupo.id)} className="p-1.5 text-stone-400"><ChevronDown className={`w-4 h-4 transition-transform ${aberto ? 'rotate-180' : ''}`} /></button>
                   </div>
@@ -495,119 +465,15 @@ export default function EmailProdutos() {
         </div>
       )}
 
-      {/* Popup: Contexto da IA (atendente) do produto */}
+      {/* Editor React Flow do Atendente IA */}
       {ctxPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setCtxPopup(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[92dvh] overflow-y-auto p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600 shrink-0"><Rocket className="w-5 h-5" /></span>
-              <h3 className="text-base font-semibold text-stone-800 truncate flex-1">Atendente IA · {ctxPopup.nome}</h3>
-              <button onClick={() => setCtxPopup(null)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Coluna 1 — Contextos */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-1.5">Contexto do produto</label>
-                  <textarea value={ctxTexto} onChange={(e) => setCtxTexto(e.target.value)} rows={6}
-                    placeholder="O que é o produto, o que faz, benefícios, dúvidas comuns, objeções e como responder."
-                    className="w-full rounded-xl border border-surface-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-200" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-1.5">Contexto dos planos</label>
-                  <textarea value={ctxPlanos} onChange={(e) => setCtxPlanos(e.target.value)} rows={5}
-                    placeholder="Como funcionam os planos: cobrança mensal, anual ou única? O que muda de um plano pro outro e o que cada um inclui."
-                    className="w-full rounded-xl border border-surface-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-200" />
-                </div>
-              </div>
-
-              {/* Coluna 2 — Perfil + Checkouts */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-stone-600 mb-1.5">Perfil comercial</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {PERSONAS.map((p) => {
-                      const sel = ctxPersona === p.key
-                      return (
-                        <button key={p.key} type="button" onClick={() => setCtxPersona(p.key)} className={`rounded-xl border-2 px-3 py-2.5 text-center transition ${sel ? 'border-primary-500 bg-primary-50' : 'border-surface-200 bg-white hover:border-primary-200'}`}>
-                          <p className="text-sm font-semibold text-stone-800">{p.label}</p>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-stone-600">Checkouts / planos</label>
-                    <button onClick={() => { setCkQ(''); setCkPickerOpen(true) }} className="text-xs font-medium text-primary-600 hover:bg-primary-50 rounded-lg px-2 py-1 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Adicionar</button>
-                  </div>
-                  {ctxCheckouts.length === 0 ? (
-                    <p className="text-xs text-stone-400 py-2">Nenhum checkout. A IA precisa de pelo menos um pra fechar a venda.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {ctxCheckouts.map((c, i) => (
-                        <div key={i} className="rounded-xl border border-surface-200 p-2.5 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <ShoppingBag className="w-4 h-4 text-primary-500 shrink-0" />
-                            <input value={c.nome} onChange={(e) => setCtxCheckouts((prev) => prev.map((x, idx) => idx === i ? { ...x, nome: e.target.value } : x))} className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-stone-800 outline-none" placeholder="Rótulo (ex.: PLANO $49 / mês)" />
-                            <button onClick={() => removeCheckoutCtx(i)} className="p-1 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 shrink-0"><X className="w-4 h-4" /></button>
-                          </div>
-                          <p className="text-[11px] text-stone-400 truncate pl-6" title={c.link}>{c.link}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setCtxPopup(null)} className="btn-secondary min-h-[44px]">Cancelar</button>
-              <button onClick={salvarContexto} disabled={salvandoCtx} className="btn-primary min-h-[44px]">{salvandoCtx ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Popup: escolher checkout (todos de todas as lojas, com filtro) */}
-      {ckPickerOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => setCkPickerOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-1">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-600 shrink-0"><ShoppingBag className="w-4 h-4" /></span>
-              <h3 className="text-sm font-semibold text-stone-800 flex-1">Escolher checkout</h3>
-              <button onClick={() => setCkPickerOpen(false)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-              <input value={ckQ} onChange={(e) => setCkQ(e.target.value)} placeholder="Pesquisar checkout..." autoFocus className="w-full pl-9 pr-3 py-2.5 min-h-[42px] rounded-xl border border-surface-200 text-sm outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-400" />
-            </div>
-            {checkoutsFlat.length === 0 ? (
-              <p className="px-2 py-6 text-sm text-stone-500 text-center">Nenhum checkout cadastrado.<br />Adicione em <Link to="/checkouts" className="text-primary-600 underline">Checkouts</Link>.</p>
-            ) : (() => {
-              const q = ckQ.trim().toLowerCase()
-              const filt = q ? checkoutsFlat.filter((c) => (c.nome || '').toLowerCase().includes(q) || (c.link || '').toLowerCase().includes(q)) : checkoutsFlat
-              return (
-                <ul className="space-y-1 max-h-[320px] overflow-y-auto">
-                  {filt.length === 0 && <li className="px-3 py-6 text-sm text-stone-400 text-center">Nada encontrado</li>}
-                  {filt.map((c, i) => (
-                    <li key={i}>
-                      <button type="button" onClick={() => addCheckoutCtx(c)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-surface-100 text-left transition-colors">
-                        <Link2 className="w-4 h-4 text-primary-500 shrink-0" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium text-stone-800 truncate">{c.nome}</span>
-                          <span className="block text-[11px] text-stone-400 truncate">{c.link}</span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
-            })()}
-          </div>
-        </div>
+        <AtendenteFlowEditor
+          grupo={ctxPopup}
+          checkoutsFlat={checkoutsFlat}
+          uid={user.uid}
+          onClose={() => setCtxPopup(null)}
+          onSave={salvarContextoGraph}
+        />
       )}
     </PageShell>
   )

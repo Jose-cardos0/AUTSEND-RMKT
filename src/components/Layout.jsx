@@ -48,10 +48,10 @@ const navGroups = [
   },
   {
     key: 'atendentes',
-    label: 'Atendentes',
+    label: 'Comercial',
     icon: GlobeCheckIcon,
     items: [
-      { to: '/atendentes', label: 'Atendentes', icon: Rocket },
+      { to: '/atendentes', label: 'Vendedores', icon: Rocket },
     ],
   },
   {

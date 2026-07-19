@@ -562,6 +562,15 @@ export async function deleteProductGroup(uid, id) {
   await deleteDoc(doc(db, 'users', uid, 'productGroups', id))
 }
 
+/** Sobe uma mídia (imagem/áudio) de atendente pro Storage e devolve { url, path }. */
+export async function uploadAtendenteAsset(uid, blob, ext = 'jpg', contentType = 'image/jpeg') {
+  const path = `users/${uid}/atendenteAssets/${Date.now()}_${Math.round(Math.random() * 1e6)}.${ext}`
+  const r = storageRef(storage, path)
+  await uploadBytes(r, blob, { contentType })
+  const url = await getDownloadURL(r)
+  return { url, path }
+}
+
 // ── Central de Atendentes (bots de IA no WhatsApp) ──
 
 /** Lista os atendentes do cliente. */

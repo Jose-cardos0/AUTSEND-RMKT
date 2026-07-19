@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import { getAtendentes, criarAtendente, saveAtendente, deleteAtendente, getProductGroups, getInstances } from '../lib/firestore'
 import { usePlano } from '../lib/PlanoContext'
-import { PERSONAS } from './email/EmailProdutos'
+import { personaLabel } from '../lib/atendentePersonas'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import WhatsAppIcon from '../components/WhatsAppIcon'
@@ -13,8 +13,6 @@ import MelhorarPlano from '../components/MelhorarPlano'
 import Select from '../components/Select'
 import { useConfirm } from '../components/ConfirmDialog'
 import { Rocket, Plus, Trash2, Loader2, X, Package, Smartphone, Check, AlertCircle, Pencil, ChevronDown } from 'lucide-react'
-
-const personaLabel = (k) => PERSONAS.find((p) => p.key === k)?.label || 'Amigável'
 
 export default function Atendentes() {
   const [user] = useAuthState(auth)
@@ -87,8 +85,8 @@ export default function Atendentes() {
 
   return (
     <PageShell
-      badge="WhatsApp · Atendentes"
-      title="Atendentes"
+      badge="Comercial · Vendedores"
+      title="Vendedores"
       right={
         <button onClick={abrirCriar} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Novo atendente</button>
       }
@@ -120,7 +118,7 @@ export default function Atendentes() {
             const g = grupoById[a.grupoId]
             const inst = instById[a.instanceId]
             const semContexto = !(g?.iaContexto || '').trim()
-            const semCheckout = !(Array.isArray(g?.iaCheckouts) && g.iaCheckouts.length)
+            const semCheckout = !(Array.isArray(g?.iaPlanos) && g.iaPlanos.length)
             return (
               <div key={a.id} className="app-panel rounded-2xl p-4 flex flex-col gap-3">
                 <div className="flex items-center gap-3">
