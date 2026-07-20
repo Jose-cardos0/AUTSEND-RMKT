@@ -2037,12 +2037,21 @@ async function dispararLoteWF4(uid, disparoId, loteIndex, sessao) {
   const loteSnap = await db.doc(`users/${uid}/disparos/${disparoId}/lotes/${loteIndex}`).get()
   if (!loteSnap.exists) return false
   const lote = loteSnap.data()
-  const res = await fetch(WF4_DISPARO_URL, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessao: sessao || '', campanhaId: `${disparoId}_${loteIndex}`, contatos: lote.contatos || [] }),
-  })
+  // Timeout de 15s: se o WF4/n8n não responder (travado/fora do ar), NÃO trava a função (o botão destrava).
+  let ok = false
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 15000)
+    const res = await fetch(WF4_DISPARO_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessao: sessao || '', campanhaId: `${disparoId}_${loteIndex}`, contatos: lote.contatos || [] }),
+      signal: ctrl.signal,
+    })
+    clearTimeout(t)
+    ok = res.ok || res.status === 202
+  } catch (e) { console.error('dispararLoteWF4 fetch (timeout/erro):', e?.message || e) }
   await db.doc(`users/${uid}/disparos/${disparoId}`).set({ loteAtual: loteIndex, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-  return res.ok || res.status === 202
+  return ok
 }
 
 /**
