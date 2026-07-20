@@ -1,14 +1,16 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth } from '../lib/firebase'
-import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo } from '../lib/firestore'
+import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo, uploadCallAudio, saveAudioTemplate } from '../lib/firestore'
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import MessageEditor from '../components/MessageEditor'
 import TemplatePicker from '../components/TemplatePicker'
 import NichoPicker from '../components/NichoPicker'
-import { Send, Loader2, AlertCircle, Users, Download, Upload, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X } from 'lucide-react'
+import ImageLibraryPicker from '../components/ImageLibraryPicker'
+import AudioTemplatePicker from '../components/AudioTemplatePicker'
+import { Send, Loader2, AlertCircle, Users, Download, Upload, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X, Image as ImageLucide, AudioLines, Clock } from 'lucide-react'
 import PageShell, { Panel } from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import excelImg from '../assets/excel.png'
@@ -61,6 +63,14 @@ export default function EnviarMensagem() {
   const [paginaTimeline, setPaginaTimeline] = useState(1)
   const [tick, setTick] = useState(0)
   const [confirmExcluir, setConfirmExcluir] = useState(null)
+  // Anexos do disparo (imagem + áudio) — viram blocos no envio (WF4)
+  const [imgAnexo, setImgAnexo] = useState(null)     // { src, name }
+  const [audioAnexo, setAudioAnexo] = useState(null) // { url, nome, ext }
+  const [imgPickerOpen, setImgPickerOpen] = useState(false)
+  const [audioOrigemOpen, setAudioOrigemOpen] = useState(false)
+  const [audioPickerOpen, setAudioPickerOpen] = useState(false)
+  const [enviandoAudio, setEnviandoAudio] = useState(false)
+  const audioUpInputRef = useRef(null)
 
   useEffect(() => {
     if (!user?.uid) return
@@ -198,6 +208,26 @@ export default function EnviarMensagem() {
     }
     reader.readAsArrayBuffer(file)
     e.target.value = ''
+  }
+
+  // Áudio do computador: sobe pro Storage + salva na biblioteca de áudios (Templates → Áudio) e anexa.
+  const subirAudioPc = async (e) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (!/audio\/(mpeg|mp3|wav|x-wav)/.test(f.type) && !/\.(mp3|wav)$/i.test(f.name)) { toast.error('Escolha um MP3 ou WAV.'); return }
+    if (f.size > 10 * 1024 * 1024) { toast.error('Áudio muito grande (máx. 10 MB).'); return }
+    setEnviandoAudio(true)
+    try {
+      const ext = /\.wav$/i.test(f.name) ? 'wav' : 'mp3'
+      const ct = ext === 'mp3' ? 'audio/mpeg' : 'audio/wav'
+      const { url, path } = await uploadCallAudio(user.uid, f, ext, ct)
+      const nome = f.name.replace(/\.[^.]+$/, '')
+      await saveAudioTemplate(user.uid, null, { nome, audioUrl: url, storagePath: path, tipo: 'upload', ext })
+      setAudioAnexo({ url, nome, ext })
+      toast.success('Áudio anexado.')
+    } catch (err) { toast.error(err.message || 'Erro ao enviar áudio') }
+    finally { setEnviandoAudio(false) }
   }
 
   const iniciarEnvio = () => {
@@ -473,6 +503,34 @@ export default function EnviarMensagem() {
                 fillHeight
                 className="flex-1 min-h-[200px]"
               />
+
+              {/* Anexos: imagem + áudio (viram blocos no envio) */}
+              <div className="mt-2 flex flex-wrap items-center gap-2 shrink-0">
+                <button type="button" onClick={() => setImgPickerOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 border border-surface-200 rounded-xl px-3 py-2 hover:bg-surface-50 hover:border-primary-300 transition">
+                  <ImageLucide className="w-4 h-4" /> Imagem
+                </button>
+                <button type="button" onClick={() => setAudioOrigemOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 border border-surface-200 rounded-xl px-3 py-2 hover:bg-surface-50 hover:border-primary-300 transition">
+                  <AudioLines className="w-4 h-4" /> Áudio
+                </button>
+              </div>
+              {(imgAnexo || audioAnexo) && (
+                <div className="mt-2 flex flex-wrap gap-2 shrink-0">
+                  {imgAnexo && (
+                    <div className="relative">
+                      <img src={imgAnexo.src} alt="" className="h-16 w-16 rounded-lg object-cover border border-surface-200" />
+                      <button onClick={() => setImgAnexo(null)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-700 text-white hover:bg-red-600 shadow" title="Remover"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                  {audioAnexo && (
+                    <div className="relative flex items-center gap-2 h-16 px-3 rounded-lg border border-surface-200 bg-surface-50">
+                      <AudioLines className="w-4 h-4 text-primary-600 shrink-0" />
+                      <span className="text-xs text-stone-700 max-w-[140px] truncate">{audioAnexo.nome || 'Áudio'}</span>
+                      <button onClick={() => setAudioAnexo(null)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-700 text-white hover:bg-red-600 shadow" title="Remover"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button
                 onClick={iniciarEnvio}
                 disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia}
@@ -511,6 +569,18 @@ export default function EnviarMensagem() {
             </div>
             </div>
           </div>
+      </div>
+
+      {/* Aviso de intervalo + propaganda Fireon */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl border border-surface-200 bg-surface-50/60">
+        <div className="flex items-start gap-2 flex-1 min-w-0">
+          <Clock className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-stone-600 leading-relaxed">As mensagens são enviadas em <strong>intervalos de 1 a 5 minutos</strong> pra imitar um envio humano e reduzir o risco de bloqueio.</p>
+        </div>
+        <a href="https://fireon.com.br" target="_blank" rel="noopener noreferrer" className="group flex items-center gap-2.5 rounded-xl border border-surface-200 bg-white px-3 py-2 hover:border-primary-300 hover:shadow-sm transition shrink-0">
+          <img src="https://www.fireon.com.br/assets/logo2-ChO_Qgix.png" alt="Fireon" className="h-6 object-contain" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+          <span className="text-[11px] text-stone-600 leading-tight">Levou ban? <strong className="text-stone-800">Aqueça seus números no Fireon</strong> <span className="text-primary-600 group-hover:underline">→</span></span>
+        </a>
       </div>
 
       {historico.length > 0 && (
@@ -568,6 +638,32 @@ export default function EnviarMensagem() {
         </Panel>
       )}
       </div>
+
+      {/* Pickers de anexo */}
+      <ImageLibraryPicker uid={user?.uid} open={imgPickerOpen} onClose={() => setImgPickerOpen(false)} onPick={(img) => setImgAnexo(img)} currentSrc={imgAnexo?.src} />
+      <AudioTemplatePicker uid={user?.uid} open={audioPickerOpen} onClose={() => setAudioPickerOpen(false)} onPick={(t) => setAudioAnexo({ url: t.audioUrl, nome: t.nome, ext: t.ext })} currentId={null} />
+      <input ref={audioUpInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,.mp3,.wav" onChange={subirAudioPc} className="hidden" />
+
+      {/* Popup: origem do áudio (Template / Computador) */}
+      {audioOrigemOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => setAudioOrigemOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-4 space-y-2.5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-600 shrink-0"><AudioLines className="w-4 h-4" /></span>
+              <h3 className="text-sm font-semibold text-stone-800 flex-1">Anexar áudio</h3>
+              <button onClick={() => setAudioOrigemOpen(false)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
+            </div>
+            <button type="button" onClick={() => { setAudioOrigemOpen(false); setAudioPickerOpen(true) }} className="w-full flex items-center gap-2.5 p-3 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 shrink-0"><AudioLines className="w-4 h-4" /></span>
+              <span className="text-sm font-medium text-stone-800">Dos meus templates</span>
+            </button>
+            <button type="button" onClick={() => { setAudioOrigemOpen(false); audioUpInputRef.current?.click() }} disabled={enviandoAudio} className="w-full flex items-center gap-2.5 p-3 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition disabled:opacity-50">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 shrink-0">{enviandoAudio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}</span>
+              <span className="text-sm font-medium text-stone-800">Do computador (MP3/WAV)</span>
+            </button>
+          </div>
+        </div>
+      )}
     </PageShell>
   )
 }
