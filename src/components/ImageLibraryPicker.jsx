@@ -42,7 +42,7 @@ export default function ImageLibraryPicker({ uid, open, onClose, onPick, current
         ) : imgs.length === 0 ? (
           <p className="px-2 py-8 text-sm text-stone-500 text-center leading-relaxed">Nenhuma imagem na biblioteca ainda.<br />Anexe uma <strong>do computador</strong> — ela é salva aqui automaticamente.</p>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[360px] overflow-y-auto">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[360px] overflow-y-auto no-scrollbar">
             {imgs.map((img) => {
               const sel = currentSrc === img.src
               return (
