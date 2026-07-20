@@ -2068,11 +2068,18 @@ exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, 
   const instSnap = await db.collection(`users/${uid}/instances`).where('nomeInstancia', '==', sessao).limit(1).get()
   if (instSnap.empty) throw new HttpsError('failed-precondition', 'Instância não encontrada.')
 
-  // 1 disparo ATIVO por instância: se já tem um 'enviando' nessa sessão, barra.
+  // 1 disparo ATIVO por instância: se já tem um 'enviando' RECENTE nessa sessão, barra.
+  // Guard de validade: um 'enviando' parado há muito tempo provavelmente travou (WF4 não concluiu) → não bloqueia.
   const naSessao = await db.collection(`users/${uid}/disparos`).where('sessao', '==', sessao).get()
-  if (naSessao.docs.some((x) => x.data().status === 'enviando')) {
-    throw new HttpsError('failed-precondition', 'instancia_ocupada')
-  }
+  const agoraMs = Date.now()
+  const TRAVA_MS = 2 * 60 * 60 * 1000 // 2h
+  const temAtivoRecente = naSessao.docs.some((x) => {
+    const d = x.data()
+    if (d.status !== 'enviando') return false
+    const ts = d.updatedAt?.toMillis?.() ?? d.createdAt?.toMillis?.() ?? 0
+    return (agoraMs - ts) < TRAVA_MS
+  })
+  if (temAtivoRecente) throw new HttpsError('failed-precondition', 'instancia_ocupada')
 
   // Limpa/dedup contatos e monta os blocos por contato.
   const vistos = new Set()
@@ -2129,8 +2136,13 @@ exports.disparoOk = onRequest({ region: 'us-central1', timeoutSeconds: 30, memor
       if (!dDoc.exists) return
       const eDoc = await tx.get(okRef)
       if (eDoc.exists) return
+      const d = dDoc.data()
+      const enviados = (d.enviados || 0) + 1
+      const total = d.total || 0
+      // Auto-conclui quando todos os contatos foram contabilizados (não depende do campanhaConcluida do WF4).
+      const concluido = total > 0 && (enviados + (d.falhas || 0)) >= total && d.status === 'enviando'
       tx.set(okRef, { telefone, nome: b.nome || '', ts: admin.firestore.FieldValue.serverTimestamp() })
-      tx.set(dRef, { enviados: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      tx.set(dRef, { enviados, ...(concluido ? { status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp() } : {}), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     })
     res.status(200).json({ ok: true })
   } catch (err) { console.error('disparoOk', err?.message || err); res.status(200).json({ ok: false }) }
@@ -2155,8 +2167,13 @@ exports.disparoFalha = onRequest({ region: 'us-central1', timeoutSeconds: 30, me
       if (!dDoc.exists) return
       const fDoc = await tx.get(falhaRef)
       if (fDoc.exists) return
+      const d = dDoc.data()
+      const falhas = (d.falhas || 0) + 1
+      const total = d.total || 0
+      // Auto-conclui quando todos os contatos foram contabilizados (WF4 não avisa fim quando tudo falha).
+      const concluido = total > 0 && ((d.enviados || 0) + falhas) >= total && d.status === 'enviando'
       tx.set(falhaRef, { telefone, nome: b.nome || '', motivo: b.motivo || 'sem_whatsapp', detalhe: b.detalhe || '', ts: admin.firestore.FieldValue.serverTimestamp() })
-      tx.set(dRef, { falhas: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      tx.set(dRef, { falhas, ...(concluido ? { status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp() } : {}), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     })
     res.status(200).json({ ok: true })
   } catch (err) { console.error('disparoFalha', err?.message || err); res.status(200).json({ ok: false }) }
