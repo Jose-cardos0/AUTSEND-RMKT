@@ -6,6 +6,7 @@ import { auth } from '../lib/firebase'
 import { getAtendentes, criarAtendente, saveAtendente, deleteAtendente, getProductGroups, getInstances } from '../lib/firestore'
 import { usePlano } from '../lib/PlanoContext'
 import { personaLabel } from '../lib/atendentePersonas'
+import { KIWIFY_EVENTS } from '../lib/constants'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
 import WhatsAppIcon from '../components/WhatsAppIcon'
@@ -74,6 +75,14 @@ export default function Atendentes() {
     const novo = !a.ativo
     setAtendentes((prev) => prev.map((x) => (x.id === a.id ? { ...x, ativo: novo } : x)))
     try { await saveAtendente(user.uid, a.id, { ativo: novo }) } catch (err) { setAtendentes((prev) => prev.map((x) => (x.id === a.id ? { ...x, ativo: !novo } : x))); toast.error('Erro ao salvar.') }
+  }
+
+  // Eventos em que o vendedor puxa conversa (Fase 3 proativo). Se tiver automação pro evento, ela abre; senão o vendedor abre.
+  const toggleEvento = async (a, ev) => {
+    const atuais = Array.isArray(a.eventos) ? a.eventos : []
+    const novos = atuais.includes(ev) ? atuais.filter((e) => e !== ev) : [...atuais, ev]
+    setAtendentes((prev) => prev.map((x) => (x.id === a.id ? { ...x, eventos: novos } : x)))
+    try { await saveAtendente(user.uid, a.id, { eventos: novos }) } catch (err) { setAtendentes((prev) => prev.map((x) => (x.id === a.id ? { ...x, eventos: atuais } : x))); toast.error('Erro ao salvar.') }
   }
 
   const excluir = async (a) => {
@@ -156,6 +165,21 @@ export default function Atendentes() {
                     </span>
                   </div>
                 )}
+
+                {/* Vendedor proativo: eventos em que ele puxa conversa (Fase 3) */}
+                <div className="pt-2 border-t border-surface-100">
+                  <p className="text-[11px] font-medium text-stone-500 mb-1.5">Puxar conversa nos eventos:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {KIWIFY_EVENTS.map((ev) => {
+                      const on = Array.isArray(a.eventos) && a.eventos.includes(ev.id)
+                      return (
+                        <button key={ev.id} type="button" onClick={() => toggleEvento(a, ev.id)} className={`text-[11px] px-2 py-1 rounded-full border transition ${on ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-stone-500 border-surface-200 hover:border-primary-300'}`}>
+                          {ev.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
 
                 <div className="flex items-center gap-1 pt-2 border-t border-surface-100">
                   <button onClick={() => setTestando({ grupoId: a.grupoId, nome: g?.nome || a.nome })} disabled={semContexto} className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg py-2 transition-colors disabled:opacity-40 disabled:pointer-events-none" title={semContexto ? 'Configure o contexto primeiro' : 'Testar a IA'}><FlaskConical className="w-3.5 h-3.5" /> Testar IA</button>

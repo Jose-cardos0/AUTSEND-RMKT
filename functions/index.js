@@ -1704,8 +1704,22 @@ const ATENDENTE_TOM = {
 }
 const HANDOVER_HORAS = 6 // pausa o bot por X horas quando o dono responde manual
 
+// Rótulos amigáveis dos eventos (pro prompt do vendedor saber de onde o lead veio).
+const EVENTO_LABEL = {
+  abandoned_cart: 'carrinho abandonado',
+  'order_status.boleto_issued': 'boleto emitido (ainda não pago)',
+  'order_status.pix_issued': 'pix emitido (ainda não pago)',
+  'order_status.purchase_declined': 'compra recusada',
+  'order_status.purchase_approved': 'compra aprovada',
+  'order_status.refund': 'reembolso',
+  'order_status.chargeback': 'chargeback',
+  subscription_canceled: 'assinatura cancelada',
+  subscription_overdue: 'assinatura vencida',
+  subscription_renewed: 'assinatura renovada',
+}
+
 /** Monta a mensagem de sistema (o "cérebro") a partir do contexto salvo no productGroup. */
-function montarSystemAtendente(grupo) {
+function montarSystemAtendente(grupo, leadContexto) {
   const persona = ATENDENTE_TOM[grupo?.iaPersona] || ATENDENTE_TOM.amigavel
   const planos = Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []
   const planosTxt = planos.length
@@ -1734,6 +1748,7 @@ function montarSystemAtendente(grupo) {
 
   const linhas = [
     `Você é um(a) vendedor(a) humano(a) atendendo no WhatsApp sobre o produto "${grupo?.nome || ''}". Seu tom é ${persona}.`,
+    (leadContexto && (leadContexto.produto || leadContexto.evento)) ? `\nCONTEXTO DESTE LEAD (use pra personalizar, sem parecer robô nem citar "sistema"): ele chegou pelo evento "${EVENTO_LABEL[leadContexto.evento] || leadContexto.evento || ''}"${leadContexto.produto ? ` do produto "${leadContexto.produto}"` : ''}.` : '',
     grupo?.iaObjetivo ? `\nSEU OBJETIVO PRINCIPAL:\n${grupo.iaObjetivo}` : '',
     grupo?.iaContexto ? `\nSOBRE O PRODUTO (use pra tirar dúvidas):\n${grupo.iaContexto}` : '',
     grupo?.iaObjecoes ? `\nCOMO LIDAR COM OBJEÇÕES:\n${grupo.iaObjecoes}` : '',
@@ -1907,9 +1922,9 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     }
     if (!m.texto) { res.status(200).json({ responder: false, ignored: 'sem texto' }); return }
 
-    // Monta o prompt e chama a Grok
+    // Monta o prompt e chama a Grok (com o contexto do lead, se veio de um evento)
     const messages = [
-      { role: 'system', content: montarSystemAtendente(grupo) },
+      { role: 'system', content: montarSystemAtendente(grupo, conv.leadContexto) },
       ...novoHist.slice(-16).map((x) => ({ role: x.role === 'assistant' ? 'assistant' : 'user', content: x.text })),
     ]
     let respostaIA = ''
@@ -4102,6 +4117,7 @@ async function tryAutoSend(userId, leadRef, evento, customer, product, produtos)
       mensagem: mensagemFinal,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     })
+    return true // a automação de WhatsApp mandou a 1ª mensagem (o vendedor proativo cede a vez a ela)
   } catch (err) {
     console.error('Erro no auto-send:', err)
     await leadRef.update({ status: 'erro', erroMsg: err.message || 'Erro interno no auto-send' })
@@ -4192,10 +4208,70 @@ async function tryAutoSendEmail(userId, leadRef, evento, customer, product, prod
 
 /** Dispara as ações automáticas do evento: WhatsApp, E-mail, SMS e/ou Ligação IA (cada uma só se configurada e ativa). */
 async function dispararAcoes(userId, leadRef, evento, customer, product, produtos) {
-  await tryAutoSend(userId, leadRef, evento, customer, product, produtos)
+  const waAutoEnviou = await tryAutoSend(userId, leadRef, evento, customer, product, produtos)
   await tryAutoSendEmail(userId, leadRef, evento, customer, product, produtos)
   await tryAutoSendSMS(userId, leadRef, evento, customer, product, produtos)
   await tryAutoSendCall(userId, leadRef, evento, customer, product, produtos)
+  // Vendedor proativo (Fase 3): guarda o contexto do lead e abre a conversa se não houver automação.
+  await tryAtendenteEvento(userId, evento, customer, product, produtos, waAutoEnviou === true)
+}
+
+/**
+ * Vendedor proativo (Fase 3). Quando um evento cai, o atendente ATIVO do grupo daquele produto
+ * (que tenha o evento marcado no card) faz 2 coisas:
+ *  1) guarda o CONTEXTO do lead (produto + evento) na conversa → o fluxo reativo abre personalizado;
+ *  2) se NÃO houver automação pra aquele evento (automação tem prioridade), a IA manda a 1ª mensagem.
+ */
+async function tryAtendenteEvento(userId, evento, customer, product, produtos, automacaoJaEnviou) {
+  try {
+    const telefone = String(customer?.telefone || '').replace(/\D/g, '')
+    if (!telefone) return
+    const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
+    const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const grupo = acharGrupo(grupos, produtos, product)
+    if (!grupo) return
+
+    // Atendente ATIVO desse grupo que tem ESTE evento marcado.
+    const atSnap = await db.collection(`users/${userId}/atendentes`).where('grupoId', '==', grupo.id).get()
+    const atendente = atSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .find((a) => a.ativo === true && Array.isArray(a.eventos) && a.eventos.includes(evento))
+    if (!atendente) return
+
+    const convRef = db.doc(`users/${userId}/waConversas/${telefone}`)
+    const convSnap = await convRef.get()
+    const conv = convSnap.exists ? convSnap.data() : {}
+    const hist = Array.isArray(conv.messages) ? conv.messages : []
+
+    // 1) Guarda o contexto do lead (o reativo usa isso pra personalizar a resposta).
+    const leadContexto = { produto: product?.nome || '', evento, ts: Date.now() }
+    await convRef.set({ leadContexto, atendenteId: atendente.id, nome: customer.nome || conv.nome || '', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+
+    // 2) Automação tem prioridade: se ela já mandou a 1ª mensagem, o vendedor só reage quando o lead responder.
+    if (automacaoJaEnviou) return
+
+    // 3) Sem automação → o vendedor abre a conversa (IA gera a 1ª mensagem).
+    const instSnap = await db.doc(`users/${userId}/instances/${atendente.instanceId}`).get()
+    if (!instSnap.exists) return
+    const inst = { id: instSnap.id, ...instSnap.data() }
+    if (!inst.nomeInstancia) return
+
+    const messages = [
+      { role: 'system', content: montarSystemAtendente(grupo, leadContexto) },
+      { role: 'user', content: '[INÍCIO PROATIVO] Você está começando a conversa (o lead ainda não falou). Mande a PRIMEIRA mensagem, curta e humana (1-2 frases), puxando papo com base no contexto do lead acima. Não diga que é um bot nem cite "sistema".' },
+    ]
+    let abertura = ''
+    try { abertura = await callGrok(messages) } catch (e) { console.error('atendente abertura Grok', e?.message || e) }
+    abertura = injetarCheckouts(abertura, grupo)
+    if (!abertura) return
+
+    await enviarWhatsAppInstancia(inst, telefone, customer.nome, abertura)
+    try { const mesId = new Date().toISOString().slice(0, 7); await db.doc(`tenants/${userId}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
+    await convRef.set({
+      messages: [...hist, { role: 'assistant', text: abertura, ts: Date.now() }].slice(-30),
+      iaUltimaMsg: abertura,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true })
+  } catch (err) { console.error('tryAtendenteEvento', err?.message || err) }
 }
 
 /**
