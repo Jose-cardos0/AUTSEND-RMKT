@@ -3,7 +3,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth } from '../lib/firebase'
-import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo, uploadCallAudio, saveAudioTemplate } from '../lib/firestore'
+import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo, uploadCallAudio, saveAudioTemplate, iniciarDisparoWA } from '../lib/firestore'
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import { uploadEmailAsset } from '../lib/storageAssets'
 import MessageEditor from '../components/MessageEditor'
@@ -22,11 +22,12 @@ const STORAGE_KEY = (uid) => `enviarMensagem_historico_${uid}`
 
 const WA_STATUS = {
   enviando: 'bg-blue-100 text-blue-700',
+  concluido: 'bg-green-100 text-green-700',
   finalizado: 'bg-green-100 text-green-700',
   cancelado: 'bg-red-100 text-red-700',
   erro: 'bg-red-100 text-red-700',
 }
-const WA_STATUS_LABEL = { enviando: 'Enviando', finalizado: 'Finalizado', cancelado: 'Cancelado', erro: 'Erro' }
+const WA_STATUS_LABEL = { enviando: 'Enviando', concluido: 'Concluído', finalizado: 'Finalizado', cancelado: 'Cancelado', erro: 'Erro' }
 const formatDate = (ts) => {
   if (!ts) return '-'
   const d = ts.toDate ? ts.toDate() : ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
@@ -125,21 +126,13 @@ export default function EnviarMensagem() {
     return () => clearInterval(interval)
   }, [])
 
-  // Quando o countdown chega a 0, marca o disparo como finalizado (local + Firebase)
+  // Atualiza o progresso (enviados/falhas/status) enquanto houver disparo em andamento.
+  const temDisparoAtivo = historico.some((h) => h.status === 'enviando')
   useEffect(() => {
-    const now = Date.now()
-    if (!user?.uid) return
-    setHistorico((prev) => {
-      const next = prev.map((item) =>
-        item.status === 'enviando' && item.endTime <= now
-          ? { ...item, status: 'finalizado' }
-          : item
-      )
-      const changed = next.filter((item, i) => item !== prev[i])
-      changed.forEach((item) => updateDisparo(user.uid, item.disparoId, { status: 'finalizado' }).catch(() => {}))
-      return next.some((item, i) => item !== prev[i]) ? next : prev
-    })
-  }, [tick, user?.uid])
+    if (!user?.uid || !temDisparoAtivo) return
+    const id = setInterval(() => { getDisparos(user.uid).then(setHistorico).catch(() => {}) }, 20000)
+    return () => clearInterval(id)
+  }, [user?.uid, temDisparoAtivo])
 
   const parseLista = (text) => {
     const lines = text
@@ -273,63 +266,28 @@ export default function EnviarMensagem() {
       toast.error('Selecione uma instância em Integrações.')
       return
     }
-    const disparoId = `disparo_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-    const total = contatos.length
-    const tempoMin = total * MINUTOS_POR_MENSAGEM
-    const endTime = Date.now() + tempoMin * 60 * 1000
-    const createdAt = Date.now()
-    const novoItem = {
-      disparoId,
-      nomeDisparo: nome,
-      mensagem,
-      total,
-      enviadosCount: 0,
-      status: 'enviando',
-      endTime,
-      createdAt,
-    }
-    setHistorico((prev) => [novoItem, ...prev])
-    setDisparo(user.uid, disparoId, {
-      nomeDisparo: nome,
-      mensagem,
-      total,
-      enviadosCount: 0,
-      status: 'enviando',
-      endTime,
-      createdAt,
-    }).catch(() => {})
-    setDisparoAtual({ id: disparoId, nome, total })
-    setEnviadosCount(0)
     setMsg({ type: '', text: '' })
-    setMensagem('')
-    let enviados = 0
-    const TIMEOUT_MS = 90000
-    const timeoutId = setTimeout(() => {
-      setDisparoAtual(null)
-      toast('O envio pode continuar em segundo plano. Acompanhe na linha do tempo.', { icon: 'ℹ️' })
-    }, TIMEOUT_MS)
     try {
-      const msgBase = mensagem.trim()
-      // Um único POST: array completo no n8n (pausa de 5 min entre envios fica no fluxo n8n)
-      await enviarMensagemWhatsApp(contatos, msgBase, evolutionAtual, {
-        disparoId,
+      const r = await iniciarDisparoWA({
+        sessao: evolutionAtual.nomeInstancia,
         nomeDisparo: nome,
-        intervaloMinutos: MINUTOS_POR_MENSAGEM,
+        mensagem: mensagem.trim(),
+        imagemUrl: imgAnexo?.src || null,
+        audioUrl: audioAnexo?.url || null,
+        contatos: contatos.map((c) => ({ telefone: c.telefone, nome: c.nome })),
       })
-      enviados = total
-      setEnviadosCount(total)
-      clearTimeout(timeoutId)
-      atualizarItemHistorico(disparoId, { enviadosCount: total })
-      setMsg({ type: 'success', text: 'Disparo iniciado.' })
-      toast.success(`Disparo "${nome}" iniciado: ${total} contato(s).`)
+      setMensagem(''); setImgAnexo(null); setAudioAnexo(null); setLista('')
+      setHistorico(await getDisparos(user.uid))
+      setTimelineOpen(true)
+      setMsg({ type: 'success', text: `Disparo iniciado: ${r.total} contato(s).` })
+      toast.success(`Disparo "${nome}" iniciado: ${r.total} contato(s).`)
     } catch (err) {
-      clearTimeout(timeoutId)
-      atualizarItemHistorico(disparoId, { status: 'erro', enviadosCount: enviados })
-      setMsg({ type: 'error', text: err.message || 'Erro ao enviar mensagem' })
-      toast.error(err.message || 'Erro ao enviar.')
-    } finally {
-      clearTimeout(timeoutId)
-      setDisparoAtual(null)
+      const ocupada = (err?.message || '').includes('instancia_ocupada')
+      const txt = ocupada
+        ? 'Essa instância já tem um disparo em andamento. Espere ele terminar pra iniciar outro.'
+        : (err?.message || 'Erro ao iniciar o disparo.')
+      setMsg({ type: 'error', text: txt })
+      toast.error(txt)
     }
   }
 
@@ -603,11 +561,9 @@ export default function EnviarMensagem() {
           <div className="divide-y divide-surface-100">
             {historicoPagina.map((item) => {
               const aberto = expandedWa === item.disparoId
-              const remaining = getRemainingMin(item.endTime)
-              const restantes = getRestantes(item)
-              const emEnvio = item.status === 'enviando' && remaining > 0
-              const statusView = item.status === 'enviando' && remaining <= 0 ? 'finalizado' : item.status
-              const enviadosMostrar = emEnvio ? (item.total - restantes) : item.enviadosCount
+              const enviados = item.enviados ?? item.enviadosCount ?? 0
+              const falhas = item.falhas ?? 0
+              const status = item.status || 'enviando'
               return (
                 <div key={item.disparoId}>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-4">
@@ -619,10 +575,10 @@ export default function EnviarMensagem() {
                       </div>
                     </button>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-stone-600">{enviadosMostrar}/{item.total} enviados</span>
-                      {item.entregues > 0 && <span className="text-xs text-emerald-600 font-medium">{item.entregues} entregue{item.entregues > 1 ? 's' : ''}</span>}
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${WA_STATUS[statusView] || 'bg-stone-100 text-stone-600'}`}>
-                        {WA_STATUS_LABEL[statusView] || statusView}
+                      <span className="text-xs text-stone-600">{enviados}/{item.total} enviados</span>
+                      {falhas > 0 && <span className="text-xs text-red-500 font-medium">{falhas} falha{falhas > 1 ? 's' : ''}</span>}
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${WA_STATUS[status] || 'bg-stone-100 text-stone-600'}`}>
+                        {WA_STATUS_LABEL[status] || status}
                       </span>
                       <button onClick={() => handleExcluirDisparo(item.disparoId, item.nomeDisparo)} className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir">
                         <Trash2 className="w-4 h-4" />

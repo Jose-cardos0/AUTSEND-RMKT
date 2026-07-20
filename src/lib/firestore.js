@@ -58,6 +58,12 @@ export async function getDisparos(uid) {
   })
 }
 
+/** Inicia um disparo em massa via WF4 (o backend orquestra os lotes de 50 + progresso por callback). */
+export async function iniciarDisparoWA({ sessao, nomeDisparo, mensagem, imagemUrl, audioUrl, contatos }) {
+  const r = await httpsCallable(functions, 'iniciarDisparoWA')({ sessao, nomeDisparo, mensagem, imagemUrl, audioUrl, contatos })
+  return r.data // { disparoId, total, totalLotes }
+}
+
 /** Cria ou substitui um disparo (id = disparoId) */
 export async function setDisparo(uid, disparoId, data) {
   const ref = doc(db, 'users', uid, 'disparos', disparoId)

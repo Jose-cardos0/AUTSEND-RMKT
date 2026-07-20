@@ -1999,6 +1999,211 @@ exports.disparos = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory
   }
 })
 
+// ═════════════════════ DISPARO EM MASSA WhatsApp (WF4 /disparo) ═════════════════════
+// WF4 aceita máx 50 contatos por POST e 1 campanha por sessão. Pra listas grandes, quebramos
+// em lotes de 50 e disparamos um de cada vez: o próximo lote sai quando o WF4 avisa
+// /campanhaConcluida do anterior. Progresso real vem por /disparoOk e /disparoFalha.
+const WF4_DISPARO_URL = 'https://n8n.autsend.online/webhook/disparo'
+const DISPARO_LOTE_MAX = 50
+
+/** Resolve o uid dono da instância pelo nome da sessão (índice collectionGroup instances.nomeInstancia). */
+async function uidPorSessao(sessao) {
+  try {
+    const s = await db.collectionGroup('instances').where('nomeInstancia', '==', sessao).limit(1).get()
+    if (!s.empty) return s.docs[0].ref.path.split('/')[1]
+  } catch (e) { console.error('uidPorSessao (índice?):', e?.message || e) }
+  return null
+}
+
+/** Valida o Bearer token dos callbacks do n8n (API_SAAS_TOKEN). */
+function callbackAutorizado(req) {
+  const token = process.env.API_SAAS_TOKEN || ''
+  return !!token && String(req.headers.authorization || '') === `Bearer ${token}`
+}
+
+/** Monta os blocos de um contato: texto personalizado (+ imagem + áudio, nessa ordem). */
+function montarBlocosDisparo(template, nome, telefone, imagemUrl, audioUrl) {
+  const blocos = []
+  const texto = replaceVariables(template || '', { nome: nome || '', telefone: telefone || '', email: '' }, { nome: '' }).trim()
+  if (texto) blocos.push({ tipo: 'texto', conteudo: texto })
+  if (imagemUrl) blocos.push({ tipo: 'imagem', url: imagemUrl })
+  if (audioUrl) blocos.push({ tipo: 'audio', url: audioUrl })
+  return blocos
+}
+
+/** Dispara UM lote pro WF4. campanhaId = `${disparoId}_${loteIndex}`. */
+async function dispararLoteWF4(uid, disparoId, loteIndex, sessao) {
+  const loteSnap = await db.doc(`users/${uid}/disparos/${disparoId}/lotes/${loteIndex}`).get()
+  if (!loteSnap.exists) return false
+  const lote = loteSnap.data()
+  const res = await fetch(WF4_DISPARO_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessao: sessao || '', campanhaId: `${disparoId}_${loteIndex}`, contatos: lote.contatos || [] }),
+  })
+  await db.doc(`users/${uid}/disparos/${disparoId}`).set({ loteAtual: loteIndex, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+  return res.ok || res.status === 202
+}
+
+/**
+ * Inicia um disparo em massa. Quebra a lista em lotes de 50, grava os lotes e dispara o 1º.
+ * Os próximos saem sozinhos no /campanhaConcluida. 1 disparo ATIVO por instância.
+ * data: { sessao, nomeDisparo, mensagem (template), imagemUrl?, audioUrl?, contatos: [{telefone, nome}] }
+ */
+exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertTenantAtivo(uid)
+  const d = request.data || {}
+  const sessao = String(d.sessao || '').trim()
+  const nomeDisparo = String(d.nomeDisparo || '').trim() || `Disparo ${new Date().toISOString().slice(0, 10)}`
+  const template = String(d.mensagem || '')
+  const imagemUrl = d.imagemUrl ? String(d.imagemUrl) : null
+  const audioUrl = d.audioUrl ? String(d.audioUrl) : null
+  const contatosRaw = Array.isArray(d.contatos) ? d.contatos : []
+  if (!sessao) throw new HttpsError('invalid-argument', 'Sem instância.')
+  if (!contatosRaw.length) throw new HttpsError('invalid-argument', 'Lista de contatos vazia.')
+
+  // A instância é do usuário?
+  const instSnap = await db.collection(`users/${uid}/instances`).where('nomeInstancia', '==', sessao).limit(1).get()
+  if (instSnap.empty) throw new HttpsError('failed-precondition', 'Instância não encontrada.')
+
+  // 1 disparo ATIVO por instância: se já tem um 'enviando' nessa sessão, barra.
+  const naSessao = await db.collection(`users/${uid}/disparos`).where('sessao', '==', sessao).get()
+  if (naSessao.docs.some((x) => x.data().status === 'enviando')) {
+    throw new HttpsError('failed-precondition', 'instancia_ocupada')
+  }
+
+  // Limpa/dedup contatos e monta os blocos por contato.
+  const vistos = new Set()
+  const contatos = []
+  for (const c of contatosRaw) {
+    const tel = String(c.telefone || c.phone || '').replace(/\D/g, '')
+    if (tel.length < 8 || vistos.has(tel)) continue
+    vistos.add(tel)
+    const nome = String(c.nome || c.name || '').trim()
+    const blocos = montarBlocosDisparo(template, nome, tel, imagemUrl, audioUrl)
+    if (!blocos.length) continue
+    contatos.push({ telefone: tel, nome, blocos })
+  }
+  if (!contatos.length) throw new HttpsError('invalid-argument', 'Nenhum contato válido.')
+
+  // Quebra em lotes de 50.
+  const lotes = []
+  for (let i = 0; i < contatos.length; i += DISPARO_LOTE_MAX) lotes.push(contatos.slice(i, i + DISPARO_LOTE_MAX))
+
+  const disparoId = `disparo_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
+  const batch = db.batch()
+  batch.set(dRef, {
+    nomeDisparo, sessao, mensagem: template, total: contatos.length, totalLotes: lotes.length,
+    loteAtual: 0, enviados: 0, falhas: 0, status: 'enviando',
+    temImagem: !!imagemUrl, temAudio: !!audioUrl,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  lotes.forEach((cs, i) => batch.set(dRef.collection('lotes').doc(String(i)), { contatos: cs, enviado: false }))
+  await batch.commit()
+
+  // Dispara o 1º lote (os próximos saem no /campanhaConcluida).
+  await dispararLoteWF4(uid, disparoId, 0, sessao)
+
+  return { disparoId, total: contatos.length, totalLotes: lotes.length }
+})
+
+/** WF4 /disparoOk — 1 contato enviado. Incrementa o contador real (idempotente por telefone). */
+exports.disparoOk = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
+  try {
+    if (!callbackAutorizado(req)) { res.status(401).json({ ok: false }); return }
+    const b = req.body || {}
+    const campanhaId = String(b.campanhaId || '').trim()
+    const disparoId = campanhaId.replace(/_\d+$/, '')
+    const sessao = String(b.sessao || '').trim()
+    const telefone = String(b.telefone || '').replace(/\D/g, '')
+    if (!disparoId || !sessao) { res.status(200).json({ ok: true }); return }
+    const uid = await uidPorSessao(sessao)
+    if (!uid) { res.status(200).json({ ok: true }); return }
+    const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
+    const okRef = dRef.collection('enviados').doc(telefone || `x_${campanhaId}`)
+    await db.runTransaction(async (tx) => {
+      const dDoc = await tx.get(dRef)
+      if (!dDoc.exists) return
+      const eDoc = await tx.get(okRef)
+      if (eDoc.exists) return
+      tx.set(okRef, { telefone, nome: b.nome || '', ts: admin.firestore.FieldValue.serverTimestamp() })
+      tx.set(dRef, { enviados: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    })
+    res.status(200).json({ ok: true })
+  } catch (err) { console.error('disparoOk', err?.message || err); res.status(200).json({ ok: false }) }
+})
+
+/** WF4 /disparoFalha — número sem WhatsApp (ou verificação falhou). Conta a falha. */
+exports.disparoFalha = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
+  try {
+    if (!callbackAutorizado(req)) { res.status(401).json({ ok: false }); return }
+    const b = req.body || {}
+    const campanhaId = String(b.campanhaId || '').trim()
+    const disparoId = campanhaId.replace(/_\d+$/, '')
+    const sessao = String(b.sessao || '').trim()
+    const telefone = String(b.telefone || '').replace(/\D/g, '')
+    if (!disparoId || !sessao) { res.status(200).json({ ok: true }); return }
+    const uid = await uidPorSessao(sessao)
+    if (!uid) { res.status(200).json({ ok: true }); return }
+    const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
+    const falhaRef = dRef.collection('falhas').doc(telefone || `x_${Date.now()}`)
+    await db.runTransaction(async (tx) => {
+      const dDoc = await tx.get(dRef)
+      if (!dDoc.exists) return
+      const fDoc = await tx.get(falhaRef)
+      if (fDoc.exists) return
+      tx.set(falhaRef, { telefone, nome: b.nome || '', motivo: b.motivo || 'sem_whatsapp', detalhe: b.detalhe || '', ts: admin.firestore.FieldValue.serverTimestamp() })
+      tx.set(dRef, { falhas: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    })
+    res.status(200).json({ ok: true })
+  } catch (err) { console.error('disparoFalha', err?.message || err); res.status(200).json({ ok: false }) }
+})
+
+/** WF4 /campanhaConcluida — um LOTE terminou. Dispara o próximo, ou fecha o disparo. */
+exports.campanhaConcluida = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
+  try {
+    if (!callbackAutorizado(req)) { res.status(401).json({ ok: false }); return }
+    const b = req.body || {}
+    const campanhaId = String(b.campanhaId || '').trim()
+    const mm = campanhaId.match(/_(\d+)$/)
+    const loteIndex = mm ? parseInt(mm[1], 10) : 0
+    const disparoId = campanhaId.replace(/_\d+$/, '')
+    const sessao = String(b.sessao || '').trim()
+    if (!disparoId || !sessao) { res.status(200).json({ ok: true }); return }
+    const uid = await uidPorSessao(sessao)
+    if (!uid) { res.status(200).json({ ok: true }); return }
+    const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
+    const dSnap = await dRef.get()
+    if (!dSnap.exists) { res.status(200).json({ ok: true }); return }
+    const disp = dSnap.data()
+    await dRef.collection('lotes').doc(String(loteIndex)).set({ enviado: true }, { merge: true }).catch(() => {})
+    const proximo = loteIndex + 1
+    if (proximo < (disp.totalLotes || 1)) {
+      await dispararLoteWF4(uid, disparoId, proximo, sessao)
+      res.status(200).json({ ok: true, proximoLote: proximo }); return
+    }
+    await dRef.set({ status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    res.status(200).json({ ok: true, concluido: true })
+  } catch (err) { console.error('campanhaConcluida', err?.message || err); res.status(200).json({ ok: false }) }
+})
+
+/** WF4 /campanhaRejeitada — o WF4 recusou um lote (sessão ocupada/inválida). Marca erro. */
+exports.campanhaRejeitada = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
+  try {
+    if (!callbackAutorizado(req)) { res.status(401).json({ ok: false }); return }
+    const b = req.body || {}
+    const disparoId = String(b.campanhaId || '').trim().replace(/_\d+$/, '')
+    const sessao = String(b.sessao || '').trim()
+    if (!disparoId || !sessao) { res.status(200).json({ ok: true }); return }
+    const uid = await uidPorSessao(sessao)
+    if (!uid) { res.status(200).json({ ok: true }); return }
+    await db.doc(`users/${uid}/disparos/${disparoId}`).set({ status: 'erro', erroMsg: b.mensagem || b.motivo || 'Campanha rejeitada pelo servidor', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => {})
+    res.status(200).json({ ok: true })
+  } catch (err) { console.error('campanhaRejeitada', err?.message || err); res.status(200).json({ ok: false }) }
+})
+
 /**
  * Simulador de conversa: testa o atendente IA sem WhatsApp (usa o MESMO cérebro).
  * Recebe o histórico da conversa e devolve a próxima resposta da IA (com checkout injetado).
