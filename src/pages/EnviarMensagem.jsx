@@ -292,16 +292,6 @@ export default function EnviarMensagem() {
   }
 
   const contatos = parseLista(lista)
-  const now = Date.now()
-  const getRemainingMin = (endTime) => Math.max(0, Math.ceil((endTime - now) / 60000))
-  // Mensagens que o n8n ainda não “enviou” (simulado: a cada 5 min diminui 1)
-  const getRestantes = (item) => {
-    if (item.status === 'cancelado' || item.status === 'finalizado') return item.total
-    const start = item.createdAt || item.endTime - item.total * MINUTOS_POR_MENSAGEM * 60 * 1000
-    const elapsedMin = (now - start) / (60 * 1000)
-    const jaEnviadasPeloN8n = Math.min(item.total, Math.floor(elapsedMin / MINUTOS_POR_MENSAGEM))
-    return Math.max(0, item.total - jaEnviadasPeloN8n)
-  }
   const totalContatos = contatos.length
 
   const totalPaginasTimeline = Math.max(1, Math.ceil(historico.length / ITEMS_POR_PAGINA_TIMELINE))
