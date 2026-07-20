@@ -14,7 +14,7 @@ import MelhorarPlano from '../components/MelhorarPlano'
 import Select from '../components/Select'
 import AtendenteSimulador from '../components/AtendenteSimulador'
 import { useConfirm } from '../components/ConfirmDialog'
-import { Rocket, Plus, Trash2, Loader2, X, Package, Smartphone, Check, AlertCircle, Pencil, ChevronDown, FlaskConical } from 'lucide-react'
+import { Rocket, Plus, Trash2, Loader2, X, Package, Smartphone, Check, AlertCircle, Pencil, ChevronDown, FlaskConical, Search } from 'lucide-react'
 
 export default function Atendentes() {
   const [user] = useAuthState(auth)
@@ -31,6 +31,7 @@ export default function Atendentes() {
   const [instPickerOpen, setInstPickerOpen] = useState(false)
   const [criando, setCriando] = useState(false)
   const [testando, setTestando] = useState(null) // { grupoId, nome }
+  const [eventosPopup, setEventosPopup] = useState(null) // id do atendente
 
   const load = async () => {
     if (!user?.uid) return
@@ -166,23 +167,12 @@ export default function Atendentes() {
                   </div>
                 )}
 
-                {/* Vendedor proativo: eventos em que ele puxa conversa (Fase 3) */}
-                <div className="pt-2 border-t border-surface-100">
-                  <p className="text-[11px] font-medium text-stone-500 mb-1.5">Puxar conversa nos eventos:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {KIWIFY_EVENTS.map((ev) => {
-                      const on = Array.isArray(a.eventos) && a.eventos.includes(ev.id)
-                      return (
-                        <button key={ev.id} type="button" onClick={() => toggleEvento(a, ev.id)} className={`text-[11px] px-2 py-1 rounded-full border transition ${on ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-stone-500 border-surface-200 hover:border-primary-300'}`}>
-                          {ev.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
                 <div className="flex items-center gap-1 pt-2 border-t border-surface-100">
                   <button onClick={() => setTestando({ grupoId: a.grupoId, nome: g?.nome || a.nome })} disabled={semContexto} className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-lg py-2 transition-colors disabled:opacity-40 disabled:pointer-events-none" title={semContexto ? 'Configure o contexto primeiro' : 'Testar a IA'}><FlaskConical className="w-3.5 h-3.5" /> Testar IA</button>
+                  <button onClick={() => setEventosPopup(a.id)} className="relative inline-flex items-center justify-center text-stone-600 hover:bg-surface-100 rounded-lg px-2.5 py-2 transition-colors" title="Eventos em que o vendedor puxa conversa">
+                    <Search className="w-4 h-4" />
+                    {Array.isArray(a.eventos) && a.eventos.length > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary-600 text-white text-[9px] font-bold flex items-center justify-center">{a.eventos.length}</span>}
+                  </button>
                   <Link to="/produtos" className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-stone-600 hover:bg-surface-100 rounded-lg px-2.5 py-2 transition-colors" title="Contexto & checkouts"><Pencil className="w-3.5 h-3.5" /></Link>
                   <button onClick={() => excluir(a)} className="p-2 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Excluir"><Trash2 className="w-4 h-4" /></button>
                 </div>
@@ -276,6 +266,41 @@ export default function Atendentes() {
           </div>
         </div>
       )}
+
+      {/* Popup: eventos em que o vendedor puxa conversa */}
+      {eventosPopup && (() => {
+        const a = atendentes.find((x) => x.id === eventosPopup)
+        if (!a) return null
+        const g = grupoById[a.grupoId]
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => setEventosPopup(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Search className="w-4 h-4" /></span>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-semibold text-stone-800 truncate">Puxar conversa nos eventos</h3>
+                  <p className="text-[11px] text-stone-400 truncate">{g?.nome || a.nome} · toque pra marcar</p>
+                </div>
+                <button onClick={() => setEventosPopup(null)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+              </div>
+              <p className="text-[11px] text-stone-500 leading-relaxed">Quando um desses eventos acontecer, o vendedor puxa conversa. Se houver automação pro evento, ela abre e o vendedor assume quando o lead responder.</p>
+              <div className="flex flex-wrap gap-2">
+                {KIWIFY_EVENTS.map((ev) => {
+                  const on = Array.isArray(a.eventos) && a.eventos.includes(ev.id)
+                  return (
+                    <button key={ev.id} type="button" onClick={() => toggleEvento(a, ev.id)} className={`text-xs px-3 py-1.5 rounded-full border transition ${on ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-stone-600 border-surface-200 hover:border-primary-300'}`}>
+                      {ev.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex justify-end pt-1">
+                <button onClick={() => setEventosPopup(null)} className="btn-primary min-h-[40px] text-sm"><Check className="w-4 h-4" /> Pronto</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {testando && (
         <AtendenteSimulador grupoId={testando.grupoId} nome={testando.nome} onClose={() => setTestando(null)} />
