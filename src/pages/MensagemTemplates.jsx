@@ -81,6 +81,8 @@ export default function MensagemTemplates() {
   const [imgs, setImgs] = useState([])
   const [enviandoImg, setEnviandoImg] = useState(false)
   const [excluindoImg, setExcluindoImg] = useState(null)
+  const [imgPage, setImgPage] = useState(1)
+  const [imgLightbox, setImgLightbox] = useState(null) // imagem aberta em tela cheia
   const imgInputRef = useRef(null)
   const [audioTemplates, setAudioTemplates] = useState([])
   const [showAudioEditor, setShowAudioEditor] = useState(false)
@@ -301,6 +303,11 @@ export default function MensagemTemplates() {
 
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
+  const IMGS_POR_PAGINA = 20
+  const imgsTotalPag = Math.max(1, Math.ceil(imgs.length / IMGS_POR_PAGINA))
+  const imgsPg = Math.min(imgPage, imgsTotalPag)
+  const imgsPagina = imgs.slice((imgsPg - 1) * IMGS_POR_PAGINA, imgsPg * IMGS_POR_PAGINA)
+
   return (
     <PageShell
       badge="Geral · Templates"
@@ -366,16 +373,29 @@ export default function MensagemTemplates() {
             </div>
           </Panel>
         ) : (
+          <>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
-            {imgs.map((img) => (
+            {imgsPagina.map((img) => (
               <div key={img.src} className="group relative app-panel rounded-2xl overflow-hidden">
-                <div className="aspect-square bg-surface-50"><img src={img.src} alt={img.name} className="w-full h-full object-contain" /></div>
+                <button type="button" onClick={() => setImgLightbox(img)} className="block w-full aspect-square bg-surface-50" title="Abrir imagem">
+                  <img src={img.src} alt={img.name} className="w-full h-full object-cover" />
+                </button>
                 <button onClick={() => excluirImagem(img)} disabled={excluindoImg === img.src} className="absolute top-1.5 right-1.5 p-1.5 rounded-lg bg-black/50 text-white opacity-0 group-hover:opacity-100 transition hover:bg-red-600" title="Excluir">
                   {excluindoImg === img.src ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                 </button>
               </div>
             ))}
           </div>
+          {imgsTotalPag > 1 && (
+            <div className="flex items-center justify-between gap-2 pt-4">
+              <span className="text-xs text-stone-500">Página {imgsPg} de {imgsTotalPag} · {imgs.length} imagem(ns)</span>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setImgPage((p) => Math.max(1, p - 1))} disabled={imgsPg <= 1} className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-40"><ChevronLeft className="w-4 h-4" /></button>
+                <button onClick={() => setImgPage((p) => Math.min(imgsTotalPag, p + 1))} disabled={imgsPg >= imgsTotalPag} className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-40"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            </div>
+          )}
+          </>
         )
       ) : (
       <>
@@ -636,6 +656,13 @@ export default function MensagemTemplates() {
               <button onClick={salvarAudio} disabled={salvandoAudio || !audioBlob} className="btn-primary min-h-[44px]">{salvandoAudio ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Salvar</button>
             </div>
           </div>
+        </div>
+      )}
+      {/* Lightbox: imagem em tela cheia */}
+      {imgLightbox && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/80" onClick={() => setImgLightbox(null)}>
+          <button onClick={() => setImgLightbox(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition"><X className="w-5 h-5" /></button>
+          <img src={imgLightbox.src} alt={imgLightbox.name} className="max-w-full max-h-[88dvh] object-contain rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </PageShell>
