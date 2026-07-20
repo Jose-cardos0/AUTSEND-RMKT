@@ -5,6 +5,7 @@ import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { auth, functions } from '../lib/firebase'
 import { getMessageTemplates, saveMessageTemplate, deleteMessageTemplate, getCheckoutStores, getAudioTemplates, saveAudioTemplate, deleteAudioTemplate, uploadCallAudio } from '../lib/firestore'
+import { uploadEmailAsset, listEmailAssets, deleteEmailAsset } from '../lib/storageAssets'
 import { TEMPLATE_VARIABLES } from '../lib/constants'
 import { lojaByKey } from '../lib/lojas'
 import { criarGravador } from '../lib/audioRec'
@@ -14,7 +15,7 @@ import PageLoader from '../components/PageLoader'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import EmojiPicker from '../components/EmojiPicker'
 import { useConfirm } from '../components/ConfirmDialog'
-import { MessageSquare, Plus, Pencil, Trash2, Loader2, X, Copy, Check, Bold, Italic, Strikethrough, Code, Smile, Braces, ShoppingBag, Search, ChevronLeft, ChevronRight, Type, AudioLines, Play, Square, Upload, Pause } from 'lucide-react'
+import { MessageSquare, Plus, Pencil, Trash2, Loader2, X, Copy, Check, Bold, Italic, Strikethrough, Code, Smile, Braces, ShoppingBag, Search, ChevronLeft, ChevronRight, Type, AudioLines, Play, Square, Upload, Pause, Image as ImageLucide } from 'lucide-react'
 import micImg from '../assets/mic/mic.png'
 
 const EMOJIS = ['😀', '😊', '😍', '🥰', '👍', '🙏', '👋', '❤️', '🔥', '✅', '⚡', '🎉', '⭐', '💰', '🎁', '📢', '⏳', '🚀', '💬', '👇', '🛒', '😱']
@@ -75,7 +76,12 @@ export default function MensagemTemplates() {
   const previewCache = useRef(new Map())
 
   // ── Templates de áudio (Ligação IA) ──
-  const [aba, setAba] = useState('texto') // 'texto' | 'audio'
+  const [aba, setAba] = useState('texto') // 'texto' | 'audio' | 'imagens'
+  // ── Biblioteca de imagens da conta (users/{uid}/emailAssets) ──
+  const [imgs, setImgs] = useState([])
+  const [enviandoImg, setEnviandoImg] = useState(false)
+  const [excluindoImg, setExcluindoImg] = useState(null)
+  const imgInputRef = useRef(null)
   const [audioTemplates, setAudioTemplates] = useState([])
   const [showAudioEditor, setShowAudioEditor] = useState(false)
   const [audioNome, setAudioNome] = useState('')
@@ -181,6 +187,27 @@ export default function MensagemTemplates() {
     a.play().catch(() => { setLoadingAudioId(null); toast.error('Não consegui tocar o áudio.') })
   }
 
+  // ── Biblioteca de imagens: subir (do PC) e excluir ──
+  const subirImagem = async (e) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setEnviandoImg(true)
+    try {
+      const img = await uploadEmailAsset(user.uid, f) // comprime <1 MB
+      setImgs((prev) => [img, ...prev])
+      toast.success('Imagem enviada.')
+    } catch (err) { toast.error(err.message || 'Erro ao enviar imagem') }
+    finally { setEnviandoImg(false) }
+  }
+  const excluirImagem = async (img) => {
+    if (!(await confirm({ title: 'Excluir imagem?', message: 'Ela sai da sua biblioteca. Essa ação não pode ser desfeita.', confirmLabel: 'Excluir' }))) return
+    setExcluindoImg(img.src)
+    try { await deleteEmailAsset(img.src); setImgs((prev) => prev.filter((x) => x.src !== img.src)) }
+    catch { toast.error('Erro ao excluir') }
+    finally { setExcluindoImg(null) }
+  }
+
   // Envolve a seleção (negrito/itálico/etc.)
   const insertAtCursor = (before, after = '') => {
     const ta = textareaRef.current
@@ -205,9 +232,10 @@ export default function MensagemTemplates() {
   const carregar = async () => {
     if (!user?.uid) return
     setLoading(true)
-    const [tpls, stores, audios] = await Promise.all([getMessageTemplates(user.uid), getCheckoutStores(user.uid), getAudioTemplates(user.uid)])
+    const [tpls, stores, audios, imagens] = await Promise.all([getMessageTemplates(user.uid), getCheckoutStores(user.uid), getAudioTemplates(user.uid), listEmailAssets(user.uid)])
     setTemplates(tpls)
     setAudioTemplates(audios)
+    setImgs(imagens)
     const flat = (stores || [])
       .filter((s) => s.ativo !== false)
       .flatMap((s) => (s.produtos || []).filter((p) => p.link).map((p) => ({ ...p, loja: s.loja })))
@@ -278,7 +306,9 @@ export default function MensagemTemplates() {
       badge="Geral · Templates"
       title="Templates"
       right={
-        <button onClick={aba === 'audio' ? abrirNovoAudio : abrirNovo} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Criar template</button>
+        aba === 'imagens'
+          ? <button onClick={() => imgInputRef.current?.click()} disabled={enviandoImg} className="btn-primary text-sm min-h-[44px]">{enviandoImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Enviar imagem</button>
+          : <button onClick={aba === 'audio' ? abrirNovoAudio : abrirNovo} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Criar template</button>
       }
     >
       {/* Abas Texto / Áudio */}
@@ -289,7 +319,11 @@ export default function MensagemTemplates() {
         <button onClick={() => setAba('audio')} className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition ${aba === 'audio' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
           <AudioLines className="w-4 h-4" /> Áudio {audioTemplates.length > 0 && <span className="text-[11px] text-stone-400">({audioTemplates.length})</span>}
         </button>
+        <button onClick={() => setAba('imagens')} className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition ${aba === 'imagens' ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+          <ImageLucide className="w-4 h-4" /> Imagens {imgs.length > 0 && <span className="text-[11px] text-stone-400">({imgs.length})</span>}
+        </button>
       </div>
+      <input ref={imgInputRef} type="file" accept="image/*" onChange={subirImagem} className="hidden" />
 
       {aba === 'audio' ? (
         audioTemplates.length === 0 ? (
@@ -317,6 +351,28 @@ export default function MensagemTemplates() {
                   </p>
                 </div>
                 <button onClick={() => excluirAudio(t)} className="p-2 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0" title="Excluir"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            ))}
+          </div>
+        )
+      ) : aba === 'imagens' ? (
+        imgs.length === 0 ? (
+          <Panel>
+            <div className="flex flex-col items-center justify-center text-center gap-3 py-12">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-100 to-violet-100 text-primary-600"><ImageLucide className="w-7 h-7" /></span>
+              <h2 className="text-lg font-semibold text-stone-800">Nenhuma imagem ainda</h2>
+              <p className="text-sm text-stone-500 max-w-md leading-relaxed">Suba imagens pra usar nos disparos e onde precisar. Ficam salvas na sua biblioteca (máx 1 MB cada).</p>
+              <button onClick={() => imgInputRef.current?.click()} disabled={enviandoImg} className="btn-primary min-h-[44px]">{enviandoImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Enviar imagem</button>
+            </div>
+          </Panel>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
+            {imgs.map((img) => (
+              <div key={img.src} className="group relative app-panel rounded-2xl overflow-hidden">
+                <div className="aspect-square bg-surface-50"><img src={img.src} alt={img.name} className="w-full h-full object-contain" /></div>
+                <button onClick={() => excluirImagem(img)} disabled={excluindoImg === img.src} className="absolute top-1.5 right-1.5 p-1.5 rounded-lg bg-black/50 text-white opacity-0 group-hover:opacity-100 transition hover:bg-red-600" title="Excluir">
+                  {excluindoImg === img.src ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                </button>
               </div>
             ))}
           </div>
