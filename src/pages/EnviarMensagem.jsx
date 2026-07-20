@@ -76,6 +76,7 @@ export default function EnviarMensagem() {
   const [audioPickerOpen, setAudioPickerOpen] = useState(false)
   const [enviandoAudio, setEnviandoAudio] = useState(false)
   const audioUpInputRef = useRef(null)
+  const [iniciando, setIniciando] = useState(false) // enquanto o disparo é iniciado (callable)
 
   useEffect(() => {
     if (!user?.uid) return
@@ -267,6 +268,7 @@ export default function EnviarMensagem() {
       return
     }
     setMsg({ type: '', text: '' })
+    setIniciando(true)
     try {
       const r = await iniciarDisparoWA({
         sessao: evolutionAtual.nomeInstancia,
@@ -288,6 +290,8 @@ export default function EnviarMensagem() {
         : (err?.message || 'Erro ao iniciar o disparo.')
       setMsg({ type: 'error', text: txt })
       toast.error(txt)
+    } finally {
+      setIniciando(false)
     }
   }
 
@@ -496,11 +500,11 @@ export default function EnviarMensagem() {
 
               <button
                 onClick={iniciarEnvio}
-                disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia}
+                disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia || iniciando}
                 className="btn-primary mt-3 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
               >
-                <Send className="w-4 h-4" />
-                Enviar mensagem
+                {iniciando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {iniciando ? 'Iniciando…' : 'Enviar mensagem'}
               </button>
             </div>
           </aside>
