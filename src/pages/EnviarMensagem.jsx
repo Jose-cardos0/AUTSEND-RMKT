@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx'
 import { auth } from '../lib/firebase'
 import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo, uploadCallAudio, saveAudioTemplate } from '../lib/firestore'
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
+import { uploadEmailAsset } from '../lib/storageAssets'
 import MessageEditor from '../components/MessageEditor'
 import TemplatePicker from '../components/TemplatePicker'
 import NichoPicker from '../components/NichoPicker'
@@ -66,7 +67,10 @@ export default function EnviarMensagem() {
   // Anexos do disparo (imagem + áudio) — viram blocos no envio (WF4)
   const [imgAnexo, setImgAnexo] = useState(null)     // { src, name }
   const [audioAnexo, setAudioAnexo] = useState(null) // { url, nome, ext }
+  const [imgOrigemOpen, setImgOrigemOpen] = useState(false)
   const [imgPickerOpen, setImgPickerOpen] = useState(false)
+  const [enviandoImg, setEnviandoImg] = useState(false)
+  const imgUpInputRef = useRef(null)
   const [audioOrigemOpen, setAudioOrigemOpen] = useState(false)
   const [audioPickerOpen, setAudioPickerOpen] = useState(false)
   const [enviandoAudio, setEnviandoAudio] = useState(false)
@@ -208,6 +212,17 @@ export default function EnviarMensagem() {
     }
     reader.readAsArrayBuffer(file)
     e.target.value = ''
+  }
+
+  // Imagem do computador: comprime (<1 MB) + salva na biblioteca e anexa.
+  const subirImagemPc = async (e) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setEnviandoImg(true)
+    try { const img = await uploadEmailAsset(user.uid, f); setImgAnexo(img); toast.success('Imagem anexada.') }
+    catch (err) { toast.error(err.message || 'Erro ao enviar imagem') }
+    finally { setEnviandoImg(false) }
   }
 
   // Áudio do computador: sobe pro Storage + salva na biblioteca de áudios (Templates → Áudio) e anexa.
@@ -506,7 +521,7 @@ export default function EnviarMensagem() {
 
               {/* Anexos: imagem + áudio (viram blocos no envio) */}
               <div className="mt-2 flex flex-wrap items-center gap-2 shrink-0">
-                <button type="button" onClick={() => setImgPickerOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 border border-surface-200 rounded-xl px-3 py-2 hover:bg-surface-50 hover:border-primary-300 transition">
+                <button type="button" onClick={() => setImgOrigemOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 border border-surface-200 rounded-xl px-3 py-2 hover:bg-surface-50 hover:border-primary-300 transition">
                   <ImageLucide className="w-4 h-4" /> Imagem
                 </button>
                 <button type="button" onClick={() => setAudioOrigemOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 border border-surface-200 rounded-xl px-3 py-2 hover:bg-surface-50 hover:border-primary-300 transition">
@@ -642,7 +657,29 @@ export default function EnviarMensagem() {
       {/* Pickers de anexo */}
       <ImageLibraryPicker uid={user?.uid} open={imgPickerOpen} onClose={() => setImgPickerOpen(false)} onPick={(img) => setImgAnexo(img)} currentSrc={imgAnexo?.src} />
       <AudioTemplatePicker uid={user?.uid} open={audioPickerOpen} onClose={() => setAudioPickerOpen(false)} onPick={(t) => setAudioAnexo({ url: t.audioUrl, nome: t.nome, ext: t.ext })} currentId={null} />
+      <input ref={imgUpInputRef} type="file" accept="image/*" onChange={subirImagemPc} className="hidden" />
       <input ref={audioUpInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,.mp3,.wav" onChange={subirAudioPc} className="hidden" />
+
+      {/* Popup: origem da imagem (Biblioteca / Computador) */}
+      {imgOrigemOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => setImgOrigemOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-4 space-y-2.5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-100 text-primary-600 shrink-0"><ImageLucide className="w-4 h-4" /></span>
+              <h3 className="text-sm font-semibold text-stone-800 flex-1">Anexar imagem</h3>
+              <button onClick={() => setImgOrigemOpen(false)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
+            </div>
+            <button type="button" onClick={() => { setImgOrigemOpen(false); setImgPickerOpen(true) }} className="w-full flex items-center gap-2.5 p-3 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 shrink-0"><ImageLucide className="w-4 h-4" /></span>
+              <span className="text-sm font-medium text-stone-800">Da biblioteca</span>
+            </button>
+            <button type="button" onClick={() => { setImgOrigemOpen(false); imgUpInputRef.current?.click() }} disabled={enviandoImg} className="w-full flex items-center gap-2.5 p-3 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition disabled:opacity-50">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600 shrink-0">{enviandoImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}</span>
+              <span className="text-sm font-medium text-stone-800">Do computador (máx 1 MB)</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Popup: origem do áudio (Template / Computador) */}
       {audioOrigemOpen && (
