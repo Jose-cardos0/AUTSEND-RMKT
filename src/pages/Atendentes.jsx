@@ -283,7 +283,6 @@ export default function Atendentes() {
                 </div>
                 <button onClick={() => setEventosPopup(null)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
               </div>
-              <p className="text-[11px] text-stone-500 leading-relaxed">Quando um desses eventos acontecer, o vendedor puxa conversa. Se houver automação pro evento, ela abre e o vendedor assume quando o lead responder.</p>
               <div className="flex flex-wrap gap-2">
                 {KIWIFY_EVENTS.map((ev) => {
                   const on = Array.isArray(a.eventos) && a.eventos.includes(ev.id)
