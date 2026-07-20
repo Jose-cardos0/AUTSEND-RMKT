@@ -206,22 +206,10 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
               value={mensagem}
               onChange={setMensagem}
               placeholder={`Ex: Olá {nome_cliente}, notamos que você se interessou por {nome_produto}...`}
+              showChaves
               showCheckout
               rows={4}
             />
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {TEMPLATE_VARIABLES.map((v) => (
-              <button
-                key={v.key}
-                type="button"
-                onClick={() => editorRef.current?.insert(v.key)}
-                className="text-[11px] font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200/70 rounded-full px-2.5 py-1 transition-colors"
-              >
-                {v.key}
-              </button>
-            ))}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">

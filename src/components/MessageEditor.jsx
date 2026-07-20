@@ -1,15 +1,23 @@
 import { useRef, forwardRef, useImperativeHandle } from 'react'
 import clsx from 'clsx'
-import { Bold, Italic, Strikethrough, Code, User } from 'lucide-react'
+import { Bold, Italic, Strikethrough, Code } from 'lucide-react'
 import EmojiPicker from './EmojiPicker'
 import CheckoutPicker from './CheckoutPicker'
+import ChavesPicker from './ChavesPicker'
 
 const MessageEditor = forwardRef(function MessageEditor({
   value,
   onChange,
   placeholder = 'Digite sua mensagem...',
-  showNomeButton = false,
-  /** Chips de variáveis na barra (ex.: [{ key: '{nome_cliente}' }]) */
+  /** Mostra o botão {} (Braces) que abre a listinha de variáveis ({nome_cliente}, {nome_produto}…) */
+  showChaves = false,
+  /** Lista custom de variáveis pro botão {} (default = todas). Ex.: disparo só usa nome/número. */
+  chavesVars,
+  /** Nós extras (ícones) renderizados na barra, ao lado do botão {} de variáveis. */
+  toolbarExtra,
+  /** Nó extra renderizado entre o botão {} e o emoji (ex.: ícone de template). */
+  toolbarBeforeEmoji,
+  /** Chips de variáveis na barra (ex.: [{ key: '{nome_cliente}' }]) — legado (SMS) */
   variables,
   /** Mostra o botão "Checkout" na barra (insere link de checkout salvo) */
   showCheckout = false,
@@ -64,13 +72,10 @@ const MessageEditor = forwardRef(function MessageEditor({
         <button type="button" onClick={() => insertAtCursor('~', '~')} className={btn} title="Tachado"><Strikethrough className="w-4 h-4" /></button>
         <button type="button" onClick={() => insertAtCursor('```', '```')} className={btn} title="Monoespaçado"><Code className="w-4 h-4" /></button>
 
-        {showNomeButton && (
-          <button type="button" onClick={() => addText('{nome}')} className="flex items-center gap-1 px-2.5 py-2 min-h-[44px] rounded-lg hover:bg-primary-50 text-primary-600 hover:text-primary-700 text-xs font-semibold transition-colors touch-manipulation" title="Inserir nome do contato">
-            <User className="w-3.5 h-3.5 shrink-0" /> <span>{'{nome}'}</span>
-          </button>
-        )}
-
         <div className="ml-auto flex items-center gap-0.5">
+          {toolbarExtra}
+          {showChaves && <ChavesPicker onPick={addText} buttonClassName={btn} variables={chavesVars} />}
+          {toolbarBeforeEmoji}
           <EmojiPicker onPick={addText} buttonClassName={btn} />
           {showCheckout && (
             <>

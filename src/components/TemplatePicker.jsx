@@ -34,7 +34,7 @@ function renderWhatsapp(text) {
  * Botão + popup pra escolher um template de mensagem salvo (copy).
  * Ao escolher, chama onPick(textoDaMensagem).
  */
-export default function TemplatePicker({ onPick, label = 'Usar template', className }) {
+export default function TemplatePicker({ onPick, label = 'Usar template', className, iconOnly = false }) {
   const [user] = useAuthState(auth)
   const [open, setOpen] = useState(false)
   const [templates, setTemplates] = useState([])
@@ -62,13 +62,19 @@ export default function TemplatePicker({ onPick, label = 'Usar template', classN
 
   return (
     <>
-      <button
-        type="button"
-        onClick={abrir}
-        className={clsx('inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 bg-white text-stone-600 hover:text-primary-700 hover:border-primary-200 hover:bg-primary-50/50 text-sm font-medium transition-colors', className)}
-      >
-        <FileText className="w-4 h-4" /> {label}
-      </button>
+      {iconOnly ? (
+        <button type="button" onClick={abrir} title={label} className={clsx('p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-700 hover:bg-surface-200 transition-colors touch-manipulation', className)}>
+          <FileText className="w-4 h-4" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={abrir}
+          className={clsx('inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 bg-white text-stone-600 hover:text-primary-700 hover:border-primary-200 hover:bg-primary-50/50 text-sm font-medium transition-colors', className)}
+        >
+          <FileText className="w-4 h-4" /> {label}
+        </button>
+      )}
 
       <AnimatePresence>
         {open && (

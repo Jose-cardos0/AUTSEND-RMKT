@@ -13,7 +13,7 @@ import { Layers, X, Loader2, Users } from 'lucide-react'
  * @param {'whatsapp'|'email'} tipo formato dos contatos
  * @param {(linhas:string[])=>void} onPick recebe as linhas prontas (número,nome / email,nome)
  */
-export default function NichoPicker({ tipo, onPick, label = 'Nicho', className = '' }) {
+export default function NichoPicker({ tipo, onPick, label = 'Nicho', className = '', iconOnly = false }) {
   const [user] = useAuthState(auth)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -45,9 +45,15 @@ export default function NichoPicker({ tipo, onPick, label = 'Nicho', className =
 
   return (
     <>
-      <button type="button" onClick={abrir} className={clsx('inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 bg-white text-stone-600 hover:text-primary-700 hover:border-primary-200 hover:bg-primary-50/50 text-sm font-medium transition-colors', className)}>
-        <Layers className="w-4 h-4" /> {label}
-      </button>
+      {iconOnly ? (
+        <button type="button" onClick={abrir} title={label} className={clsx('p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-700 hover:bg-surface-200 transition-colors touch-manipulation', className)}>
+          <Layers className="w-4 h-4" />
+        </button>
+      ) : (
+        <button type="button" onClick={abrir} className={clsx('inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 bg-white text-stone-600 hover:text-primary-700 hover:border-primary-200 hover:bg-primary-50/50 text-sm font-medium transition-colors', className)}>
+          <Layers className="w-4 h-4" /> {label}
+        </button>
+      )}
 
       <AnimatePresence>
         {open && (

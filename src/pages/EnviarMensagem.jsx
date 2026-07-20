@@ -11,7 +11,10 @@ import TemplatePicker from '../components/TemplatePicker'
 import NichoPicker from '../components/NichoPicker'
 import ImageLibraryPicker from '../components/ImageLibraryPicker'
 import AudioTemplatePicker from '../components/AudioTemplatePicker'
-import { Send, Loader2, AlertCircle, Users, Download, Upload, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X, Image as ImageLucide, AudioLines, Clock } from 'lucide-react'
+import AudioPlayer from '../components/AudioPlayer'
+import { TEMPLATE_VARIABLES } from '../lib/constants'
+import { Send, Loader2, AlertCircle, Users, Download, Upload, History, Trash2, ChevronLeft, ChevronRight, ChevronDown, Check, MessageSquare, X, Image as ImageLucide, AudioLines, Clock, CheckCircle2, XCircle } from 'lucide-react'
+import StatCard from '../components/StatCard'
 import PageShell, { Panel } from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import excelImg from '../assets/excel.png'
@@ -54,6 +57,7 @@ export default function EnviarMensagem() {
   const [instOpen, setInstOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [expandedWa, setExpandedWa] = useState(null)
+  const [lightboxImg, setLightboxImg] = useState(null)
   const [lista, setLista] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [enviadosCount, setEnviadosCount] = useState(0)
@@ -297,6 +301,8 @@ export default function EnviarMensagem() {
 
   const contatos = parseLista(lista)
   const totalContatos = contatos.length
+  const totalEnviados = historico.reduce((s, h) => s + (h.enviados ?? h.enviadosCount ?? 0), 0)
+  const totalErros = historico.reduce((s, h) => s + (h.falhas ?? 0), 0)
 
   const totalPaginasTimeline = Math.max(1, Math.ceil(historico.length / ITEMS_POR_PAGINA_TIMELINE))
   const paginaAtual = Math.min(paginaTimeline, totalPaginasTimeline)
@@ -329,15 +335,11 @@ export default function EnviarMensagem() {
       badge="WhatsApp · Disparos"
       title="Disparos em massa"
       right={
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full max-w-[200px] sm:max-w-none">
-          <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Contatos</p>
-            <p className="text-lg font-bold text-stone-800 tabular-nums">{totalContatos}</p>
-          </div>
-          <div className="rounded-2xl border border-primary-200/90 bg-gradient-to-br from-primary-50 to-white px-3 py-2.5 text-center shadow-sm shadow-primary-500/10">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-primary-600">Envios</p>
-            <p className="text-lg font-bold text-primary-700 tabular-nums">{historico.length}</p>
-          </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 w-full max-w-[220px] lg:max-w-[540px]">
+          <StatCard label="Contatos" value={totalContatos} icon={Users} color="blue" />
+          <StatCard label="Enviados" value={totalEnviados} icon={CheckCircle2} color="green" />
+          <StatCard label="Erros" value={totalErros} icon={XCircle} color="red" />
+          <StatCard label="Campanhas" value={historico.length} icon={Send} color="purple" />
         </div>
       }
     >
@@ -454,86 +456,87 @@ export default function EnviarMensagem() {
       )}
 
       <div className="flex flex-col lg:flex-row gap-3 items-stretch">
-          <aside className="flex flex-col shrink-0 lg:w-[min(480px,42vw)] lg:min-w-[320px] lg:max-w-lg">
-            <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col flex-1 min-w-0">
-              <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 shrink-0 text-primary-600" />
-                Mensagem
-                <TemplatePicker onPick={setMensagem} label="Template" className="ml-auto text-xs min-h-[34px] py-1.5 px-2.5" />
-              </h3>
-              <MessageEditor
-                value={mensagem}
-                onChange={setMensagem}
-                placeholder="Use {nome} — lista: número,nome"
-                showNomeButton
-                showCheckout
-                fillHeight
-                className="flex-1 min-h-[200px]"
-              />
+          <aside className="relative flex flex-col flex-1 min-w-0">
+            <MessageEditor
+              value={mensagem}
+              onChange={setMensagem}
+              placeholder="Use {nome_cliente} — lista: número,nome"
+              showChaves
+              chavesVars={TEMPLATE_VARIABLES.filter((v) => v.key === '{nome_cliente}' || v.key === '{numero_cliente}')}
+              showCheckout
+              fillHeight
+              className="flex-1 min-h-[260px]"
+              textareaClassName="pb-16"
+              toolbarBeforeEmoji={<TemplatePicker onPick={setMensagem} iconOnly label="Template" />}
+              toolbarExtra={
+                <>
+                  <button type="button" onClick={() => setImgOrigemOpen(true)} title="Anexar imagem" className={`p-2.5 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg transition-colors ${imgAnexo ? 'text-primary-600 bg-primary-50' : 'text-stone-500 hover:text-stone-700 hover:bg-surface-200'}`}>
+                    <ImageLucide className="w-4 h-4" />
+                  </button>
+                  <button type="button" onClick={() => setAudioOrigemOpen(true)} title="Anexar áudio" className={`p-2.5 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg transition-colors ${audioAnexo ? 'text-primary-600 bg-primary-50' : 'text-stone-500 hover:text-stone-700 hover:bg-surface-200'}`}>
+                    <AudioLines className="w-4 h-4" />
+                  </button>
+                </>
+              }
+            />
 
-              {/* Anexos: imagem + áudio (viram blocos no envio) */}
-              <div className="mt-2 flex flex-wrap items-center gap-2 shrink-0">
-                <button type="button" onClick={() => setImgOrigemOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 border border-surface-200 rounded-xl px-3 py-2 hover:bg-surface-50 hover:border-primary-300 transition">
-                  <ImageLucide className="w-4 h-4" /> Imagem
-                </button>
-                <button type="button" onClick={() => setAudioOrigemOpen(true)} className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 border border-surface-200 rounded-xl px-3 py-2 hover:bg-surface-50 hover:border-primary-300 transition">
-                  <AudioLines className="w-4 h-4" /> Áudio
-                </button>
+            {/* Prévia dos anexos: flutuante no canto inferior esquerdo */}
+            {(imgAnexo || audioAnexo) && (
+              <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2">
+                {imgAnexo && (
+                  <div className="relative">
+                    <img src={imgAnexo.src} alt="" className="h-12 w-12 rounded-lg object-cover border border-surface-200 shadow-sm" />
+                    <button onClick={() => setImgAnexo(null)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-700 text-white hover:bg-red-600 shadow" title="Remover"><X className="w-3 h-3" /></button>
+                  </div>
+                )}
+                {audioAnexo && (
+                  <div className="relative flex items-center gap-2 h-12 px-3 rounded-lg border border-surface-200 bg-white/95 shadow-sm">
+                    <AudioLines className="w-4 h-4 text-primary-600 shrink-0" />
+                    <span className="text-xs text-stone-700 max-w-[110px] truncate">{audioAnexo.nome || 'Áudio'}</span>
+                    <button onClick={() => setAudioAnexo(null)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-700 text-white hover:bg-red-600 shadow" title="Remover"><X className="w-3 h-3" /></button>
+                  </div>
+                )}
               </div>
-              {(imgAnexo || audioAnexo) && (
-                <div className="mt-2 flex flex-wrap gap-2 shrink-0">
-                  {imgAnexo && (
-                    <div className="relative">
-                      <img src={imgAnexo.src} alt="" className="h-16 w-16 rounded-lg object-cover border border-surface-200" />
-                      <button onClick={() => setImgAnexo(null)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-700 text-white hover:bg-red-600 shadow" title="Remover"><X className="w-3 h-3" /></button>
-                    </div>
-                  )}
-                  {audioAnexo && (
-                    <div className="relative flex items-center gap-2 h-16 px-3 rounded-lg border border-surface-200 bg-surface-50">
-                      <AudioLines className="w-4 h-4 text-primary-600 shrink-0" />
-                      <span className="text-xs text-stone-700 max-w-[140px] truncate">{audioAnexo.nome || 'Áudio'}</span>
-                      <button onClick={() => setAudioAnexo(null)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-700 text-white hover:bg-red-600 shadow" title="Remover"><X className="w-3 h-3" /></button>
-                    </div>
-                  )}
-                </div>
-              )}
+            )}
 
-              <button
-                onClick={iniciarEnvio}
-                disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia || iniciando}
-                className="btn-primary mt-3 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
-              >
-                {iniciando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {iniciando ? 'Iniciando…' : 'Enviar mensagem'}
-              </button>
-            </div>
+            {/* Botão enviar: ícone flutuante no canto inferior direito */}
+            <button
+              onClick={iniciarEnvio}
+              disabled={!lista.trim() || !mensagem.trim() || !instanciaSelecionada?.nomeInstancia || iniciando}
+              title={iniciando ? 'Iniciando…' : 'Enviar mensagem'}
+              className={`absolute bottom-3 right-3 z-20 h-11 w-11 flex items-center justify-center rounded-xl shadow-sm transition-colors ${
+                iniciando
+                  ? 'bg-primary-50 text-primary-600'
+                  : 'bg-surface-100 text-stone-500 hover:bg-primary-600 hover:text-white disabled:opacity-40 disabled:hover:bg-surface-100 disabled:hover:text-stone-500'
+              }`}
+            >
+              {iniciando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+            </button>
           </aside>
 
-          <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-w-0">
-            <div className="p-3 sm:p-4 border-b border-surface-200 shrink-0 flex items-center gap-2 text-stone-700">
-              <Users className="w-4 h-4" />
-              <p className="text-sm font-semibold">Lista de contatos</p>
+          <div className="border border-surface-200/90 rounded-2xl sm:rounded-3xl overflow-hidden bg-white shadow-inner shadow-slate-200/40 ring-1 ring-white/80 flex flex-col shrink-0 min-w-0 lg:w-[min(400px,34vw)] lg:max-w-md">
+            <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 border-b border-surface-200/80 bg-gradient-to-r from-surface-50/90 to-primary-50/30 flex-wrap">
+              <Users className="w-4 h-4 text-primary-600 shrink-0" />
+              <span className="text-sm font-semibold text-stone-800">Lista de contatos</span>
+              <div className="ml-auto flex items-center gap-0.5">
+                <NichoPicker tipo="whatsapp" iconOnly label="Nicho" onPick={(linhas) => setLista((prev) => [prev.trim(), linhas.join('\n')].filter(Boolean).join('\n'))} />
+                <button type="button" onClick={handleBaixarExemplo} title="Baixar exemplo Excel" className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-700 hover:bg-surface-200 transition-colors touch-manipulation">
+                  <Download className="w-4 h-4" />
+                </button>
+                <label title="Subir Excel" className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-700 hover:bg-surface-200 transition-colors touch-manipulation cursor-pointer">
+                  <Upload className="w-4 h-4" />
+                  <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
+                </label>
+              </div>
             </div>
-            <div className="p-3 sm:p-4 flex flex-col flex-1 min-w-0">
-            <div className="relative flex flex-1 min-h-[200px]">
+            <div className="relative flex flex-1 min-h-[150px]">
               <img src={excelImg} alt="" className="pointer-events-none absolute bottom-3 right-3 h-24 w-24 object-contain opacity-50 z-0 animate-float-soft" />
               <textarea
                 value={lista}
                 onChange={(e) => setLista(e.target.value)}
                 placeholder={'5511999999999\n5521988888888,João\n5531977777777;Maria'}
-                className="relative z-10 w-full flex-1 p-4 rounded-xl border border-surface-200 bg-transparent focus:border-surface-300 focus:ring-0 outline-none resize-y text-sm font-mono min-h-[200px]"
+                className="relative z-10 w-full flex-1 p-4 bg-transparent resize-none focus:ring-0 focus:outline-none text-sm font-mono min-h-[150px] placeholder:text-stone-400 text-stone-800"
               />
-            </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              <NichoPicker tipo="whatsapp" className="min-h-[44px]" onPick={(linhas) => setLista((prev) => [prev.trim(), linhas.join('\n')].filter(Boolean).join('\n'))} />
-              <button type="button" onClick={handleBaixarExemplo} className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 touch-manipulation">
-                <Download className="w-4 h-4" /> Exemplo Excel
-              </button>
-              <label className="btn-secondary text-sm py-2.5 min-h-[44px] px-4 cursor-pointer touch-manipulation flex items-center justify-center gap-2">
-                <Upload className="w-4 h-4" /> Subir Excel
-                <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel} className="hidden" />
-              </label>
-            </div>
             </div>
           </div>
       </div>
@@ -565,10 +568,21 @@ export default function EnviarMensagem() {
                       <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${aberto ? 'rotate-180' : ''}`} />
                       <div className="min-w-0">
                         <p className="font-medium text-stone-800 text-sm truncate">{item.nomeDisparo}</p>
-                        <p className="text-xs text-stone-500">{formatDate(item.createdAt)}</p>
+                        <p className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
+                          <span>{formatDate(item.createdAt)}</span>
+                          {item.sessao && (
+                            <span className="inline-flex items-center gap-1 text-stone-600 max-w-[160px]">
+                              <span className="text-stone-300">·</span>
+                              <WhatsAppIcon className="w-3 h-3 text-green-600 shrink-0" />
+                              <span className="truncate">{item.sessao}</span>
+                            </span>
+                          )}
+                        </p>
                       </div>
                     </button>
                     <div className="flex items-center gap-3">
+                      {item.imagemUrl && <ImageLucide className="w-3.5 h-3.5 text-stone-400 shrink-0" title="Imagem anexada" />}
+                      {item.audioUrl && <AudioLines className="w-3.5 h-3.5 text-stone-400 shrink-0" title="Áudio anexado" />}
                       <span className="text-xs text-stone-600">{enviados}/{item.total} enviados</span>
                       {falhas > 0 && <span className="text-xs text-red-500 font-medium">{falhas} falha{falhas > 1 ? 's' : ''}</span>}
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${WA_STATUS[status] || 'bg-stone-100 text-stone-600'}`}>
@@ -580,11 +594,26 @@ export default function EnviarMensagem() {
                     </div>
                   </div>
                   {aberto && (
-                    <div className="px-4 pb-4">
+                    <div className="px-4 pb-4 space-y-3">
                       <div className="text-xs text-stone-500 p-3 bg-surface-50 rounded-xl space-y-1">
                         <p className="text-stone-700 font-medium">Mensagem enviada:</p>
                         <p className="whitespace-pre-wrap break-words">{item.mensagem || '—'}</p>
-                                      </div>
+                      </div>
+                      {(item.imagemUrl || item.audioUrl) && (
+                        <div className="flex flex-wrap items-center gap-3">
+                          {item.imagemUrl && (
+                            <button type="button" onClick={() => setLightboxImg(item.imagemUrl)} className="group relative w-16 h-16 rounded-xl overflow-hidden shrink-0" title="Ver imagem">
+                              <img src={item.imagemUrl} alt="Imagem do disparo" className="w-full h-full object-cover" />
+                              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+                                <ImageLucide className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </span>
+                            </button>
+                          )}
+                          {item.audioUrl && (
+                            <AudioPlayer src={item.audioUrl} className="w-[320px] max-w-full" />
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -609,6 +638,14 @@ export default function EnviarMensagem() {
       <AudioTemplatePicker uid={user?.uid} open={audioPickerOpen} onClose={() => setAudioPickerOpen(false)} onPick={(t) => setAudioAnexo({ url: t.audioUrl, nome: t.nome, ext: t.ext })} currentId={null} />
       <input ref={imgUpInputRef} type="file" accept="image/*" onChange={subirImagemPc} className="hidden" />
       <input ref={audioUpInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,.mp3,.wav" onChange={subirAudioPc} className="hidden" />
+
+      {/* Lightbox da imagem do disparo */}
+      {lightboxImg && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/80" onClick={() => setLightboxImg(null)}>
+          <button type="button" onClick={() => setLightboxImg(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20" title="Fechar"><X className="w-5 h-5" /></button>
+          <img src={lightboxImg} alt="Imagem do disparo" className="max-w-full max-h-full rounded-xl object-contain shadow-2xl" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
 
       {/* Popup: origem da imagem (Biblioteca / Computador) */}
       {imgOrigemOpen && (

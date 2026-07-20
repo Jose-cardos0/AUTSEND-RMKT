@@ -292,22 +292,11 @@ export default function Remarketing() {
               className="flex-1 min-h-0"
               value={mensagem}
               onChange={setMensagem}
-              placeholder="Olá {nome}, você deixou itens no carrinho. Posso te ajudar?"
+              placeholder="Olá {nome_cliente}, você deixou itens no carrinho. Posso te ajudar?"
+              showChaves
               showCheckout
               rows={4}
             />
-            <div className="flex flex-wrap gap-1.5 shrink-0 mt-2">
-              {['{nome}', '{nome_produto}'].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => editorRef.current?.insert(v)}
-                  className="text-[11px] font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200/70 rounded-full px-2.5 py-1 transition-colors"
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
             <button
               onClick={handleEnviar}
               disabled={enviando || selectedCarts.length === 0 || !mensagem.trim()}

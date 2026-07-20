@@ -326,6 +326,11 @@ function replaceVariables(template, lead, product) {
     .replace(/\{numero_cliente\}/gi, lead.telefone || '')
     .replace(/\{email_cliente\}/gi, lead.email || '')
     .replace(/\{nome_produto\}/gi, product.nome || '')
+    // Aliases curtos usados no editor de WhatsApp/disparo (ex.: {nome})
+    .replace(/\{nome\}/gi, lead.nome || '')
+    .replace(/\{telefone\}/gi, lead.telefone || '')
+    .replace(/\{numero\}/gi, lead.telefone || '')
+    .replace(/\{email\}/gi, lead.email || '')
 }
 
 // ───────────────────────── E-mail (Resend) ─────────────────────────
@@ -2115,6 +2120,7 @@ exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, 
     nomeDisparo, sessao, mensagem: template, total: contatos.length, totalLotes: lotes.length,
     loteAtual: 0, enviados: 0, falhas: 0, status: 'enviando',
     temImagem: !!imagemUrl, temAudio: !!audioUrl,
+    imagemUrl: imagemUrl || null, audioUrl: audioUrl || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   })
   lotes.forEach((cs, i) => batch.set(dRef.collection('lotes').doc(String(i)), { contatos: cs, enviado: false }))

@@ -383,7 +383,7 @@ export default function WhatsappFunil() {
                   value={selectedNode.data?.mensagem || ''}
                   onChange={(v) => updateNodeData(selectedNode.id, { mensagem: v })}
                   placeholder={'Olá {nome_cliente}! Vi que você se interessou por {nome_produto}...'}
-                  variables={TEMPLATE_VARIABLES}
+                  showChaves
                   showCheckout
                   rows={5}
                 />
