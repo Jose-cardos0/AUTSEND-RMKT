@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getFunctions } from 'firebase/functions'
 import { getStorage } from 'firebase/storage'
@@ -14,7 +14,12 @@ const firebaseConfig = {
 }
 
 const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
+// Persistência FIXA (IndexedDB → localStorage), pra sessão não cair em memória e deslogar sozinho.
+// O getAuth() no automático cai pra memória se o IndexedDB falhar (privacidade/anônimo/Brave) = logout aleatório.
+export const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver, // necessário pro signInWithPopup (Google)
+})
 export const db = getFirestore(app)
 export const functions = getFunctions(app, 'us-central1')
 export const storage = getStorage(app)

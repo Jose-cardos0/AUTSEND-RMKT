@@ -1876,8 +1876,9 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
 
     const uidHint = (req.query && req.query.uid) || (body._waha && body._waha.uidCliente) || null
     const resolved = await resolverAtendentePorInstancia(m.instanceName, uidHint)
-    if (!resolved) { res.status(200).json({ ok: true, ignored: 'sem atendente ativo' }); return }
+    if (!resolved) { console.log('waAtendente: SEM atendente ativo (não responde/não gasta)', { instance: m.instanceName, telefone: m.telefone }); res.status(200).json({ ok: true, ignored: 'sem atendente ativo' }); return }
     const { uid, instDoc, atendente } = resolved
+    console.log('waAtendente: atendente RESOLVIDO (vai responder → gasta Grok)', { instance: m.instanceName, atendenteId: atendente.id, instanceIdAtendente: atendente.instanceId, instanceIdResolvido: instDoc.id, grupoId: atendente.grupoId, ativo: atendente.ativo, telefone: m.telefone })
 
     const gSnap = await db.doc(`users/${uid}/productGroups/${atendente.grupoId}`).get()
     if (!gSnap.exists) { res.status(200).json({ ok: true, ignored: 'sem produto' }); return }
