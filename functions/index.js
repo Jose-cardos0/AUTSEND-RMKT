@@ -4038,6 +4038,8 @@ function acharGrupo(grupos, produtos, product) {
 async function tryAutoSend(userId, leadRef, evento, customer, product, produtos) {
   try {
     // Automações de WhatsApp por GRUPO de produto — dispara se QUALQUER produto do checkout estiver no grupo.
+    // Automações de WhatsApp por GRUPO de produto — dispara se QUALQUER produto do checkout estiver no grupo.
+    // 1 produto = 1 grupo (bloqueado na tela de Produtos), então basta o primeiro grupo que contém o produto.
     const gruposSnap = await db.collection('users').doc(userId).collection('productGroups').get()
     const grupos = gruposSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
     const grupo = acharGrupo(grupos, produtos, product)

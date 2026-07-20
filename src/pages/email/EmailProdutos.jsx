@@ -137,9 +137,16 @@ export default function EmailProdutos() {
     return false
   }
 
+  // Um produto só pode estar em UM grupo. Retorna o outro grupo que já tem o produto (ou undefined).
+  const produtoEmOutroGrupo = (grupo, nome) => grupos.find((g) => g.id !== grupo.id && (g.produtos || []).includes(nome))
+
   const toggleProduto = async (grupo, nome) => {
     const jaTem = (grupo.produtos || []).includes(nome)
-    if (!jaTem && atingiuLimiteProdutos(grupo)) return
+    if (!jaTem) {
+      const outro = produtoEmOutroGrupo(grupo, nome)
+      if (outro) { toast.error(`"${nome}" já está no grupo "${outro.nome}". Um produto só pode estar em um grupo — remova de lá antes de adicionar aqui.`); return }
+      if (atingiuLimiteProdutos(grupo)) return
+    }
     const produtos = jaTem ? grupo.produtos.filter((p) => p !== nome) : [...(grupo.produtos || []), nome]
     setGrupos((prev) => prev.map((g) => (g.id === grupo.id ? { ...g, produtos } : g)))
     try {
@@ -151,6 +158,8 @@ export default function EmailProdutos() {
     const nome = (addInput[grupo.id] || '').trim()
     if (!nome) return
     if ((grupo.produtos || []).includes(nome)) { toast('Esse produto já está no grupo.', { icon: 'ℹ️' }); return }
+    const outro = produtoEmOutroGrupo(grupo, nome)
+    if (outro) { toast.error(`"${nome}" já está no grupo "${outro.nome}". Um produto só pode estar em um grupo — remova de lá antes.`); return }
     if (atingiuLimiteProdutos(grupo)) return
     const produtos = [...(grupo.produtos || []), nome]
     setGrupos((prev) => prev.map((g) => (g.id === grupo.id ? { ...g, produtos } : g)))
@@ -318,11 +327,12 @@ export default function EmailProdutos() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {nomesDisponiveis.filter((n) => !(grupo.produtos || []).includes(n)).map((nome) => {
                             const dono = usados[nome]
+                            const bloqueado = dono && dono !== grupo.nome
                             return (
-                              <button key={nome} type="button" onClick={() => toggleProduto(grupo, nome)} className="flex items-center gap-2 p-2.5 rounded-xl border border-surface-200 bg-white hover:bg-surface-50 text-sm text-left">
-                                <Plus className="w-3.5 h-3.5 text-primary-600 shrink-0" />
+                              <button key={nome} type="button" disabled={bloqueado} onClick={() => toggleProduto(grupo, nome)} title={bloqueado ? `Já está no grupo "${dono}" — um produto só pode estar em um grupo` : ''} className={`flex items-center gap-2 p-2.5 rounded-xl border text-sm text-left ${bloqueado ? 'border-surface-200 bg-surface-50 opacity-60 cursor-not-allowed' : 'border-surface-200 bg-white hover:bg-surface-50'}`}>
+                                <Plus className={`w-3.5 h-3.5 shrink-0 ${bloqueado ? 'text-stone-300' : 'text-primary-600'}`} />
                                 <span className="flex-1 min-w-0 truncate text-stone-700">{nome}</span>
-                                {dono && dono !== grupo.nome && <span className="text-[10px] text-amber-600 shrink-0">em {dono}</span>}
+                                {bloqueado && <span className="text-[10px] text-amber-600 shrink-0">em {dono}</span>}
                               </button>
                             )
                           })}
