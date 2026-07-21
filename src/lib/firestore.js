@@ -82,10 +82,10 @@ export async function updateDisparo(uid, disparoId, patch) {
   await updateDoc(ref, removeUndefined(patch))
 }
 
-/** Relatório dos vendedores (pessoas, IC, vendas, tokens, série diária). */
-export async function getVendedorRelatorio(mes) {
-  const r = await httpsCallable(functions, 'getVendedorRelatorio')({ mes })
-  return r.data // { mes, total, vendedores[], serie[] }
+/** Relatório dos vendedores (pessoas, IC, vendas, tokens, série diária). params: { de, ate } (ms). */
+export async function getVendedorRelatorio(params) {
+  const r = await httpsCallable(functions, 'getVendedorRelatorio')(params || {})
+  return r.data // { total, vendedores[], serie[] }
 }
 
 /** Remove um disparo da linha do tempo */

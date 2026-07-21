@@ -9,6 +9,7 @@ import PageLoader from '../components/PageLoader'
 import StatCard from '../components/StatCard'
 import Select from '../components/Select'
 import EChart from '../components/EChart'
+import DateRangePicker from '../components/DateRangePicker'
 import { Users, ShoppingBag, CheckCircle2, Cpu, BarChart3, RefreshCw, Rocket, Package } from 'lucide-react'
 
 const C = { primary: '#7c3aed', blue: '#3b82f6', green: '#10b981' }
@@ -23,13 +24,14 @@ export default function VendedorRelatorio() {
   const [carregando, setCarregando] = useState(false)
   const [data, setData] = useState(null)
   const [sel, setSel] = useState('')
+  const [periodo, setPeriodo] = useState(null) // { de, ate } | null (tudo)
 
   const carregar = () => {
     if (!user?.uid) return
     setCarregando(true)
-    getVendedorRelatorio().then(setData).catch(() => setData(null)).finally(() => { setLoading(false); setCarregando(false) })
+    getVendedorRelatorio({ de: periodo?.de, ate: periodo?.ate }).then(setData).catch(() => setData(null)).finally(() => { setLoading(false); setCarregando(false) })
   }
-  useEffect(() => { carregar() }, [user?.uid])
+  useEffect(() => { carregar() }, [user?.uid, periodo])
 
   const vendedores = data?.vendedores || []
   const serie = data?.serie || []
@@ -94,8 +96,9 @@ export default function VendedorRelatorio() {
       title="Relatório de vendedores"
       right={
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Select value={sel} onChange={setSel} compact withThumb title="Filtrar por vendedor" className="w-44 sm:w-52 shrink-0"
+          <Select value={sel} onChange={setSel} compact withThumb title="Filtrar por vendedor" className="w-40 sm:w-48 shrink-0"
             options={[{ value: '', label: 'Todos os vendedores' }, ...vendedores.map((v) => ({ value: v.atendenteId, label: v.nome, image: v.grupoImagem }))]} />
+          <DateRangePicker value={periodo} onChange={setPeriodo} />
           <button onClick={carregar} disabled={carregando} title="Atualizar" className="btn-secondary min-h-[38px] px-3 shrink-0"><RefreshCw className={`w-4 h-4 ${carregando ? 'animate-spin' : ''}`} /></button>
         </div>
       }

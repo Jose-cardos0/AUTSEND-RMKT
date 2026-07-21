@@ -2159,7 +2159,21 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
 exports.getVendedorRelatorio = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
-  const mesId = String(request.data?.mes || new Date().toISOString().slice(0, 7))
+  const de = Number(request.data?.de) || null
+  const ate = Number(request.data?.ate) || null
+  // Meses (YYYY-MM) do período pros tokens — senão, o mês atual.
+  const mesesTokens = []
+  if (de && ate) {
+    let y = new Date(de).getUTCFullYear(), m = new Date(de).getUTCMonth()
+    const yF = new Date(ate).getUTCFullYear(), mF = new Date(ate).getUTCMonth()
+    while (y < yF || (y === yF && m <= mF)) { mesesTokens.push(`${y}-${String(m + 1).padStart(2, '0')}`); m++; if (m > 11) { m = 0; y++ } }
+  } else { mesesTokens.push(new Date().toISOString().slice(0, 7)) }
+  const dentroPeriodo = (c) => {
+    if (!de && !ate) return true
+    const ts = c.criadaEm?.toMillis?.() ?? c.updatedAt?.toMillis?.() ?? 0
+    if (!ts || (de && ts < de) || (ate && ts > ate)) return false
+    return true
+  }
 
   const [atSnap, gSnap, cSnap] = await Promise.all([
     db.collection(`users/${uid}/atendentes`).get(),
@@ -2169,7 +2183,7 @@ exports.getVendedorRelatorio = onCall({ region: 'us-central1', timeoutSeconds: 6
   const atendentes = atSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
   const grupos = {}
   gSnap.docs.forEach((d) => { grupos[d.id] = { nome: d.data().nome || '', imagem: d.data().imagem || d.data().imagemUrl || null, produtos: (Array.isArray(d.data().produtos) ? d.data().produtos : []).map((x) => String(x).toLowerCase()) } })
-  const conversas = cSnap.docs.map((d) => ({ telefone: d.id, ...d.data() }))
+  const conversas = cSnap.docs.map((d) => ({ telefone: d.id, ...d.data() })).filter(dentroPeriodo)
 
   // Compras (leads com evento de compra) → telefone => [produtos comprados]
   const compraPorTel = {}
@@ -2207,7 +2221,7 @@ exports.getVendedorRelatorio = onCall({ region: 'us-central1', timeoutSeconds: 6
         dd.pessoas++; if (c.atingiuCheckout) dd.ic++; if (vendeu) dd.vendas++
       }
     })
-    const tokens = (a.tokensMes && a.tokensMes[mesId]) || 0
+    const tokens = mesesTokens.reduce((s, mm) => s + ((a.tokensMes && a.tokensMes[mm]) || 0), 0)
     return {
       atendenteId: a.id, nome: a.nome || 'Vendedor', grupoId: a.grupoId || '',
       grupoNome: grupos[a.grupoId]?.nome || '', grupoImagem: grupos[a.grupoId]?.imagem || null, ativo: a.ativo === true,
@@ -2220,7 +2234,7 @@ exports.getVendedorRelatorio = onCall({ region: 'us-central1', timeoutSeconds: 6
 
   const total = vendedores.reduce((acc, r) => ({ pessoas: acc.pessoas + r.pessoas, ic: acc.ic + r.ic, vendas: acc.vendas + r.vendas, tokens: acc.tokens + r.tokens }), { pessoas: 0, ic: 0, vendas: 0, tokens: 0 })
   const serie = Object.keys(porDia).sort().map((dia) => ({ dia, ...porDia[dia] }))
-  return { mes: mesId, total, vendedores, serie }
+  return { de, ate, total, vendedores, serie }
 })
 
 /**
