@@ -21,6 +21,8 @@ const MessageEditor = forwardRef(function MessageEditor({
   variables,
   /** Mostra o botão "Checkout" na barra (insere link de checkout salvo) */
   showCheckout = false,
+  /** Checkout como ícone cinza (sem o texto "Checkout" azul) */
+  checkoutIconOnly = false,
   rows = 5,
   textareaClassName = '',
   className = '',
@@ -80,7 +82,13 @@ const MessageEditor = forwardRef(function MessageEditor({
           {showCheckout && (
             <>
               <div className="w-px h-5 bg-surface-200 mx-0.5" />
-              <CheckoutPicker onPick={addText} buttonClassName="flex items-center gap-1.5 px-2.5 py-2 min-h-[40px] rounded-lg text-primary-600 hover:bg-primary-50 text-xs font-semibold transition-colors" />
+              <CheckoutPicker
+                onPick={addText}
+                iconOnly={checkoutIconOnly}
+                buttonClassName={checkoutIconOnly
+                  ? 'p-2.5 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-500 hover:text-stone-700 hover:bg-surface-200 transition-colors'
+                  : 'flex items-center gap-1.5 px-2.5 py-2 min-h-[40px] rounded-lg text-primary-600 hover:bg-primary-50 text-xs font-semibold transition-colors'}
+              />
             </>
           )}
         </div>

@@ -8,11 +8,13 @@ import MessageEditor from '../../components/MessageEditor'
 import MelhorarPlano from '../../components/MelhorarPlano'
 import Select from '../../components/Select'
 import toast from 'react-hot-toast'
-import { KIWIFY_EVENTS } from '../../lib/constants'
+import { KIWIFY_EVENTS, TEMPLATE_VARIABLES } from '../../lib/constants'
 import { usePlano } from '../../lib/PlanoContext'
-import { MessageSquare, Search, Send, CheckCircle2, Circle, Loader2, AlertCircle, ChevronLeft, ChevronRight, Users, Filter } from 'lucide-react'
+import { Send, CheckCircle2, Circle, Loader2, AlertCircle, ChevronLeft, ChevronRight, Users, Filter, CheckSquare } from 'lucide-react'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
+import StatCard from '../../components/StatCard'
+import CollapsibleSearch from '../../components/CollapsibleSearch'
 
 /** Normaliza pra E.164 (espelho do backend). Rejeita BR (+55) salvo permitirBR (conta própria/API). */
 function normalizarE164Internacional(raw, permitirBR) {
@@ -166,19 +168,10 @@ export default function SmsRemarketing() {
       fill
       badge={`SMS · Remarketing · ${canal === 'api' ? "API's" : canal === 'brl' ? 'Brasil' : 'EUA'}`}
       right={
-        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
-          <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Total</p>
-            <p className="text-lg font-bold text-stone-800 tabular-nums">{resumo.total}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 text-center shadow-sm shadow-emerald-500/10">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Enviados</p>
-            <p className="text-lg font-bold text-emerald-700 tabular-nums">{resumo.enviados}</p>
-          </div>
-          <div className="rounded-2xl border border-primary-200/90 bg-gradient-to-br from-primary-50 to-white px-3 py-2.5 text-center shadow-sm shadow-primary-500/10">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-primary-600">Sel.</p>
-            <p className="text-lg font-bold text-primary-700 tabular-nums">{selectedCarts.length}</p>
-          </div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none sm:w-auto">
+          <StatCard label="Total" value={resumo.total} icon={Users} color="blue" />
+          <StatCard label="Enviados" value={resumo.enviados} icon={CheckCircle2} color="green" />
+          <StatCard label="Selecionados" value={selectedCarts.length} icon={CheckSquare} color="purple" />
         </div>
       }
     >
@@ -198,65 +191,74 @@ export default function SmsRemarketing() {
 
       <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
         <aside className="flex flex-col shrink-0 lg:w-[min(480px,42vw)] lg:min-w-[320px] lg:max-w-lg h-[min(42dvh,320px)] lg:h-auto lg:min-h-0 overflow-hidden">
-          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col h-full min-h-0 overflow-hidden">
-            <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 shrink-0 text-primary-600" />
-              Mensagem
-            </h3>
+          <div className="relative flex flex-col flex-1 min-h-0">
             <MessageEditor
               ref={editorRef}
               fillHeight
               className="flex-1 min-h-0"
+              textareaClassName="pb-16"
               value={mensagem}
               onChange={setMensagem}
               placeholder={'Autsend: hey {nome}, still interested in {nome_produto}? Reply STOP to opt out.'}
               rows={4}
+              showChaves
+              chavesVars={TEMPLATE_VARIABLES.filter((v) => v.key === '{nome_cliente}' || v.key === '{nome_produto}')}
             />
-            <div className="flex flex-wrap gap-1.5 shrink-0 mt-2">
-              {['{nome_cliente}', '{nome_produto}'].map((v) => (
-                <button key={v} type="button" onClick={() => editorRef.current?.insert(v)} className="text-[11px] font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200/70 rounded-full px-2.5 py-1 transition-colors">{v}</button>
-              ))}
-            </div>
-            <p className="text-[11px] text-stone-400 shrink-0 mt-1">Só números internacionais. Acentos removidos automaticamente.</p>
+
+            {/* Botão enviar: ícone flutuante no canto inferior direito */}
             <button
               onClick={handleEnviar}
               disabled={enviando || !podeSms || selectedCarts.length === 0 || !mensagem.trim()}
-              className="btn-primary mt-2 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
+              title={enviando ? 'Enviando…' : `Enviar para ${selectedCarts.length} contato(s)`}
+              className={`absolute bottom-3 right-3 z-20 h-11 w-11 flex items-center justify-center rounded-xl shadow-sm transition-colors ${
+                enviando
+                  ? 'bg-primary-50 text-primary-600'
+                  : 'bg-surface-100 text-stone-500 hover:bg-primary-600 hover:text-white disabled:opacity-40 disabled:hover:bg-surface-100 disabled:hover:text-stone-500'
+              }`}
             >
-              {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {enviando ? 'Enviando...' : `Enviar (${selectedCarts.length})`}
+              {enviando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
             </button>
           </div>
+          <p className="text-[11px] text-stone-400 shrink-0 mt-2">{canal === 'brl' ? 'Só números do Brasil (+55). Acentos removidos automaticamente.' : canal === 'api' ? 'Qualquer país. Acentos removidos automaticamente.' : 'Só números internacionais (sem Brasil). Acentos removidos automaticamente.'}</p>
         </aside>
 
         <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-h-0 min-w-0">
-          <div className="p-3 sm:p-4 border-b border-surface-200 space-y-2 shrink-0">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 text-stone-700">
+          <div className="px-3 sm:px-4 py-1.5 min-h-[56px] flex items-center border-b border-surface-200 shrink-0">
+            <div className="flex items-center gap-2 w-full min-w-0">
+              <div className="flex items-center gap-2 text-stone-700 shrink-0">
                 <Users className="w-4 h-4" />
-                <p className="text-sm font-semibold">Lista de contatos (internacionais)</p>
+                <p className="text-sm font-semibold">Lista de contatos</p>
               </div>
-              <div className="flex flex-col items-end gap-0.5 shrink-0">
-                <button type="button" onClick={selectAll} className="text-sm font-medium text-primary-600 hover:underline py-0.5 touch-manipulation">
-                  {selectedIds.size === filtered.length && filtered.length > 0 ? 'Desmarcar todos' : 'Selecionar todos'}
-                </button>
-                <button type="button" onClick={() => setApenasNaoEnviados((v) => !v)} className="text-sm font-medium py-0.5 hover:underline touch-manipulation text-primary-600">
-                  {apenasNaoEnviados ? 'Desmarcar não enviados' : 'Apenas não enviados'}
-                </button>
+              <div className="flex items-center gap-2 ml-auto min-w-0 justify-end">
+                <CollapsibleSearch value={filtroNome} onChange={setFiltroNome} placeholder="Nome, e-mail ou telefone" />
+                <Select
+                  value={filtroTag}
+                  onChange={setFiltroTag}
+                  compact
+                  title="Filtrar por evento"
+                  className="w-28 sm:w-32 shrink-0"
+                  options={[{ value: '', label: 'Eventos' }, ...KIWIFY_EVENTS.map((e) => ({ value: e.label, label: e.label }))]}
+                />
+                <Select
+                  searchable={false}
+                  title="Filtros e seleção"
+                  value={apenasNaoEnviados ? 'naoenviados' : ''}
+                  onChange={(v) => {
+                    if (v === 'todos') selectAll()
+                    else if (v === 'naoenviados') setApenasNaoEnviados((x) => !x)
+                  }}
+                  options={[
+                    { value: 'todos', label: selectedIds.size === filtered.length && filtered.length > 0 ? 'Desmarcar todos' : 'Selecionar todos' },
+                    { value: 'naoenviados', label: apenasNaoEnviados ? 'Mostrar todos os contatos' : 'Apenas não enviados' },
+                  ]}
+                  trigger={
+                    <button type="button" title="Filtros e seleção" className="inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:border-primary-300 text-sm text-stone-600 shrink-0 transition-colors">
+                      <Filter className="w-4 h-4" />
+                      <span className="hidden sm:inline">Filtros</span>
+                    </button>
+                  }
+                />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-                <input type="text" value={filtroNome} onChange={(e) => setFiltroNome(e.target.value)} placeholder="Nome, e-mail ou telefone" className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm" />
-              </div>
-              <Select value={filtroTag} onChange={setFiltroTag} className="w-full sm:w-56 shrink-0" options={[{ value: '', label: 'Todos os eventos' }, ...KIWIFY_EVENTS.map((e) => ({ value: e.label, label: e.label }))]} />
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-stone-500">
-              <Filter className="w-3.5 h-3.5" />
-              <span>{filtered.length} contato(s) após filtros</span>
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft">
@@ -283,15 +285,14 @@ export default function SmsRemarketing() {
                         </button>
 
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-x-4 md:gap-y-1 flex-1 min-w-0 items-start md:items-center w-full">
-                          <div className="md:col-span-4 min-w-0">
+                          <div className="md:col-span-5 min-w-0">
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <p className="font-semibold text-stone-800 truncate">{cart.nome || cart.email || 'Sem nome'}</p>
                               {cart.remarketingEnviado && <span className="text-[11px] font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">Enviado</span>}
                             </div>
                           </div>
-                          <p className="md:col-span-2 text-sm text-stone-600 tabular-nums md:text-right md:justify-self-end truncate">{cart.telefone || '—'}</p>
-                          <p className="md:col-span-3 text-sm text-stone-500 truncate md:text-right">{cart.email || '—'}</p>
-                          <div className="md:col-span-3 flex md:justify-end min-w-0">
+                          <p className="md:col-span-3 text-sm text-stone-600 tabular-nums md:text-right md:justify-self-end truncate">{cart.telefone || '—'}</p>
+                          <div className="md:col-span-4 flex md:justify-end min-w-0">
                             {cart.tag ? <span className="inline-flex items-center max-w-full text-xs font-medium bg-primary-100/80 text-primary-800 px-2.5 py-1 rounded-full truncate">{cart.tag}</span> : <span className="text-xs text-stone-400">—</span>}
                           </div>
                         </div>

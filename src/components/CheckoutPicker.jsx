@@ -10,7 +10,7 @@ import { ShoppingBag, Search, X, ChevronLeft, ChevronRight, Loader2 } from 'luci
 const PAGE_SIZE = 5
 
 /** Botão "Checkout" + popup com busca/paginação. Ao escolher, chama onPick(link). */
-export default function CheckoutPicker({ onPick, buttonClassName }) {
+export default function CheckoutPicker({ onPick, buttonClassName, iconOnly = false }) {
   const [user] = useAuthState(auth)
   const [open, setOpen] = useState(false)
   const [checkouts, setCheckouts] = useState([])
@@ -49,7 +49,7 @@ export default function CheckoutPicker({ onPick, buttonClassName }) {
         title="Inserir checkout"
         className={buttonClassName || 'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-primary-600 hover:bg-primary-50 text-xs font-semibold transition-colors'}
       >
-        <ShoppingBag className="w-3.5 h-3.5" /> Checkout
+        {iconOnly ? <ShoppingBag className="w-4 h-4" /> : <><ShoppingBag className="w-3.5 h-3.5" /> Checkout</>}
       </button>
 
       <AnimatePresence>

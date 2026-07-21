@@ -64,6 +64,12 @@ export async function iniciarDisparoWA({ sessao, nomeDisparo, mensagem, imagemUr
   return r.data // { disparoId, total, totalLotes }
 }
 
+/** Remarketing em massa — MESMA máquina do disparador (lotes de 50 + callbacks), mas via WF1. */
+export async function iniciarRemarketingWA({ sessao, nomeDisparo, mensagem, imagemUrl, audioUrl, contatos }) {
+  const r = await httpsCallable(functions, 'iniciarRemarketingWA')({ sessao, nomeDisparo, mensagem, imagemUrl, audioUrl, contatos })
+  return r.data // { disparoId, total, totalLotes }
+}
+
 /** Cria ou substitui um disparo (id = disparoId) */
 export async function setDisparo(uid, disparoId, data) {
   const ref = doc(db, 'users', uid, 'disparos', disparoId)

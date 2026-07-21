@@ -41,6 +41,14 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "sendAfter", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "waConversas",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "fupStatus", "order": "ASCENDING" },
+        { "fieldPath": "fupNextRunAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

@@ -7,25 +7,32 @@ import { WEBHOOK_REMARKETING } from './constants'
  * @param {string} mensagem - template; {nome} é trocado pelo nome do contato
  * @param {object} [evolution] - config da instância (nomeInstancia, hash, instanceId) para o n8n
  */
-export async function enviarRemarketing(contatos, mensagem, evolution) {
+export async function enviarRemarketing(contatos, mensagem, evolution, midia = {}) {
   const sessao = evolution?.nomeInstancia ?? ''
+  const imagemUrl = midia.imagemUrl || null
+  const audioUrl = midia.audioUrl || null
 
   for (const contato of contatos) {
     const nome = contato.nome ?? contato.name ?? ''
     const produto = contato.produto ?? contato.nome_produto ?? ''
     const email = contato.email ?? ''
     const telefone = String(contato.telefone ?? contato.phone ?? contato.numero ?? '').replace(/\D/g, '')
-    const mensagemPersonalizada = mensagem
+    const mensagemPersonalizada = (mensagem || '')
       .replace(/\{nome_cliente\}/gi, nome)
       .replace(/\{nome_produto\}/gi, produto)
       .replace(/\{numero_cliente\}/gi, telefone)
       .replace(/\{email_cliente\}/gi, email)
       .replace(/\{nome\}/gi, nome)
     // Contrato WF1 (WAHA): { sessao, campanhaId, blocos, contatos }. Sem hash/tipoAcao.
+    // Blocos: texto (+ imagem + áudio, nessa ordem) — o WF1 renderiza cada tipo.
+    const blocos = []
+    if (mensagemPersonalizada.trim()) blocos.push({ tipo: 'texto', conteudo: mensagemPersonalizada })
+    if (imagemUrl) blocos.push({ tipo: 'imagem', url: imagemUrl })
+    if (audioUrl) blocos.push({ tipo: 'audio', url: audioUrl })
     const payload = {
       sessao,
       campanhaId: 'remarketing',
-      blocos: [{ tipo: 'texto', conteudo: mensagemPersonalizada }],
+      blocos,
       contatos: [{ telefone, nome }],
     }
     const res = await fetch(WEBHOOK_REMARKETING, {

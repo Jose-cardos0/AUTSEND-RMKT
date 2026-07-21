@@ -8,6 +8,7 @@ import GerarMensagemIA from '../components/GerarMensagemIA'
 import TemplatePicker from '../components/TemplatePicker'
 import CollapsibleSearch from '../components/CollapsibleSearch'
 import MessageEditor from '../components/MessageEditor'
+import useMidiaWhatsApp from '../hooks/useMidiaWhatsApp'
 import {
   getLeads,
   getProducts,
@@ -132,23 +133,27 @@ function VariableButtons({ textareaRef, value, onChange }) {
   )
 }
 
-function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
+function EventCard({ event, autoMsg, leadCount, onSave, productName, uid }) {
   const [expanded, setExpanded] = useState(false)
   const [mensagem, setMensagem] = useState(autoMsg?.mensagem || '')
   const [ativo, setAtivo] = useState(autoMsg?.ativo ?? false)
   const [salvando, setSalvando] = useState(false)
   const taRef = useRef(null)
   const editorRef = useRef(null)
+  const midia = useMidiaWhatsApp(uid)
 
   useEffect(() => {
     setMensagem(autoMsg?.mensagem || '')
     setAtivo(autoMsg?.ativo ?? false)
-  }, [autoMsg?.mensagem, autoMsg?.ativo])
+    midia.setImg(autoMsg?.imagemUrl ? { src: autoMsg.imagemUrl, name: 'imagem' } : null)
+    midia.setAudio(autoMsg?.audioUrl ? { url: autoMsg.audioUrl, nome: 'Áudio' } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMsg?.mensagem, autoMsg?.ativo, autoMsg?.imagemUrl, autoMsg?.audioUrl])
 
   const handleSave = async () => {
     setSalvando(true)
     try {
-      await onSave(event.id, { mensagem, ativo })
+      await onSave(event.id, { mensagem, ativo, imagemUrl: midia.img?.src || null, audioUrl: midia.audio?.url || null })
       toast.success(productName ? `Mensagem "${event.label}" do produto "${productName}" salva.` : `Automação "${event.label}" salva.`)
     } catch {
       toast.error('Erro ao salvar automação.')
@@ -161,7 +166,7 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
     const novo = !ativo
     setAtivo(novo)
     try {
-      await onSave(event.id, { mensagem, ativo: novo })
+      await onSave(event.id, { mensagem, ativo: novo, imagemUrl: midia.img?.src || null, audioUrl: midia.audio?.url || null })
     } catch {
       setAtivo(!novo)
       toast.error('Erro ao salvar.')
@@ -209,7 +214,9 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
               showChaves
               showCheckout
               rows={4}
+              toolbarExtra={midia.toolbarExtra}
             />
+            {midia.previews && <div className="mt-2">{midia.previews}</div>}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
@@ -229,6 +236,7 @@ function EventCard({ event, autoMsg, leadCount, onSave, productName }) {
               className="text-sm w-full sm:w-auto min-h-[44px] px-4 rounded-xl border-2 border-violet-200 text-violet-700 font-medium hover:bg-violet-50 disabled:opacity-50 flex items-center justify-center gap-2 touch-manipulation"
             />
           </div>
+          {midia.popups}
         </div>
       )}
     </div>
@@ -527,6 +535,7 @@ export default function Automacoes() {
                   leadCount={leadsCountByEvent[event.id] || 0}
                   onSave={handleSaveAutoMsg}
                   productName={grupoNome}
+                  uid={user.uid}
                 />
               ))}
             </div>

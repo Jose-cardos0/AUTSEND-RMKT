@@ -25,16 +25,21 @@ export async function criarInstancia(nomeInstancia, numeroWhatsapp = '') {
   return r.data // { id, base64 (data URI do QR), nomeInstancia (normalizado p/ WAHA), hash:null, instanceId:null }
 }
 
-/** Renova o QR de uma sessão WAHA (o anterior expira em ~60s / 20s). Retorna { sucesso, qrcodeBase64 }. */
+/**
+ * Renova o QR de uma sessão WAHA (o anterior expira em ~60s / 20s).
+ * Vai pela Cloud Function (servidor→n8n) — fetch direto do browser é bloqueado por CORS.
+ */
 export async function obterQr(nomeInstancia) {
-  const res = await fetch(WEBHOOK_EVOLUTION, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tipoAcao: 'obter_qr', nomeInstancia: nomeInstancia || '' }),
-  })
-  const data = await parseJsonResponse(res)
-  if (!res.ok) throw new Error(data?.erro || data?.message || 'Falha ao obter QR')
-  return data
+  const call = httpsCallable(functions, 'waInstanciaAcao')
+  const r = await call({ tipoAcao: 'obter_qr', nomeInstancia: (nomeInstancia || '').trim() })
+  return r.data
+}
+
+/** Reinicia a sessão (restart) sem apagar credencial — usado pra reconectar quando cai. */
+export async function reconectarInstancia(nomeInstancia) {
+  const call = httpsCallable(functions, 'waInstanciaAcao')
+  const r = await call({ tipoAcao: 'reconectar', nomeInstancia: (nomeInstancia || '').trim() })
+  return r.data
 }
 
 /** Checa no servidor (sem cache) se o cliente ainda pode criar instância. */
@@ -44,22 +49,15 @@ export async function podeCriarInstancia() {
   return r.data // { pode, atual, limite }
 }
 
+/** Status da sessão WAHA — via Cloud Function (servidor→n8n), sem CORS. */
 export async function verificarStatus(nomeInstancia, getParticipants = false, numeroWhatsapp = '') {
-  const payload = {
+  const call = httpsCallable(functions, 'waInstanciaAcao')
+  const r = await call({
     tipoAcao: 'verificar_status',
-    nomeInstancia: nomeInstancia || '',
-    getParticipants,
-  }
-  const numero = (numeroWhatsapp || '').trim().replace(/\D/g, '')
-  if (numero) payload.numeroWhatsApp = numero
-  const res = await fetch(WEBHOOK_EVOLUTION, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    nomeInstancia: (nomeInstancia || '').trim(),
+    numeroWhatsApp: (numeroWhatsapp || '').trim().replace(/\D/g, ''),
   })
-  const data = await parseJsonResponse(res)
-  if (!res.ok) throw new Error(data?.message || data?.error || 'Falha ao verificar status')
-  return data
+  return r.data
 }
 
 export async function buscarGrupos({ nomeInstancia, hash, instanciaId }) {

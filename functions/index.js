@@ -1666,6 +1666,35 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
   return { id: ref.id, base64, hash: null, instanceId: null, nomeInstancia: sessao }
 })
 
+/**
+ * Proxy server-side pro WF3 (WAHA): verificar_status / obter_qr / reconectar / logout.
+ * O front NÃO chama o n8n direto (fetch cross-origin do browser é bloqueado por CORS → o n8n
+ * não recebe nada). Aqui é servidor→n8n, sem CORS. Só age em instância do próprio usuário.
+ */
+exports.waInstanciaAcao = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const d = request.data || {}
+  const tipoAcao = String(d.tipoAcao || '').trim()
+  const nomeInstancia = String(d.nomeInstancia || '').trim()
+  const ACOES = ['verificar_status', 'obter_qr', 'reconectar', 'logout']
+  if (!ACOES.includes(tipoAcao)) throw new HttpsError('invalid-argument', 'Ação inválida.')
+  if (!nomeInstancia) throw new HttpsError('invalid-argument', 'Sem instância.')
+  // A instância é do usuário?
+  const snap = await db.collection(`users/${uid}/instances`).where('nomeInstancia', '==', nomeInstancia).limit(1).get()
+  if (snap.empty) throw new HttpsError('permission-denied', 'Instância não encontrada.')
+  const payload = { tipoAcao, nomeInstancia }
+  const numero = String(d.numeroWhatsApp || d.numeroWhatsapp || '').replace(/\D/g, '')
+  if (numero) payload.numeroWhatsApp = numero
+  try {
+    const res = await fetch(WEBHOOK_EVOLUTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    return await res.json().catch(() => ({}))
+  } catch (e) {
+    console.error('waInstanciaAcao', tipoAcao, e?.message || e)
+    throw new HttpsError('internal', 'Falha ao falar com o servidor de WhatsApp.')
+  }
+})
+
 // ═════════════════════ CENTRAL DE ATENDENTES — bot de IA no WhatsApp por produto ═════════════════════
 
 /**
@@ -1724,61 +1753,132 @@ const EVENTO_LABEL = {
 }
 
 /** Monta a mensagem de sistema (o "cérebro") a partir do contexto salvo no productGroup. */
+/**
+ * Lê o grafo do ReactFlow (iaGraph) e monta um roteiro de venda FIEL + links por token único.
+ * Resolve 2 problemas do achatamento: colisão de nomes (cada checkout vira um token CKn único)
+ * e perda dos galhos (cada item vendável diz o que vem DEPOIS: agradecimento + próximo upsell).
+ * @returns {{ roteiro: string, linkPorToken: Record<string,string> } | null}
+ */
+function serializarFluxoGrafo(grafo) {
+  const nodes = Array.isArray(grafo?.nodes) ? grafo.nodes : []
+  const edges = Array.isArray(grafo?.edges) ? grafo.edges : []
+  if (!nodes.length) return null
+  const byId = {}
+  nodes.forEach((n) => { byId[n.id] = n })
+  const saindo = (id) => edges.filter((e) => e.source === id).map((e) => byId[e.target]).filter(Boolean)
+
+  // Token único e determinístico por checkout (mesma ordem no prompt e na resolução do link).
+  const linkPorToken = {}
+  const tokenDe = {}
+  let n = 0
+  nodes.filter((x) => x.type === 'checkout' && x.data?.link).forEach((c) => {
+    const tk = `CK${++n}`
+    tokenDe[c.id] = tk
+    linkPorToken[tk] = c.data.link
+  })
+  if (!n) return null // sem checkout válido → deixa o fallback por nome cuidar
+
+  const rotulo = (x) => {
+    if (x.type === 'plano') return 'PLANO'
+    const k = x.data?.kind
+    return k === 'up' ? 'UPSELL' : k === 'dw' ? 'DOWNSELL (mais barato, oferecer só se recusar o upsell)'
+      : k === 'vsl' ? 'OFERTA PRINCIPAL (vídeo)' : k === 'tsl' ? 'OFERTA PRINCIPAL (texto)' : 'OFERTA'
+  }
+  const descreve = (x) => {
+    const nome = x.data?.nome || 'Sem nome'
+    const preco = x.data?.preco ? ` — ${x.data.preco}` : ''
+    const prod = x.data?.grupoNome ? ` [produto: ${x.data.grupoNome}]` : ''
+    const desc = x.data?.descricao ? `: ${x.data.descricao}` : ''
+    const L = [`• ${rotulo(x)}: ${nome}${preco}${prod}${desc}`]
+    const ck = saindo(x.id).find((y) => y.type === 'checkout')
+    L.push(ck && tokenDe[ck.id]
+      ? `   ↳ pra mandar o link de compra DESTE item, escreva EXATAMENTE [CHECKOUT: ${tokenDe[ck.id]}]`
+      : `   ↳ (sem link configurado — se pedirem pra comprar, chame um humano)`)
+    const base = ck || x
+    const agr = saindo(base.id).find((y) => y.type === 'agradecimento')
+    if (agr?.data?.texto) L.push(`   ↳ ao CONFIRMAR a compra deste, mande: "${agr.data.texto}"`)
+    const prox = saindo((agr || base).id).filter((y) => y.type === 'oferta' || y.type === 'plano')
+    if (prox.length) L.push(`   ↳ SÓ DEPOIS que ele comprar este, ofereça em seguida: ${prox.map((p) => p.data?.nome || '?').join(' → ')}`)
+    return L.join('\n')
+  }
+  const peso = (x) => (x.type === 'plano' || x.data?.kind === 'vsl' || x.data?.kind === 'tsl') ? 0 : x.data?.kind === 'up' ? 1 : 2
+  const vendaveis = nodes
+    .filter((x) => (x.type === 'plano' || x.type === 'oferta') && (x.data?.nome || saindo(x.id).some((y) => y.type === 'checkout')))
+    .sort((a, b) => peso(a) - peso(b))
+  return { roteiro: vendaveis.map(descreve).join('\n'), linkPorToken }
+}
+
 function montarSystemAtendente(grupo, leadContexto) {
   const persona = ATENDENTE_TOM[grupo?.iaPersona] || ATENDENTE_TOM.amigavel
-  const planos = Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []
-  const planosTxt = planos.length
-    ? planos.map((p) => `- ${p.nome}${p.preco ? ` (${p.preco})` : ''}${p.descricao ? `: ${p.descricao}` : ''} → pra enviar o link deste, escreva o marcador [CHECKOUT: ${p.nome}]`).join('\n')
-    : '(nenhum plano avulso configurado)'
-  // Funil de ofertas (VSL/TSL principal → upsells, cada UP com seu downsell pareado)
-  const f = grupo?.iaFunil || {}
-  const ups = Array.isArray(f.upsells) ? f.upsells : []
-  const dws = Array.isArray(f.downsells) ? f.downsells : []
-  let funilTxt = ''
-  if (f.principal) {
-    funilTxt += `\nOFERTA PRINCIPAL (${f.principal.kind === 'vsl' ? 'página VSL com vídeo' : 'página TSL com texto'}${f.principal.grupoNome ? `, produto: ${f.principal.grupoNome}` : ''}): ${f.principal.descricao || ''}`
-    if (f.principal.link) funilTxt += ` | página: ${f.principal.link}`
-    if (f.principal.checkoutLink) funilTxt += ` | pra fechar mande [CHECKOUT: OFERTA PRINCIPAL]`
+  const fluxo = serializarFluxoGrafo(grupo?.iaGraph)
+
+  // Bloco de venda: vem do GRAFO (fiel) quando existe; senão, fallback pras listas achatadas (compat).
+  let vendaBloco = ''
+  if (fluxo && fluxo.roteiro) {
+    vendaBloco = `\nFLUXO DE VENDAS (o mapa OFICIAL — siga à risca: ordem, links e escada; cada "↳ depois" só vale APÓS a compra confirmada):\n${fluxo.roteiro}`
+  } else {
+    const planos = Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []
+    const planosTxt = planos.map((p) => `- ${p.nome}${p.preco ? ` (${p.preco})` : ''}${p.descricao ? `: ${p.descricao}` : ''} → [CHECKOUT: ${p.nome}]`).join('\n')
+    const f = grupo?.iaFunil || {}
+    const ups = Array.isArray(f.upsells) ? f.upsells : []
+    const dws = Array.isArray(f.downsells) ? f.downsells : []
+    let funilTxt = ''
+    if (f.principal) { funilTxt += `\nOFERTA PRINCIPAL: ${f.principal.descricao || ''}${f.principal.checkoutLink ? ` → [CHECKOUT: OFERTA PRINCIPAL]` : ''}` }
+    ups.forEach((u, i) => {
+      funilTxt += `\nUPSELL ${u.nome}: ${u.descricao || ''}${u.checkoutLink ? ` → [CHECKOUT: ${u.nome}]` : ''}`
+      const dw = dws[i]
+      if (dw && (dw.checkoutLink || dw.descricao)) funilTxt += `\n   ↳ se recusar, DOWNSELL ${dw.nome}: ${dw.descricao || ''}${dw.checkoutLink ? ` → [CHECKOUT: ${dw.nome}]` : ''}`
+    })
+    const agr = Array.isArray(grupo?.iaAgradecimentos) ? grupo.iaAgradecimentos : []
+    const agrTxt = agr.length ? '\nAGRADECIMENTOS (mande ao confirmar a compra):\n' + agr.map((a) => `  - ao comprar ${(Array.isArray(a.checkouts) ? a.checkouts : []).map((c) => `"${c.nome}"`).join(' ou ') || 'uma oferta'}: ${a.texto}`).join('\n') : ''
+    vendaBloco = [funilTxt ? `\nFUNIL DE OFERTAS:${funilTxt}` : '', agrTxt, planosTxt ? `\nPLANOS:\n${planosTxt}` : ''].filter(Boolean).join('\n')
   }
-  ups.forEach((u, i) => {
-    funilTxt += `\nUPSELL ${u.nome}${u.grupoNome ? ` (produto: ${u.grupoNome})` : ''}: ${u.descricao || ''}${u.checkoutLink ? ` → [CHECKOUT: ${u.nome}]` : ''}`
-    const dw = dws[i]
-    if (dw && (dw.checkoutLink || dw.descricao)) funilTxt += `\n   ↳ se recusar/sumir, DOWNSELL ${dw.nome} (mesmo produto, mais barato): ${dw.descricao || ''}${dw.checkoutLink ? ` → [CHECKOUT: ${dw.nome}]` : ''}`
-  })
-  // Mensagens de agradecimento por oferta comprada
-  const agr = Array.isArray(grupo?.iaAgradecimentos) ? grupo.iaAgradecimentos : []
-  const agrTxt = agr.length
-    ? '\nMENSAGENS DE AGRADECIMENTO (mande quando o cliente confirmar a compra da oferta correspondente):\n' + agr.map((a) => `  - ao comprar ${(Array.isArray(a.checkouts) ? a.checkouts : []).map((c) => `"${c.nome}"`).join(' ou ') || (a.checkoutNome ? `"${a.checkoutNome}"` : 'uma oferta')}: ${a.texto}`).join('\n')
-    : ''
+  const temFluxo = !!vendaBloco
 
   const linhas = [
-    `Você é um(a) vendedor(a) humano(a) atendendo no WhatsApp sobre o produto "${grupo?.nome || ''}". Seu tom é ${persona}.`,
-    (leadContexto && (leadContexto.produto || leadContexto.evento)) ? `\nCONTEXTO DESTE LEAD (use pra personalizar, sem parecer robô nem citar "sistema"): ele chegou pelo evento "${EVENTO_LABEL[leadContexto.evento] || leadContexto.evento || ''}"${leadContexto.produto ? ` do produto "${leadContexto.produto}"` : ''}.` : '',
-    grupo?.iaObjetivo ? `\nSEU OBJETIVO PRINCIPAL:\n${grupo.iaObjetivo}` : '',
-    grupo?.iaContexto ? `\nSOBRE O PRODUTO (use pra tirar dúvidas):\n${grupo.iaContexto}` : '',
-    grupo?.iaObjecoes ? `\nCOMO LIDAR COM OBJEÇÕES:\n${grupo.iaObjecoes}` : '',
-    grupo?.iaProvaSocial ? `\nPROVA SOCIAL (cite quando ajudar a convencer):\n${grupo.iaProvaSocial}` : '',
-    grupo?.iaSuporte ? `\nSUPORTE (encaminhe pra cá as dúvidas de USO/técnicas — login, configuração, problemas no produto):\n${grupo.iaSuporte}` : '',
-    funilTxt ? `\nFUNIL DE OFERTAS:${funilTxt}` : '',
-    agrTxt,
-    planos.length ? `\nPLANOS / CHECKOUTS AVULSOS:\n${planosTxt}` : '',
+    `Você é um(a) vendedor(a) HUMANO(A) de verdade atendendo no WhatsApp sobre "${grupo?.nome || ''}". Tom: ${persona}. Você conversa como gente, com calor, e usa boas táticas de venda com sutileza — mas NUNCA inventa nada.`,
+    (leadContexto && (leadContexto.produto || leadContexto.evento)) ? `\nCONTEXTO DESTE LEAD (personalize sem parecer robô nem citar "sistema"): chegou pelo evento "${EVENTO_LABEL[leadContexto.evento] || leadContexto.evento || ''}"${leadContexto.produto ? ` do produto "${leadContexto.produto}"` : ''}.` : '',
+    grupo?.iaObjetivo ? `\nSEU OBJETIVO:\n${grupo.iaObjetivo}` : '',
+    grupo?.iaContexto ? `\nSOBRE O PRODUTO (a ÚNICA fonte de verdade — só existe o que está escrito aqui):\n${grupo.iaContexto}` : '',
+    grupo?.iaObjecoes ? `\nCOMO CONTORNAR OBJEÇÕES:\n${grupo.iaObjecoes}` : '',
+    grupo?.iaProvaSocial ? `\nPROVA SOCIAL (use pra convencer):\n${grupo.iaProvaSocial}` : '',
+    grupo?.iaSuporte ? `\nSUPORTE (encaminhe pra cá dúvidas de USO/técnicas — login, config, problemas):\n${grupo.iaSuporte}` : '',
+    grupo?.iaLinkApp ? `\nLINK DO APP (o único link válido de acesso — nunca invente outro):\n${grupo.iaLinkApp}` : '',
+    vendaBloco,
     `\nREGRAS OBRIGATÓRIAS:`,
-    `- Fale CURTO e humanizado, como uma pessoa real no zap (1 a 3 frases). Nada de textão nem de robô.`,
-    `- Responda SEMPRE no mesmo idioma que o cliente escrever.`,
-    `- NUNCA invente nada: sem promoções, trials/testes grátis, descontos, prazos ou funções que não estejam escritos aqui. Se não está no contexto, não existe.`,
-    `- Quando o cliente quiser comprar/pagar/assinar, mande o link certo usando EXATAMENTE o marcador [CHECKOUT: nome exato]. NUNCA escreva uma URL você mesmo.`,
-    (f.principal || ups.length) ? `- ESCADA DE VENDAS: venda primeiro a OFERTA PRINCIPAL. Quando o cliente CONFIRMAR que comprou/pagou a principal, agradeça e ofereça o 1º UPSELL. Regra da escada: se ele COMPRAR o upsell, pule pro PRÓXIMO upsell; se RECUSAR ou sumir, ofereça o DOWNSELL daquele upsell (mesmo produto, mais barato); se recusar o downsell também, passe pro próximo upsell. Quando acabarem as ofertas, agradeça e ENCERRE.` : '',
-    (f.principal || ups.length) ? `- FIM DO FUNIL: quando o cliente já passou por todas as ofertas (comprou ou recusou tudo), PARE de empurrar venda — não fique insistindo. Só volte a vender se ELE demonstrar que quer comprar algo.` : '',
-    grupo?.iaSuporte ? `- DÚVIDA DE USO/TÉCNICA (como logar, configurar, algo não funciona no produto): NÃO tente resolver nem invente — encaminhe educadamente pro suporte informado acima.` : '',
-    `- NUNCA ofereça upsell/downsell antes da compra da oferta principal.`,
+    `- Seja HUMANO: fale curto (1 a 3 frases), natural e caloroso. Nada de textão nem de robô. Responda SEMPRE no idioma do cliente.`,
+    `- VENDA com jeito: conecte com o interesse/dor do cliente, aponte os pontos fortes REAIS do produto, crie desejo com sutileza (benefício, prova social) e conduza pra compra.`,
+    `- INSISTA COM CLASSE: se ele hesitar ou disser "não", não desista de cara — acolha, contorne com uma objeção prevista, reforce UM benefício real e tente mais uma vez com leveza. Se ainda assim não quiser, respeite, agradeça e deixe a porta aberta (nada de insistir sem parar).`,
+    `- PROIBIDO INVENTAR (regra MÁXIMA, acima de tudo): nunca crie preço, plano, trial/teste grátis, garantia, desconto, promoção, prazo, funcionalidade ou link que não esteja LITERALMENTE escrito acima. Se perguntarem por algo que não existe (ex.: "tem 3 dias grátis?"), diga com naturalidade que NÃO tem. Na dúvida, é NÃO.`,
+    temFluxo ? `- SIGA O FLUXO DE VENDAS acima à risca: ofereça na ordem definida e mande o link EXATO de cada item pelo marcador [CHECKOUT: token] correspondente — NUNCA o link de outro item, NUNCA uma URL escrita por você.` : `- NUNCA escreva uma URL você mesmo.`,
+    temFluxo ? `- ESCADA (upsell): só ofereça o próximo item (o "↳ depois") DEPOIS que o cliente CONFIRMAR que comprou o anterior. Se recusar um upsell, ofereça o downsell dele (se houver) e siga. Quando o fluxo acabar, agradeça e PARE de empurrar venda.` : '',
+    `- Mande o link do que ELE pediu. Se pediu o GRATUITO, mande o gratuito — nunca empurre um pago no lugar. Se o item pedido não tem link configurado, chame um humano.`,
+    `- COMO USAR / aprender / configurar / login / algo não funciona: NÃO ensine passo a passo nem invente telas/etapas. ${grupo?.iaSuporte ? 'Encaminhe pro SUPORTE acima.' : 'Diga que vai chamar um atendente humano.'}${grupo?.iaLinkApp ? ' Se quiser acessar, mande só o link do app acima.' : ''}`,
     grupo?.iaRegras ? `- ${grupo.iaRegras.replace(/\n/g, '\n- ')}` : '',
-    `- Se não souber ou for um caso complexo, seja honesto e diga que vai chamar um atendente humano.`,
+    `- Caso complexo ou fora do que está escrito: seja honesto e diga que vai chamar um atendente humano.`,
   ]
   return linhas.filter(Boolean).join('\n')
 }
 
 /** Troca os marcadores [CHECKOUT: nome] pelo link real (plano OU oferta do funil). */
+/**
+ * Converte Markdown pra formatação do WhatsApp (que os modelos novos ignoram por padrão).
+ * WhatsApp: negrito = *um asterisco*. Markdown usa **dois** → apareceria literal.
+ */
+function paraFormatoWhatsApp(texto) {
+  return String(texto || '')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '*$1*')        // ***x*** (negrito+itálico) → *x*
+    .replace(/\*\*(.+?)\*\*/g, '*$1*')            // **negrito** → *negrito*
+    .replace(/__(.+?)__/g, '*$1*')                // __negrito__ → *negrito*
+    .replace(/^\s{0,3}#{1,6}\s+(.+?)\s*$/gm, '*$1*') // # Título → *Título*
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1: $2') // [txt](url) → txt: url
+    .replace(/^\s{0,3}[-*]\s+/gm, '• ')           // bullets markdown → •
+}
+
 function injetarCheckouts(texto, grupo) {
+  // Prioridade: tokens únicos do grafo (CKn) — link sempre certo, sem colisão de nome.
+  const porToken = serializarFluxoGrafo(grupo?.iaGraph)?.linkPorToken || {}
+  // Fallback: mapa por nome (configs antigas sem grafo, ou se o modelo usar o nome).
   const map = {}
   const add = (nome, link) => { if (nome && link) map[String(nome).trim().toLowerCase()] = link }
   ;(Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []).forEach((p) => add(p.nome, p.checkoutLink))
@@ -1786,16 +1886,51 @@ function injetarCheckouts(texto, grupo) {
   if (f.principal) { add('oferta principal', f.principal.checkoutLink); add(f.principal.nome, f.principal.checkoutLink) }
   ;(Array.isArray(f.upsells) ? f.upsells : []).forEach((u) => add(u.nome, u.checkoutLink))
   ;(Array.isArray(f.downsells) ? f.downsells : []).forEach((d) => add(d.nome, d.checkoutLink))
-  return String(texto || '').replace(/\[CHECKOUT:\s*([^\]]+)\]/gi, (m, nome) => {
-    const alvo = nome.trim().toLowerCase()
+  const out = String(texto || '').replace(/\[CHECKOUT:\s*([^\]]+)\]/gi, (m, chave) => {
+    const raw = chave.trim()
+    const tk = raw.toUpperCase().replace(/\s+/g, '')
+    if (porToken[tk]) return porToken[tk] // token único CKn
+    const alvo = raw.toLowerCase()
     if (map[alvo]) return map[alvo]
     const hit = Object.entries(map).find(([k]) => k.includes(alvo) || alvo.includes(k))
     return hit ? hit[1] : ''
   }).replace(/\n{3,}/g, '\n\n').trim()
+  return paraFormatoWhatsApp(out)
+}
+
+/**
+ * Mídias (imagem/áudio) que devem sair LOGO APÓS a resposta, disparadas pelo checkout enviado.
+ * No editor, a mídia é ligada embaixo de um nó de checkout → gatilho { tipo:'checkout', link }.
+ * Se o link daquele checkout está na resposta, a mídia acompanha (imagem/áudio depois do texto).
+ */
+function midiasDisparadas(grupo, textoFinal) {
+  const midias = Array.isArray(grupo?.iaMidias) ? grupo.iaMidias : []
+  if (!midias.length || !textoFinal) return []
+  const out = []
+  const vistos = new Set()
+  for (const m of midias) {
+    if (!m.url || vistos.has(m.url)) continue
+    const g = m.gatilho || {}
+    if (g.tipo === 'checkout' && g.link && textoFinal.includes(g.link)) {
+      vistos.add(m.url)
+      out.push({ tipo: m.tipo === 'audio' ? 'audio' : 'imagem', url: m.url, nome: m.nome || '' })
+    }
+  }
+  return out
 }
 
 /** Blocos de 1 texto simples (contrato WF1/WAHA). */
 function blocosTexto(texto) { return [{ tipo: 'texto', conteudo: String(texto || '') }] }
+
+/** Blocos com mídia opcional: texto (+ imagem + áudio, nessa ordem). Texto já deve vir com variáveis trocadas. */
+function blocosComMidia(texto, imagemUrl, audioUrl) {
+  const blocos = []
+  const t = String(texto || '').trim()
+  if (t) blocos.push({ tipo: 'texto', conteudo: t })
+  if (imagemUrl) blocos.push({ tipo: 'imagem', url: String(imagemUrl) })
+  if (audioUrl) blocos.push({ tipo: 'audio', url: String(audioUrl) })
+  return blocos
+}
 
 /**
  * Envio via WF1 (WAHA/n8n) — POST /webhook/remarketing.
@@ -1916,14 +2051,14 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
       const ultima = String(conv.iaUltimaMsg || '')
       const ehEco = !m.texto || (!!ultima && ultima.includes(m.texto))
       if (ehEco) { res.status(200).json({ responder: false, ignored: 'eco do bot' }); return }
-      await convRef.set({ pausadoAte: agora + HANDOVER_HORAS * 3600000, messages: [...historico, { role: 'dono', text: m.texto, ts: agora }].slice(-30), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      await convRef.set({ pausadoAte: agora + HANDOVER_HORAS * 3600000, fupStatus: null, messages: [...historico, { role: 'dono', text: m.texto, ts: agora }].slice(-30), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
       res.status(200).json({ responder: false, handover: true }); return
     }
 
     // Bot pausado (dono assumiu) → só guarda a mensagem, não responde.
     const novoHist = [...historico, { role: 'user', text: m.texto, ts: agora }].slice(-30)
     if (conv.pausadoAte && conv.pausadoAte > agora) {
-      await convRef.set({ messages: novoHist, nome: m.nome || conv.nome || '', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      await convRef.set({ messages: novoHist, nome: m.nome || conv.nome || '', fupStatus: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
       res.status(200).json({ responder: false, pausado: true }); return
     }
     if (!m.texto) { res.status(200).json({ responder: false, ignored: 'sem texto' }); return }
@@ -1934,9 +2069,9 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
       ...novoHist.slice(-16).map((x) => ({ role: x.role === 'assistant' ? 'assistant' : 'user', content: x.text })),
     ]
     let respostaIA = ''
-    try { respostaIA = await callGrok(messages) } catch (e) { console.error('atendente Grok', e?.message || e) }
+    try { respostaIA = await callGrok(messages, { model: GROK_MODEL_ATENDENTE }) } catch (e) { console.error('atendente Grok', e?.message || e) }
     respostaIA = injetarCheckouts(respostaIA, grupo)
-    if (!respostaIA) { await convRef.set({ messages: novoHist, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ responder: false, semResposta: true }); return }
+    if (!respostaIA) { await convRef.set({ messages: novoHist, fupStatus: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ responder: false, semResposta: true }); return }
 
     // O ENVIO é feito pelo WF2 (n8n/WAHA) com digitação humana. A Cloud Function só devolve o texto pronto.
 
@@ -1949,8 +2084,14 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true })
 
-    // Contrato WF2: { responder, mensagem } — o n8n picota e envia com digitação humana.
-    res.status(200).json({ responder: true, mensagem: respostaIA, resposta: respostaIA })
+    // Follow-up: o lead respondeu e o bot respondeu → (re)arma a janela de silêncio.
+    await armarFollowup(convRef, grupo, atendente)
+
+    // Mídias (imagem/áudio) ligadas ao checkout enviado → saem logo após o texto.
+    const midias = midiasDisparadas(grupo, respostaIA)
+
+    // Contrato WF2: { responder, mensagem, midias } — o n8n picota o texto e depois envia cada mídia.
+    res.status(200).json({ responder: true, mensagem: respostaIA, resposta: respostaIA, midias })
   } catch (err) {
     console.error('waAtendenteWebhook', err?.message || err)
     res.status(200).json({ responder: false, ok: false })
@@ -2028,9 +2169,9 @@ function callbackAutorizado(req) {
 }
 
 /** Monta os blocos de um contato: texto personalizado (+ imagem + áudio, nessa ordem). */
-function montarBlocosDisparo(template, nome, telefone, imagemUrl, audioUrl) {
+function montarBlocosDisparo(template, nome, telefone, imagemUrl, audioUrl, produto = '', email = '') {
   const blocos = []
-  const texto = replaceVariables(template || '', { nome: nome || '', telefone: telefone || '', email: '' }, { nome: '' }).trim()
+  const texto = replaceVariables(template || '', { nome: nome || '', telefone: telefone || '', email: email || '' }, { nome: produto || '' }).trim()
   if (texto) blocos.push({ tipo: 'texto', conteudo: texto })
   if (imagemUrl) blocos.push({ tipo: 'imagem', url: imagemUrl })
   if (audioUrl) blocos.push({ tipo: 'audio', url: audioUrl })
@@ -2038,16 +2179,17 @@ function montarBlocosDisparo(template, nome, telefone, imagemUrl, audioUrl) {
 }
 
 /** Dispara UM lote pro WF4. campanhaId = `${disparoId}_${loteIndex}`. */
-async function dispararLoteWF4(uid, disparoId, loteIndex, sessao) {
+async function dispararLoteWF4(uid, disparoId, loteIndex, sessao, webhookUrl) {
   const loteSnap = await db.doc(`users/${uid}/disparos/${disparoId}/lotes/${loteIndex}`).get()
   if (!loteSnap.exists) return false
   const lote = loteSnap.data()
-  // Timeout de 15s: se o WF4/n8n não responder (travado/fora do ar), NÃO trava a função (o botão destrava).
+  // Timeout de 15s: se o n8n não responder (travado/fora do ar), NÃO trava a função (o botão destrava).
+  // webhookUrl = WF4 (disparo) OU WF1 (remarketing). Mesmo contrato: { sessao, campanhaId, contatos:[{...,blocos}] }.
   let ok = false
   try {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 15000)
-    const res = await fetch(WF4_DISPARO_URL, {
+    const res = await fetch(webhookUrl || WF4_DISPARO_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessao: sessao || '', campanhaId: `${disparoId}_${loteIndex}`, contatos: lote.contatos || [] }),
       signal: ctrl.signal,
@@ -2118,7 +2260,7 @@ exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, 
   const batch = db.batch()
   batch.set(dRef, {
     nomeDisparo, sessao, mensagem: template, total: contatos.length, totalLotes: lotes.length,
-    loteAtual: 0, enviados: 0, falhas: 0, status: 'enviando',
+    loteAtual: 0, enviados: 0, falhas: 0, status: 'enviando', origem: 'disparo', webhookUrl: WF4_DISPARO_URL,
     temImagem: !!imagemUrl, temAudio: !!audioUrl,
     imagemUrl: imagemUrl || null, audioUrl: audioUrl || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -2127,7 +2269,77 @@ exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, 
   await batch.commit()
 
   // Dispara o 1º lote (os próximos saem no /campanhaConcluida).
-  await dispararLoteWF4(uid, disparoId, 0, sessao)
+  await dispararLoteWF4(uid, disparoId, 0, sessao, WF4_DISPARO_URL)
+
+  return { disparoId, total: contatos.length, totalLotes: lotes.length }
+})
+
+/**
+ * Remarketing em massa — MESMA máquina do disparador (lotes de 50 + callbacks + progresso),
+ * mas apontando pro WF1 (/remarketing) em vez do WF4. O contato carrega produto pra {nome_produto}.
+ * data: { sessao, nomeDisparo?, mensagem (template), imagemUrl?, audioUrl?, contatos: [{telefone, nome, produto?, email?}] }
+ */
+exports.iniciarRemarketingWA = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertTenantAtivo(uid)
+  const d = request.data || {}
+  const sessao = String(d.sessao || '').trim()
+  const nomeDisparo = String(d.nomeDisparo || '').trim() || `Remarketing ${new Date().toISOString().slice(0, 10)}`
+  const template = String(d.mensagem || '')
+  const imagemUrl = d.imagemUrl ? String(d.imagemUrl) : null
+  const audioUrl = d.audioUrl ? String(d.audioUrl) : null
+  const contatosRaw = Array.isArray(d.contatos) ? d.contatos : []
+  if (!sessao) throw new HttpsError('invalid-argument', 'Sem instância.')
+  if (!contatosRaw.length) throw new HttpsError('invalid-argument', 'Nenhum contato selecionado.')
+
+  const instSnap = await db.collection(`users/${uid}/instances`).where('nomeInstancia', '==', sessao).limit(1).get()
+  if (instSnap.empty) throw new HttpsError('failed-precondition', 'Instância não encontrada.')
+
+  // 1 campanha ATIVA por instância (compartilha a trava com o disparador — mesmo número).
+  const naSessao = await db.collection(`users/${uid}/disparos`).where('sessao', '==', sessao).get()
+  const agoraMs = Date.now()
+  const TRAVA_MS = 2 * 60 * 60 * 1000
+  const ocupada = naSessao.docs.some((x) => {
+    const dd = x.data()
+    if (dd.status !== 'enviando') return false
+    const ts = dd.updatedAt?.toMillis?.() ?? dd.createdAt?.toMillis?.() ?? 0
+    return (agoraMs - ts) < TRAVA_MS
+  })
+  if (ocupada) throw new HttpsError('failed-precondition', 'instancia_ocupada')
+
+  // Dedup + blocos por contato (com produto pra {nome_produto}).
+  const vistos = new Set()
+  const contatos = []
+  for (const c of contatosRaw) {
+    const tel = String(c.telefone || c.phone || c.numero || '').replace(/\D/g, '')
+    if (tel.length < 8 || vistos.has(tel)) continue
+    vistos.add(tel)
+    const nome = String(c.nome || c.name || '').trim()
+    const produto = String(c.produto || c.nome_produto || '').trim()
+    const email = String(c.email || '').trim()
+    const blocos = montarBlocosDisparo(template, nome, tel, imagemUrl, audioUrl, produto, email)
+    if (!blocos.length) continue
+    contatos.push({ telefone: tel, nome, blocos })
+  }
+  if (!contatos.length) throw new HttpsError('invalid-argument', 'Nenhum contato válido.')
+
+  const lotes = []
+  for (let i = 0; i < contatos.length; i += DISPARO_LOTE_MAX) lotes.push(contatos.slice(i, i + DISPARO_LOTE_MAX))
+
+  const disparoId = `rmkt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
+  const batch = db.batch()
+  batch.set(dRef, {
+    nomeDisparo, sessao, mensagem: template, total: contatos.length, totalLotes: lotes.length,
+    loteAtual: 0, enviados: 0, falhas: 0, status: 'enviando', origem: 'remarketing', webhookUrl: N8N_REMARKETING_URL,
+    temImagem: !!imagemUrl, temAudio: !!audioUrl, imagemUrl: imagemUrl || null, audioUrl: audioUrl || null,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+  lotes.forEach((cs, i) => batch.set(dRef.collection('lotes').doc(String(i)), { contatos: cs, enviado: false }))
+  await batch.commit()
+
+  await dispararLoteWF4(uid, disparoId, 0, sessao, N8N_REMARKETING_URL)
 
   return { disparoId, total: contatos.length, totalLotes: lotes.length }
 })
@@ -2214,7 +2426,7 @@ exports.campanhaConcluida = onRequest({ region: 'us-central1', timeoutSeconds: 6
     await dRef.collection('lotes').doc(String(loteIndex)).set({ enviado: true }, { merge: true }).catch(() => {})
     const proximo = loteIndex + 1
     if (proximo < (disp.totalLotes || 1)) {
-      await dispararLoteWF4(uid, disparoId, proximo, sessao)
+      await dispararLoteWF4(uid, disparoId, proximo, sessao, disp.webhookUrl)
       res.status(200).json({ ok: true, proximoLote: proximo }); return
     }
     await dRef.set({ status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
@@ -2255,9 +2467,10 @@ exports.atendenteSimular = onCall({ region: 'us-central1', timeoutSeconds: 60 },
     ...hist.map((x) => ({ role: x.role === 'assistant' ? 'assistant' : 'user', content: String(x.text || '') })),
   ]
   let resposta = ''
-  try { resposta = await callGrok(messages) } catch (e) { throw new HttpsError('internal', 'A IA não respondeu agora. Tente de novo.') }
+  try { resposta = await callGrok(messages, { model: GROK_MODEL_ATENDENTE }) } catch (e) { throw new HttpsError('internal', 'A IA não respondeu agora. Tente de novo.') }
   resposta = injetarCheckouts(resposta, grupo)
-  return { resposta }
+  const midias = midiasDisparadas(grupo, resposta)
+  return { resposta, midias }
 })
 
 /** Checa (no servidor, sem cache) se o cliente ainda pode criar instância. Usado antes de abrir o form. */
@@ -4317,7 +4530,7 @@ async function tryAutoSend(userId, leadRef, evento, customer, product, produtos)
     const n8nRes = await enviarWAHA({
       sessao: evolution.nomeInstancia || '',
       contatos: [{ telefone: customer.telefone, nome: customer.nome || '' }],
-      blocos: blocosTexto(mensagemFinal),
+      blocos: blocosComMidia(mensagemFinal, autoMsg.imagemUrl, autoMsg.audioUrl),
       campanhaId: evento || 'automacao',
     })
 
@@ -4452,6 +4665,8 @@ async function dispararAcoes(userId, leadRef, evento, customer, product, produto
   await tryAutoSendCall(userId, leadRef, evento, customer, product, produtos)
   // Vendedor proativo (Fase 3): guarda o contexto do lead e abre a conversa se não houver automação.
   await tryAtendenteEvento(userId, evento, customer, product, produtos, waAutoEnviou === true)
+  // Compra aprovada → interrompe o follow-up ativo desse número (sai por "Sim" na hora).
+  if (canonicalEvento(evento) === 'order_status.purchase_approved') await interromperFollowupPorCompra(userId, customer, product, produtos)
 }
 
 /**
@@ -4498,7 +4713,7 @@ async function tryAtendenteEvento(userId, evento, customer, product, produtos, a
       { role: 'user', content: '[INÍCIO PROATIVO] Você está começando a conversa (o lead ainda não falou). Mande a PRIMEIRA mensagem, curta e humana (1-2 frases), puxando papo com base no contexto do lead acima. Não diga que é um bot nem cite "sistema".' },
     ]
     let abertura = ''
-    try { abertura = await callGrok(messages) } catch (e) { console.error('atendente abertura Grok', e?.message || e) }
+    try { abertura = await callGrok(messages, { model: GROK_MODEL_ATENDENTE }) } catch (e) { console.error('atendente abertura Grok', e?.message || e) }
     abertura = injetarCheckouts(abertura, grupo)
     if (!abertura) return
 
@@ -4509,7 +4724,169 @@ async function tryAtendenteEvento(userId, evento, customer, product, produtos, a
       iaUltimaMsg: abertura,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true })
+    await armarFollowup(convRef, grupo, atendente) // arma o follow-up após a abertura
   } catch (err) { console.error('tryAtendenteEvento', err?.message || err) }
+}
+
+/* ══════════════ FOLLOW-UP TEMPORIZADO DO ATENDENTE (nós Esperar / Condição / Mensagem) ══════════════
+ * Estado por lead em users/{uid}/waConversas/{telefone}: fupStatus, fupNodeId, fupNextRunAt,
+ * fupStartedAt, fupGrupoId, fupInstanceId, fupComprou. Um cron de 1 min avança o run pelo grafo.
+ * Gatilho: o lead ficou em silêncio (armado após cada msg do bot; cancelado quando o lead responde). */
+
+/** Entrada do follow-up = o nó Esperar ligado direto na bolinha do Atendente IA. */
+function entradaFollowup(graph) {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : []
+  const edges = Array.isArray(graph?.edges) ? graph.edges : []
+  const byId = {}; nodes.forEach((n) => { byId[n.id] = n })
+  const e = edges.find((ed) => ed.source === 'ia' && byId[ed.target]?.type === 'esperar')
+  return e ? e.target : null
+}
+function msDoEsperar(node) {
+  const v = Math.max(1, parseInt(node?.data?.valor ?? 5, 10) || 5)
+  const u = node?.data?.unidade
+  return v * (u === 'dia' ? 86400000 : u === 'hora' ? 3600000 : 60000)
+}
+/** O telefone comprou um produto DESTE grupo desde `desdeMs`? */
+async function comprouDoGrupoDesde(uid, telefone, desdeMs, grupo) {
+  try {
+    if (!telefone) return false
+    const prods = (Array.isArray(grupo?.produtos) ? grupo.produtos : []).map((x) => String(x).toLowerCase())
+    const s = await db.collection('users').doc(uid).collection('leads').where('telefone', '==', telefone).limit(40).get()
+    return s.docs.some((d) => {
+      const v = d.data()
+      if (canonicalEvento(v.evento) !== 'order_status.purchase_approved') return false
+      const t = v.createdAt?.toMillis ? v.createdAt.toMillis() : 0
+      if (t < desdeMs) return false
+      if (!prods.length) return true
+      return prods.includes(String(v.produto || '').toLowerCase()) || prods.includes(String(v.produtoId || '').toLowerCase())
+    })
+  } catch (e) { console.error('comprouDoGrupoDesde', e?.message || e); return false }
+}
+/** Gera uma mensagem de reativação com o MESMO cérebro (retorna cru, com marcadores). */
+async function gerarReativacao(grupo, hint, hist) {
+  const messages = [
+    { role: 'system', content: montarSystemAtendente(grupo, null) },
+    ...(Array.isArray(hist) ? hist : []).slice(-12).map((x) => ({ role: x.role === 'assistant' ? 'assistant' : 'user', content: String(x.text || '') })),
+    { role: 'user', content: `[FOLLOW-UP] O lead ficou em silêncio. Mande UMA mensagem curta e natural pra reativar a conversa e retomar a venda, sem repetir o que já disse.${hint ? ' Instrução extra: ' + hint : ''}` },
+  ]
+  try { return await callGrok(messages, { model: GROK_MODEL_ATENDENTE }) } catch (e) { console.error('gerarReativacao', e?.message || e); return '' }
+}
+/** Arma/religa o follow-up após o bot mandar uma mensagem (a janela de silêncio recomeça agora). */
+async function armarFollowup(convRef, grupo, atendente) {
+  try {
+    const entryId = entradaFollowup(grupo?.iaGraph)
+    if (!entryId) return
+    const node = (grupo.iaGraph.nodes || []).find((n) => n.id === entryId)
+    const now = Date.now()
+    await convRef.set({
+      fupStatus: 'ativo', fupNodeId: entryId, fupComprou: false,
+      fupStartedAt: admin.firestore.Timestamp.fromMillis(now),
+      fupNextRunAt: admin.firestore.Timestamp.fromMillis(now + msDoEsperar(node)),
+      fupGrupoId: atendente.grupoId, fupInstanceId: atendente.instanceId, fupAtendenteId: atendente.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true })
+  } catch (e) { console.error('armarFollowup', e?.message || e) }
+}
+async function enviarBlocoWAHA(inst, telefone, nome, blocos) {
+  try { await enviarWAHA({ sessao: inst?.nomeInstancia || '', contatos: [{ telefone, nome: nome || '' }], blocos, campanhaId: 'atendente-fup' }) } catch (e) { console.error('enviarBlocoWAHA', e?.message || e) }
+}
+
+/** Avança UM run de follow-up (chamado pelo cron quando o nextRunAt vence). */
+async function avancarFollowup(convDoc) {
+  const conv = convDoc.data()
+  const telefone = convDoc.id
+  const uid = convDoc.ref.parent.parent.id
+  // Claim: empurra o nextRunAt pra frente antes de processar (evita reenvio se travar/crashar).
+  await convDoc.ref.set({ fupNextRunAt: admin.firestore.Timestamp.fromMillis(Date.now() + 10 * 60000) }, { merge: true })
+
+  const gSnap = await db.doc(`users/${uid}/productGroups/${conv.fupGrupoId}`).get()
+  if (!gSnap.exists) { await convDoc.ref.set({ fupStatus: null }, { merge: true }); return }
+  const grupo = gSnap.data()
+  const nodes = Array.isArray(grupo.iaGraph?.nodes) ? grupo.iaGraph.nodes : []
+  const edges = Array.isArray(grupo.iaGraph?.edges) ? grupo.iaGraph.edges : []
+  const byId = {}; nodes.forEach((n) => { byId[n.id] = n })
+  const proxNos = (id) => edges.filter((e) => e.source === id).map((e) => byId[e.target]).filter(Boolean)
+  const proxPorSaida = (id, handle) => {
+    const cand = edges.filter((e) => e.source === id)
+    const ed = handle ? cand.find((e) => e.sourceHandle === handle) : cand[0]
+    return ed ? ed.target : null
+  }
+  const instSnap = await db.doc(`users/${uid}/instances/${conv.fupInstanceId}`).get()
+  if (!instSnap.exists || !instSnap.data().nomeInstancia) { await convDoc.ref.set({ fupStatus: null }, { merge: true }); return }
+  const inst = { id: instSnap.id, ...instSnap.data() }
+
+  const startedMs = conv.fupStartedAt?.toMillis ? conv.fupStartedAt.toMillis() : Date.now()
+  const comprou = conv.fupComprou === true || await comprouDoGrupoDesde(uid, telefone, startedMs, grupo)
+
+  const hist = Array.isArray(conv.messages) ? conv.messages : []
+  const enviados = []
+  const finalizar = async (patch = {}) => {
+    const msgs = enviados.length ? { messages: [...hist, ...enviados].slice(-30), iaUltimaMsg: enviados[enviados.length - 1].text } : {}
+    await convDoc.ref.set({ ...patch, ...msgs, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+  }
+
+  let cur = proxPorSaida(conv.fupNodeId) // 1º nó DEPOIS do Esperar atual (cujo tempo venceu)
+  let steps = 0
+  while (cur && steps < 25) {
+    steps++
+    const node = byId[cur]
+    if (!node) { cur = null; break }
+
+    if (node.type === 'esperar') {
+      // próximo Esperar → reagenda e PARA (nova janela de silêncio)
+      const now = Date.now()
+      await finalizar({ fupNodeId: cur, fupComprou: false, fupStartedAt: admin.firestore.Timestamp.fromMillis(now), fupNextRunAt: admin.firestore.Timestamp.fromMillis(now + msDoEsperar(node)) })
+      return
+    }
+    if (node.type === 'condicao') { cur = proxPorSaida(cur, comprou ? 'sim' : 'nao'); continue }
+    if (node.type === 'mensagem') {
+      let texto = node.data?.gerarIA !== false
+        ? await gerarReativacao(grupo, node.data?.texto, [...hist, ...enviados])
+        : replaceVariables(node.data?.texto || '', { nome: conv.nome || '', telefone, email: '' }, { nome: conv.leadContexto?.produto || '' })
+      texto = injetarCheckouts(texto, grupo)
+      const filhos = proxNos(cur)
+      const midias = filhos.filter((n) => (n.type === 'imagem' || n.type === 'audio') && n.data?.url)
+      if (texto) { await enviarBlocoWAHA(inst, telefone, conv.nome, blocosTexto(texto)); enviados.push({ role: 'assistant', text: texto, ts: Date.now() }) }
+      for (const md of midias) await enviarBlocoWAHA(inst, telefone, conv.nome, [{ tipo: md.type, url: md.data.url }])
+      const cont = filhos.find((n) => n.type !== 'imagem' && n.type !== 'audio')
+      cur = cont ? cont.id : null
+      continue
+    }
+    if (node.type === 'imagem' || node.type === 'audio') {
+      if (node.data?.url) await enviarBlocoWAHA(inst, telefone, conv.nome, [{ tipo: node.type, url: node.data.url }])
+      cur = proxPorSaida(cur)
+      continue
+    }
+    // qualquer outro nó no meio do follow-up → só segue
+    cur = proxPorSaida(cur)
+  }
+  await finalizar({ fupStatus: null }) // fim da cadeia
+}
+
+/** Cron: processa os follow-ups vencidos (mesmo padrão dos funis/lotes). */
+exports.processarFollowupsAtendente = onSchedule({ schedule: 'every 1 minutes', region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async () => {
+  try {
+    const agora = admin.firestore.Timestamp.fromMillis(Date.now())
+    const snap = await db.collectionGroup('waConversas').where('fupStatus', '==', 'ativo').where('fupNextRunAt', '<=', agora).limit(300).get()
+    for (const doc of snap.docs) {
+      try { await avancarFollowup(doc) } catch (e) { console.error('avancarFollowup', doc.ref.path, e?.message || e) }
+    }
+  } catch (err) { console.error('processarFollowupsAtendente', err?.message || err) }
+})
+
+/** Compra bateu → se há follow-up ativo desse grupo pra esse número, sai por "Sim" na hora. */
+async function interromperFollowupPorCompra(uid, customer, product, produtos) {
+  try {
+    const telefone = String(customer?.telefone || '').replace(/\D/g, '')
+    if (!telefone) return
+    const convRef = db.doc(`users/${uid}/waConversas/${telefone}`)
+    const s = await convRef.get()
+    if (!s.exists || s.data().fupStatus !== 'ativo') return
+    const gSnap = await db.doc(`users/${uid}/productGroups/${s.data().fupGrupoId}`).get()
+    if (!gSnap.exists) return
+    if (!acharGrupo([{ id: gSnap.id, ...gSnap.data() }], produtos, product)) return // compra de outro grupo
+    await convRef.set({ fupComprou: true, fupNextRunAt: admin.firestore.Timestamp.fromMillis(Date.now()) }, { merge: true })
+  } catch (e) { console.error('interromperFollowupPorCompra', e?.message || e) }
 }
 
 /**
@@ -4750,18 +5127,18 @@ async function inscreverNoFunil(userId, funnelId, funnel, contato, canal = 'emai
 }
 
 /** Envia uma mensagem de WhatsApp de um nó de funil (via n8n/Evolution). */
-async function enviarMensagemFunil(userId, mensagem, contato) {
+async function enviarMensagemFunil(userId, mensagem, contato, imagemUrl, audioUrl) {
   try {
-    if (!contato?.telefone || !mensagem) return { ok: false, erroMsg: 'Contato sem telefone ou mensagem vazia' }
+    if (!contato?.telefone || (!mensagem && !imagemUrl && !audioUrl)) return { ok: false, erroMsg: 'Contato sem telefone ou mensagem vazia' }
     const evolution = await getEvolutionConfigForUser(userId)
     if (!evolution?.nomeInstancia) return { ok: false, erroMsg: 'Nenhuma instância de WhatsApp conectada' }
     const customer = { nome: contato.nome || '', telefone: contato.telefone, email: contato.email || '' }
     const product = { nome: contato.produto || '' }
-    const msg = replaceVariables(mensagem, customer, product)
+    const msg = replaceVariables(mensagem || '', customer, product)
     const res = await enviarWAHA({
       sessao: evolution.nomeInstancia || '',
       contatos: [{ telefone: customer.telefone, nome: customer.nome || '' }],
-      blocos: blocosTexto(msg),
+      blocos: blocosComMidia(msg, imagemUrl, audioUrl),
       campanhaId: 'funil',
     })
     if (!res.ok) return { ok: false, erroMsg: `Falha ao enviar pelo WhatsApp (instância/n8n respondeu ${res.status})` }
@@ -5304,8 +5681,8 @@ async function processarFunnelRun(userId, runRef, run, cache) {
 
     if (node.type === 'enviar') {
       if (run.canal === 'whatsapp') {
-        if (node.data?.mensagem) {
-          const res = await enviarMensagemFunil(userId, node.data.mensagem, run.contato)
+        if (node.data?.mensagem || node.data?.imagemUrl || node.data?.audioUrl) {
+          const res = await enviarMensagemFunil(userId, node.data.mensagem, run.contato, node.data.imagemUrl, node.data.audioUrl)
           try {
             await db.collection('users').doc(userId).collection('funnelSends').add({
               funnelId: run.funnelId, funnelNome: funnel.nome || '', nodeId: node.id, canal: 'whatsapp',
@@ -5409,6 +5786,9 @@ const GROK_MODEL = process.env.GROK_MODEL || 'grok-2-latest'
 // Modelo usado SÓ no construtor de e-mail (IA): grok-code-fast-1 (feito pra código, barato).
 // Configurável via .env (GROK_MODEL_IA) sem mexer no grok-4 dos outros usos.
 const GROK_MODEL_IA = process.env.GROK_MODEL_IA || 'grok-code-fast-1'
+// Modelo do VENDEDOR/atendente IA (conversa de venda no WhatsApp + simulador "Testar IA").
+// grok-4.1-fast: geração nova, barato e conversacional. Trocável via .env sem mexer no resto.
+const GROK_MODEL_ATENDENTE = process.env.GROK_MODEL_ATENDENTE || 'grok-4.20-0309-reasoning'
 
 async function callGrok(messages, { json = false, model } = {}) {
   if (!GROK_API_KEY) throw new HttpsError('failed-precondition', 'Chave do Grok não configurada (functions/.env → GROK_API).')

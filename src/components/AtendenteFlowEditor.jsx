@@ -9,7 +9,7 @@ import { uploadAtendenteAsset } from '../lib/firestore'
 import AudioTemplatePicker from './AudioTemplatePicker'
 import AudioPlayer from './AudioPlayer'
 import Select from './Select'
-import { Rocket, FileText, Package, ShoppingBag, Plus, Save, Trash2, X, Search, Link2, Loader2, Target, Shield, MessageCircle, Star, Image as ImageIcon, AudioLines, Upload, Video, TrendingUp, TrendingDown, ChevronDown, Layers, Gift, Copy, ClipboardPaste } from 'lucide-react'
+import { Rocket, FileText, Package, ShoppingBag, Plus, Save, Trash2, X, Search, Link2, Loader2, Target, Shield, MessageCircle, Star, Image as ImageIcon, AudioLines, Upload, Video, TrendingUp, TrendingDown, ChevronDown, Layers, Gift, Copy, ClipboardPaste, Clock, GitBranch, Bell } from 'lucide-react'
 
 // Blocos de CONHECIMENTO (texto que alimenta o cérebro da IA). Cada um vira um campo derivado ao salvar.
 const CONHECIMENTO = {
@@ -113,7 +113,45 @@ function AgradecimentoNode({ data, selected }) {
     </div>
   )
 }
-const nodeTypes = { ia: IaNode, contexto: KnowledgeNode, objetivo: KnowledgeNode, regras: KnowledgeNode, objecoes: KnowledgeNode, provasocial: KnowledgeNode, plano: PlanoNode, checkout: CheckoutNode, imagem: MidiaNode, audio: MidiaNode, oferta: OfertaNode, agradecimento: AgradecimentoNode }
+/* ─── Nós de FOLLOW-UP (automação temporizada, roda no backend) ─── */
+const UNIDADE_LABEL = { min: 'min', hora: 'hora(s)', dia: 'dia(s)' }
+function EsperarNode({ data, selected }) {
+  return (
+    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[150px] ${selected ? 'border-primary-500' : 'border-slate-300'}`}>
+      <Handle type="target" position={Position.Top} />
+      <div className="flex items-center gap-2 text-slate-700 font-semibold text-sm"><Clock className="w-4 h-4" /> Esperar</div>
+      <p className="text-[11px] text-stone-500 mt-0.5">{data?.valor || 5} {UNIDADE_LABEL[data?.unidade] || 'min'}</p>
+      <p className="text-[10px] text-slate-400 mt-1">↓ conta se o lead ficar em silêncio</p>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  )
+}
+function CondicaoNode({ data, selected }) {
+  return (
+    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[180px] ${selected ? 'border-primary-500' : 'border-purple-300'}`}>
+      <Handle type="target" position={Position.Top} />
+      <div className="flex items-center gap-2 text-purple-700 font-semibold text-sm"><GitBranch className="w-4 h-4" /> Comprou?</div>
+      <div className="flex justify-between mt-2 text-[10px] font-semibold">
+        <span className="text-emerald-600">✓ Sim</span>
+        <span className="text-rose-600">Não ✗</span>
+      </div>
+      <Handle id="sim" type="source" position={Position.Bottom} style={{ left: '22%' }} className="!bg-emerald-500" />
+      <Handle id="nao" type="source" position={Position.Bottom} style={{ left: '78%' }} className="!bg-rose-500" />
+    </div>
+  )
+}
+function MensagemNode({ data, selected }) {
+  return (
+    <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[160px] max-w-[220px] ${selected ? 'border-primary-500' : 'border-cyan-300'}`}>
+      <Handle type="target" position={Position.Top} />
+      <div className="flex items-center gap-2 text-cyan-700 font-semibold text-sm"><Bell className="w-4 h-4" /> Mensagem</div>
+      <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{data?.gerarIA ? '⚡ Gerada pela IA (reativação)' : (data?.texto || 'Escreva a mensagem')}</p>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  )
+}
+
+const nodeTypes = { ia: IaNode, contexto: KnowledgeNode, objetivo: KnowledgeNode, regras: KnowledgeNode, objecoes: KnowledgeNode, provasocial: KnowledgeNode, plano: PlanoNode, checkout: CheckoutNode, imagem: MidiaNode, audio: MidiaNode, oferta: OfertaNode, agradecimento: AgradecimentoNode, esperar: EsperarNode, condicao: CondicaoNode, mensagem: MensagemNode }
 
 /** Monta o grafo inicial a partir dos campos legados (ou de um iaGraph salvo). */
 function grafoInicial(grupo) {
@@ -209,6 +247,9 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
       : type === 'plano' ? { nome: '', preco: '', descricao: '', grupoId: '', grupoNome: '' }
       : (type === 'imagem' || type === 'audio') ? { url: '', nome: '' }
       : type === 'agradecimento' ? { texto: '' }
+      : type === 'esperar' ? { valor: 5, unidade: 'min' }
+      : type === 'condicao' ? { tipo: 'comprou' }
+      : type === 'mensagem' ? { texto: '', gerarIA: true }
       : { nome: '', link: '' }
     setNodes((nds) => [...nds, { id, type, position: posNova(), data }])
     setSelId(id)
@@ -275,6 +316,7 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
     const contextos = nodes.filter((n) => n.type === 'contexto')
     const iaContexto = contextos.map((n) => `${n.data?.titulo ? `[${n.data.titulo}] ` : ''}${n.data?.texto || ''}`.trim()).filter(Boolean).join('\n\n')
     const iaSuporte = contextos.map((n) => (n.data?.suporte || '').trim()).filter(Boolean).join('\n')
+    const iaLinkApp = contextos.map((n) => (n.data?.link || '').trim()).filter(Boolean).join('\n')
     const iaObjetivo = textoDoTipo('objetivo')
     const iaRegras = textoDoTipo('regras')
     const iaObjecoes = textoDoTipo('objecoes')
@@ -313,10 +355,10 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
       return { texto: a.data?.texto || '', checkouts: cks.map((c) => ({ nome: c.data?.nome || '', link: c.data?.link || '' })) }
     }).filter((a) => a.texto && a.checkouts.length)
     const cleanNodes = nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data }))
-    const cleanEdges = edges.map((e) => ({ id: e.id, source: e.source, target: e.target }))
+    const cleanEdges = edges.map((e) => ({ id: e.id, source: e.source, target: e.target, ...(e.sourceHandle ? { sourceHandle: e.sourceHandle } : {}) }))
     setSalvando(true)
     try {
-      await onSave({ iaGraph: { nodes: cleanNodes, edges: cleanEdges }, iaPersona: persona, iaContexto, iaSuporte, iaObjetivo, iaRegras, iaObjecoes, iaProvaSocial, iaPlanos, iaFunil, iaAgradecimentos, iaMidias })
+      await onSave({ iaGraph: { nodes: cleanNodes, edges: cleanEdges }, iaPersona: persona, iaContexto, iaSuporte, iaLinkApp, iaObjetivo, iaRegras, iaObjecoes, iaProvaSocial, iaPlanos, iaFunil, iaAgradecimentos, iaMidias })
       if (fechar) onClose()
     } catch (_) { /* onSave já mostra o toast de erro */ } finally { setSalvando(false) }
   }
@@ -366,6 +408,10 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
           <span className="w-px h-5 bg-surface-200 mx-1" />
           <button onClick={() => addNode('imagem')} className="btn-secondary text-xs min-h-[36px] px-3"><ImageIcon className="w-3.5 h-3.5" /> Imagem</button>
           <button onClick={() => addNode('audio')} className="btn-secondary text-xs min-h-[36px] px-3"><AudioLines className="w-3.5 h-3.5" /> Áudio</button>
+          <span className="w-px h-5 bg-surface-200 mx-1" />
+          <button onClick={() => addNode('esperar')} className="btn-secondary text-xs min-h-[36px] px-3" title="Follow-up: aguarda o lead ficar em silêncio"><Clock className="w-3.5 h-3.5" /> Esperar</button>
+          <button onClick={() => addNode('condicao')} className="btn-secondary text-xs min-h-[36px] px-3" title="Ramifica por Comprou? (Sim/Não)"><GitBranch className="w-3.5 h-3.5" /> Condição</button>
+          <button onClick={() => addNode('mensagem')} className="btn-secondary text-xs min-h-[36px] px-3" title="Mensagem de reativação (IA ou texto fixo)"><Bell className="w-3.5 h-3.5" /> Mensagem</button>
           <span className="w-px h-5 bg-surface-200 mx-1 ml-auto" />
           <button onClick={copiar} title="Copiar blocos selecionados (Ctrl+C)" className="btn-secondary text-xs min-h-[36px] px-3"><Copy className="w-3.5 h-3.5" /> Copiar</button>
           <button onClick={colar} title="Colar (Ctrl+V)" className="btn-secondary text-xs min-h-[36px] px-3"><ClipboardPaste className="w-3.5 h-3.5" /> Colar</button>
@@ -396,7 +442,7 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
             <div className="absolute top-3 right-3 w-[22rem] max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl shadow-xl border border-surface-200 p-4 space-y-3 z-10 max-h-[calc(88vh-8rem)] overflow-y-auto">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-stone-800">
-                  {sel.type === 'ia' ? 'Atendente IA' : ehConhecimento(sel.type) ? CONHECIMENTO[sel.type].label : sel.type === 'plano' ? 'Plano' : sel.type === 'checkout' ? 'Checkout' : sel.type === 'imagem' ? 'Imagem' : sel.type === 'audio' ? 'Áudio' : sel.type === 'oferta' ? (OFERTA[sel.data?.kind]?.label || 'Oferta') : sel.type === 'agradecimento' ? 'Agradecimento' : ''}
+                  {sel.type === 'ia' ? 'Atendente IA' : ehConhecimento(sel.type) ? CONHECIMENTO[sel.type].label : sel.type === 'plano' ? 'Plano' : sel.type === 'checkout' ? 'Checkout' : sel.type === 'imagem' ? 'Imagem' : sel.type === 'audio' ? 'Áudio' : sel.type === 'oferta' ? (OFERTA[sel.data?.kind]?.label || 'Oferta') : sel.type === 'agradecimento' ? 'Agradecimento' : sel.type === 'esperar' ? 'Esperar' : sel.type === 'condicao' ? 'Condição: Comprou?' : sel.type === 'mensagem' ? 'Mensagem de follow-up' : ''}
                 </p>
                 <button onClick={() => setSelId(null)} className="p-1 text-stone-400 hover:text-stone-600"><X className="w-4 h-4" /></button>
               </div>
@@ -431,6 +477,11 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
                     <label className="block text-xs font-medium text-stone-600 mb-1">Suporte <span className="text-stone-400">(e-mails/telefones)</span></label>
                     <textarea value={sel.data?.suporte || ''} onChange={(e) => upd(sel.id, { suporte: e.target.value })} rows={2} placeholder="Ex.: suporte@empresa.com · WhatsApp (11) 90000-0000" className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
                     <p className="text-[11px] text-stone-400 mt-1">A IA manda o cliente falar com o suporte pra dúvidas de uso (login, configuração, problemas).</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600 mb-1">Link do app / plataforma <span className="text-stone-400">(opcional)</span></label>
+                    <input value={sel.data?.link || ''} onChange={(e) => upd(sel.id, { link: e.target.value })} placeholder="https://app.suaempresa.com" className="w-full px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm" />
+                    <p className="text-[11px] text-stone-400 mt-1">O link certo pra IA mandar quando o cliente perguntar onde acessar. A IA nunca inventa link.</p>
                   </div>
                 </>
               )}
@@ -536,6 +587,58 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
                   <textarea value={sel.data?.texto || ''} onChange={(e) => upd(sel.id, { texto: e.target.value })} rows={5} placeholder='Ex.: "Muito obrigado pela compra! 🎉 Qualquer dúvida na hora de usar, é só me chamar aqui."' className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
                   <p className="text-[11px] text-stone-400 mt-1">Ligue um <b>Checkout</b> (bolinha de baixo dele) até aqui. A IA manda essa mensagem quando o cliente comprar aquela oferta.</p>
                 </div>
+              )}
+
+              {sel.type === 'esperar' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-stone-600 mb-1">Esperar</label>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={1} value={sel.data?.valor ?? 5} onChange={(e) => upd(sel.id, { valor: Math.max(1, parseInt(e.target.value || '1', 10)) })} className="w-24 px-3 py-2 min-h-[40px] rounded-xl border border-surface-200 text-sm" />
+                      <Select value={sel.data?.unidade || 'min'} onChange={(v) => upd(sel.id, { unidade: v })} className="flex-1" options={[{ value: 'min', label: 'minuto(s)' }, { value: 'hora', label: 'hora(s)' }, { value: 'dia', label: 'dia(s)' }]} />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-stone-400">O tempo começa a contar após a <b>última mensagem do bot</b>. Se o lead responder antes, a espera é cancelada e a IA volta a conversar. Ligue a bolinha de baixo ao próximo passo (Condição ou Mensagem).</p>
+                </>
+              )}
+
+              {sel.type === 'condicao' && (
+                <>
+                  <div className="rounded-xl bg-surface-50 border border-surface-200 p-3">
+                    <p className="text-sm font-medium text-stone-700 flex items-center gap-2"><GitBranch className="w-4 h-4 text-purple-600" /> O lead comprou?</p>
+                    <p className="text-[11px] text-stone-500 mt-1">Considera compra <b>deste grupo de produto</b> desde que a espera começou.</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">✓ Sim</span>
+                    <span className="text-stone-400">→ saída da esquerda (comprou, ex.: agradece / para de vender)</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 font-semibold text-rose-600">✗ Não</span>
+                    <span className="text-stone-400">→ saída da direita (não comprou, ex.: nova tentativa)</span>
+                  </div>
+                  <p className="text-[11px] text-stone-400">Se a compra bater <b>durante a espera</b>, sai pelo <b>Sim</b> na hora.</p>
+                </>
+              )}
+
+              {sel.type === 'mensagem' && (
+                <>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={sel.data?.gerarIA !== false} onChange={(e) => upd(sel.id, { gerarIA: e.target.checked })} className="w-4 h-4 rounded accent-primary-600" />
+                    <span className="text-xs font-medium text-stone-700">Gerar com IA (reativação natural, usando o contexto)</span>
+                  </label>
+                  {sel.data?.gerarIA !== false ? (
+                    <div>
+                      <label className="block text-xs font-medium text-stone-600 mb-1">Instrução pra IA <span className="text-stone-400">(opcional)</span></label>
+                      <textarea value={sel.data?.texto || ''} onChange={(e) => upd(sel.id, { texto: e.target.value })} rows={3} placeholder='Ex.: "Retoma a conversa com leveza, lembra do benefício X e pergunta se ainda tem interesse."' className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-medium text-stone-600 mb-1">Texto fixo</label>
+                      <textarea value={sel.data?.texto || ''} onChange={(e) => upd(sel.id, { texto: e.target.value })} rows={4} placeholder='Ex.: "Oi {nome}! Ainda dá tempo de garantir o seu. Quer que eu te mande o link?"' className="w-full px-3 py-2 rounded-xl border border-surface-200 text-sm" />
+                    </div>
+                  )}
+                  <p className="text-[11px] text-stone-400">Ligue Imagem/Áudio embaixo desta mensagem pra mandar junto. Depois pode ligar outro <b>Esperar</b> pra continuar o follow-up.</p>
+                </>
               )}
 
               {sel.type !== 'ia' && (

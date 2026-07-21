@@ -13,7 +13,7 @@ import {
   updateWebhook,
   deleteWebhook,
 } from '../lib/firestore'
-import { criarInstancia, podeCriarInstancia, verificarStatus, buscarGrupos } from '../lib/evolutionApi'
+import { criarInstancia, podeCriarInstancia, verificarStatus, buscarGrupos, obterQr, reconectarInstancia } from '../lib/evolutionApi'
 import { criarCheckoutInstancia } from '../lib/perfil'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
 import CheckoutModal from '../components/CheckoutModal'
@@ -277,13 +277,44 @@ export default function Integracoes() {
       } else if (conectado && !instancia?.id) {
         toast.success('WhatsApp conectado (instância legada).')
       } else {
-        console.warn('verificar_status: resposta não indica conexão.', res)
-        toast.error('O servidor não confirmou a conexão. No n8n, o webhook "verificar_status" deve responder com { conectado: true } ou { state: "open" }.')
+        // Não conectada → gera QR novo pra reconectar (caiu/deslogou).
+        toast('Instância desconectada — gerando QR pra reconectar…', { icon: '🔄' })
+        await tentarReconectar(instancia, String(res?.status || res?.data?.status || '').toUpperCase())
       }
     } catch (err) {
       toast.error(err.message || 'Erro ao verificar')
     } finally {
       setVerificando(false)
+    }
+  }
+
+  /** Reconecta uma sessão caída: restart (se preciso) + QR novo no modal (o polling detecta ao reescanear). */
+  const tentarReconectar = async (instancia, statusAtual) => {
+    const nome = instancia?.nomeInstancia
+    if (!nome || !instancia?.id) { toast.error('Instância inválida pra reconectar.'); return }
+    try {
+      const pegarQr = async () => {
+        const qr = await obterQr(nome)
+        return { qr, base64: qr?.qrcodeBase64 ?? qr?.base64 ?? qr?.qrCodeBase64 ?? null }
+      }
+      // SCAN_QR_CODE já tem QR pendente; senão dá restart e espera o WAHA gerar (~2-3s).
+      if (statusAtual !== 'SCAN_QR_CODE') {
+        await reconectarInstancia(nome).catch(() => {})
+        await new Promise((r) => setTimeout(r, 3000))
+      }
+      let { qr, base64 } = await pegarQr()
+      if (!base64) { await new Promise((r) => setTimeout(r, 2500)); ({ qr, base64 } = await pegarQr()) }
+      if (base64) {
+        setGerenciarInst(null)
+        setInstanceEmConexao({ id: instancia.id, nomeInstancia: nome, numeroWhatsapp: instancia?.numeroWhatsapp })
+        setQrBase64(base64)
+        setShowQrModal(true)
+        toast.success('Escaneie o novo QR pra reconectar.')
+      } else {
+        toast.error(qr?.erro || 'Não consegui gerar o QR agora. Tente de novo em alguns segundos.')
+      }
+    } catch (e) {
+      toast.error(e.message || 'Falha ao reconectar.')
     }
   }
 

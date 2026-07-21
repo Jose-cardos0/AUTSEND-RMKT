@@ -356,14 +356,14 @@ export default function CallCampanha() {
   return (
     <PageShell badge={`Call · Campanha · ${canal === 'api' ? "API's" : 'EUA'}`}>
       {semVoz && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+        <div className="mb-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
           Você ainda não ativou a voz no seu chip. <Link to="/call/eua/integracao" className="font-semibold underline">Ativar agora</Link>.
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-12">
         {/* Setup de ligação */}
-        <div className="lg:col-span-4">
-          <Panel title="Setup de ligação" icon={Sparkles}>
+        <div className="lg:col-span-4 flex">
+          <Panel title="Setup de ligação" icon={Sparkles} flexFill className="h-full w-full">
             {/* Fonte da voz: config IA (Salvos) ou áudio próprio (Templates) */}
             <div className="flex flex-wrap items-center gap-3">
               <button onClick={() => { setSalvosQ(''); setSalvosPage(1); setSalvosOpen(true) }} className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-primary-600">
@@ -431,17 +431,19 @@ export default function CallCampanha() {
                     )}
                   </div>
                 </div>
-                <textarea ref={textoRef} value={texto} onChange={(e) => setTexto(e.target.value)} rows={5} placeholder="Gere com a IA ou escreva você mesmo. Ex.: Olá {nome_cliente}! Vi que você se interessou por {nome_produto}..." className="w-full rounded-xl border border-surface-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-200" />
+                <textarea ref={textoRef} value={texto} onChange={(e) => setTexto(e.target.value)} rows={5} placeholder="Gere com a IA ou escreva você mesmo. Ex.: Olá {nome_cliente}! Vi que você se interessou por {nome_produto}..." className="w-full flex-1 min-h-[140px] resize-none rounded-xl border border-surface-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-200" />
 
                 <button onClick={gerarRoteiro} disabled={gerando || !configCompleta} className="btn-secondary w-full min-h-[44px] disabled:opacity-50">
                   {gerando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Gerar roteiro com IA
                 </button>
               </>
             )}
-            <button onClick={abrirConfirmar} disabled={ligando || selValidos === 0 || semVoz || (!audioTpl && !texto.trim())} className="btn-primary w-full min-h-[46px]">
-              <Phone className="w-4 h-4" /> Ligar ({selValidos})
-            </button>
-            {!audioTpl && temAlgumaConfig && !configCompleta && <p className="text-[11px] text-stone-400 text-center mt-2">Configuração incompleta</p>}
+            <div className="!mt-auto pt-3">
+              <button onClick={abrirConfirmar} disabled={ligando || selValidos === 0 || semVoz || (!audioTpl && !texto.trim())} className="btn-primary w-full min-h-[46px]">
+                <Phone className="w-4 h-4" /> Ligar ({selValidos})
+              </button>
+              {!audioTpl && temAlgumaConfig && !configCompleta && <p className="text-[11px] text-stone-400 text-center mt-2">Configuração incompleta</p>}
+            </div>
             <AudioTemplatePicker uid={user?.uid} open={audioPickerOpen} onClose={() => setAudioPickerOpen(false)} onPick={(t) => setAudioTpl({ id: t.id, nome: t.nome, url: t.audioUrl })} currentId={audioTpl?.id} />
           </Panel>
         </div>

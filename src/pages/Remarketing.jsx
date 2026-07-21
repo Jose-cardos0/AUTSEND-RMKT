@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { parseISO } from 'date-fns'
 import { auth } from '../lib/firebase'
@@ -9,17 +9,18 @@ import {
   updateLeadStatus,
   addRemarketingLog,
   getEvolutionConfig,
+  getDisparos,
+  iniciarRemarketingWA,
+  deleteDisparo,
 } from '../lib/firestore'
-import { enviarRemarketing } from '../lib/remarketingApi'
 import MessageEditor from '../components/MessageEditor'
+import useMidiaWhatsApp from '../hooks/useMidiaWhatsApp'
 import TemplatePicker from '../components/TemplatePicker'
 import Select from '../components/Select'
 import toast from 'react-hot-toast'
 import { KIWIFY_EVENTS } from '../lib/constants'
 import {
   MessageCircle,
-  MessageSquare,
-  Search,
   Send,
   CheckCircle2,
   Circle,
@@ -31,9 +32,28 @@ import {
   ChevronRight,
   Users,
   Filter,
+  CheckSquare,
+  History,
+  Trash2,
+  Image as ImageLucide,
+  AudioLines,
 } from 'lucide-react'
-import PageShell from '../components/PageShell'
+import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
+import StatCard from '../components/StatCard'
+import CollapsibleSearch from '../components/CollapsibleSearch'
+import AudioPlayer from '../components/AudioPlayer'
+import WhatsAppIcon from '../components/WhatsAppIcon'
+import { useConfirm } from '../components/ConfirmDialog'
+
+const HIST_STATUS = { enviando: 'bg-blue-100 text-blue-700', concluido: 'bg-green-100 text-green-700', finalizado: 'bg-green-100 text-green-700', cancelado: 'bg-red-100 text-red-700', erro: 'bg-red-100 text-red-700' }
+const HIST_STATUS_LABEL = { enviando: 'Enviando', concluido: 'Concluído', finalizado: 'Finalizado', cancelado: 'Cancelado', erro: 'Erro' }
+const ITEMS_HIST = 5
+const fmtDataHist = (ts) => {
+  if (!ts) return '-'
+  const d = ts.toDate ? ts.toDate() : ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
 
 export default function Remarketing() {
   const [user] = useAuthState(auth)
@@ -42,6 +62,48 @@ export default function Remarketing() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [mensagem, setMensagem] = useState('')
   const editorRef = useRef(null)
+  const midia = useMidiaWhatsApp(user?.uid)
+  const confirm = useConfirm()
+  const [progresso, setProgresso] = useState(null) // { disparoId, total, enviados, falhas, status }
+  const [historico, setHistorico] = useState([])
+  const [histOpen, setHistOpen] = useState(false)
+  const [expandedHist, setExpandedHist] = useState(null)
+  const [histPagina, setHistPagina] = useState(1)
+
+  const carregarHistorico = useCallback(async () => {
+    if (!user?.uid) return
+    try {
+      const list = await getDisparos(user.uid)
+      setHistorico(list.filter((d) => d.origem === 'remarketing'))
+    } catch (_) {}
+  }, [user?.uid])
+  useEffect(() => { carregarHistorico() }, [carregarHistorico])
+
+  // Enquanto houver envio em andamento, atualiza o progresso (X/total) + o histórico a cada 15s.
+  useEffect(() => {
+    if (!user?.uid || !progresso || progresso.status !== 'enviando') return
+    const id = setInterval(async () => {
+      try {
+        const list = await getDisparos(user.uid)
+        setHistorico(list.filter((d) => d.origem === 'remarketing'))
+        const d = list.find((x) => x.disparoId === progresso.disparoId)
+        if (d) setProgresso({ disparoId: d.disparoId, total: d.total, enviados: d.enviados ?? 0, falhas: d.falhas ?? 0, status: d.status || 'enviando' })
+      } catch (_) {}
+    }, 15000)
+    return () => clearInterval(id)
+  }, [user?.uid, progresso?.disparoId, progresso?.status])
+
+  const totalPagHist = Math.max(1, Math.ceil(historico.length / ITEMS_HIST))
+  const pagHist = Math.min(histPagina, totalPagHist)
+  const historicoPagina = historico.slice((pagHist - 1) * ITEMS_HIST, pagHist * ITEMS_HIST)
+  const excluirHist = async (disparoId, nome) => {
+    if (!(await confirm({ title: 'Excluir do histórico?', message: `Remover "${nome}" do histórico de remarketing?`, confirmLabel: 'Excluir', danger: true }))) return
+    try {
+      await deleteDisparo(user.uid, disparoId)
+      setHistorico((prev) => prev.filter((i) => i.disparoId !== disparoId))
+      toast.success('Removido do histórico.')
+    } catch (e) { toast.error(e.message || 'Erro ao excluir.') }
+  }
   const [filtroNome, setFiltroNome] = useState('')
   const [filtroDataInicio, setFiltroDataInicio] = useState('')
   const [filtroDataFim, setFiltroDataFim] = useState('')
@@ -177,63 +239,43 @@ export default function Remarketing() {
     }
     setEnviando(true)
     setMsg({ type: '', text: '' })
-    const TIMEOUT_MS = 20000
     const idsToMark = new Set(selectedIds)
     const msgTrim = mensagem.trim()
-    let timeoutId = setTimeout(() => {
-      setEnviando(false)
-      setCarts((prev) =>
-        prev.map((c) => (idsToMark.has(c.id) ? { ...c, remarketingEnviado: true, mensagemEnviada: msgTrim } : c))
-      )
-      setSelectedIds(new Set())
-      setMensagem('')
-      toast.success(`Enviado para ${idsToMark.size} contato(s). Você pode continuar usando a página.`)
-    }, TIMEOUT_MS)
+    const cartsEnviados = selectedCarts
     try {
       const evolution = await getEvolutionConfig(user.uid)
-      const contatos = selectedCarts.map((c) => ({
-        id: c.id,
-        nome: c.nome ?? c.name,
-        telefone: c.telefone ?? c.phone ?? c.numero,
-        email: c.email,
-        ...c,
+      const sessao = evolution?.nomeInstancia || ''
+      if (!sessao) { toast.error('Conecte uma instância de WhatsApp antes de enviar.'); setEnviando(false); return }
+      const contatos = cartsEnviados.map((c) => ({
+        nome: c.nome ?? c.name ?? '',
+        telefone: c.telefone ?? c.phone ?? c.numero ?? '',
+        produto: c.produto ?? c.nome_produto ?? '',
+        email: c.email ?? '',
       }))
-      await enviarRemarketing(contatos, mensagem.trim(), evolution)
-      clearTimeout(timeoutId)
-      timeoutId = null
-      // Atualiza a UI primeiro para a tag "Enviado" aparecer na hora
-      setCarts((prev) =>
-        prev.map((c) =>
-          selectedIds.has(c.id) ? { ...c, remarketingEnviado: true, mensagemEnviada: mensagem.trim() } : c
-        )
-      )
+      // Envio em lotes de 50 pelo backend (mesma máquina do disparador, via WF1).
+      const r = await iniciarRemarketingWA({ sessao, mensagem: msgTrim, imagemUrl: midia.img?.src || null, audioUrl: midia.audio?.url || null, contatos })
+
+      // Marca como enviado (fila iniciada) e mostra progresso.
+      setCarts((prev) => prev.map((c) => (idsToMark.has(c.id) ? { ...c, remarketingEnviado: true, mensagemEnviada: msgTrim } : c)))
       setSelectedIds(new Set())
       setMensagem('')
-      toast.success(`Remarketing enviado para ${selectedCarts.length} contato(s).`)
-      // Persiste no Firestore em seguida (se falhar, a tag já apareceu na tela)
-      for (const cart of selectedCarts) {
+      midia.clear()
+      setProgresso({ disparoId: r.disparoId, total: r.total, enviados: 0, falhas: 0, status: 'enviando' })
+      carregarHistorico()
+      toast.success(`Remarketing iniciado: ${r.total} contato(s). Enviando em lotes de 50.`)
+
+      // Persiste status dos leads/carts + log (em segundo plano; a tag já apareceu).
+      for (const cart of cartsEnviados) {
         try {
-          if (cart._fromLead && cart._leadId) {
-            await updateLeadStatus(user.uid, cart._leadId, { status: 'enviado', mensagemEnviada: mensagem.trim() })
-          } else {
-            await updateAbandonedCartRemarketingSent(user.uid, cart.id, mensagem.trim())
-          }
-        } catch (e) {
-          console.warn('Erro ao atualizar status do lead no Firestore:', e)
-        }
+          if (cart._fromLead && cart._leadId) await updateLeadStatus(user.uid, cart._leadId, { status: 'enviado', mensagemEnviada: msgTrim })
+          else await updateAbandonedCartRemarketingSent(user.uid, cart.id, msgTrim)
+        } catch (e) { console.warn('status lead:', e) }
       }
-      try {
-        await addRemarketingLog(user.uid, {
-          contatos: contatos.length,
-          mensagem: mensagem.trim(),
-          ids: selectedCarts.map((c) => c.id),
-        })
-      } catch (e) {
-        console.warn('Erro ao salvar log de remarketing:', e)
-      }
+      try { await addRemarketingLog(user.uid, { contatos: contatos.length, mensagem: msgTrim, ids: cartsEnviados.map((c) => c.id) }) } catch (e) { console.warn('log remarketing:', e) }
     } catch (err) {
-      clearTimeout(timeoutId)
-      toast.error(err.message || 'Erro ao enviar remarketing')
+      const code = err?.message || ''
+      if (code.includes('instancia_ocupada')) toast.error('Essa instância já tem um envio em andamento. Espere terminar pra iniciar outro.')
+      else toast.error(err.message || 'Erro ao enviar remarketing')
     } finally {
       setEnviando(false)
     }
@@ -245,23 +287,13 @@ export default function Remarketing() {
 
   return (
     <PageShell
-      fill
       badge="WhatsApp · Remarketing"
       title="Remarketing"
       right={
-        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none">
-          <div className="rounded-2xl border border-surface-200/90 bg-white/90 backdrop-blur-sm px-3 py-2.5 text-center shadow-sm">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Total</p>
-            <p className="text-lg font-bold text-stone-800 tabular-nums">{resumo.total}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50 to-white px-3 py-2.5 text-center shadow-sm shadow-emerald-500/10">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Enviados</p>
-            <p className="text-lg font-bold text-emerald-700 tabular-nums">{resumo.enviados}</p>
-          </div>
-          <div className="rounded-2xl border border-primary-200/90 bg-gradient-to-br from-primary-50 to-white px-3 py-2.5 text-center shadow-sm shadow-primary-500/10">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-primary-600">Sel.</p>
-            <p className="text-lg font-bold text-primary-700 tabular-nums">{selectedCarts.length}</p>
-          </div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none sm:w-auto">
+          <StatCard label="Total" value={resumo.total} icon={Users} color="blue" />
+          <StatCard label="Enviados" value={resumo.enviados} icon={CheckCircle2} color="green" />
+          <StatCard label="Selecionados" value={selectedCarts.length} icon={CheckSquare} color="purple" />
         </div>
       }
     >
@@ -278,83 +310,82 @@ export default function Remarketing() {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 flex-col lg:flex-row gap-2 overflow-hidden min-w-0">
+      <div className="flex flex-col lg:flex-row gap-2 min-w-0 lg:h-[calc(100dvh-20rem)] lg:min-h-[360px]">
         <aside className="flex flex-col shrink-0 lg:w-[min(480px,42vw)] lg:min-w-[320px] lg:max-w-lg h-[min(42dvh,320px)] lg:h-auto lg:min-h-0 overflow-hidden">
-          <div className="app-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 flex flex-col h-full min-h-0 overflow-hidden">
-            <h3 className="text-sm sm:text-base font-semibold text-stone-800 shrink-0 mb-2 flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 shrink-0 text-primary-600" />
-              Mensagem
-              <TemplatePicker onPick={setMensagem} label="Template" className="ml-auto text-xs min-h-[34px] py-1.5 px-2.5" />
-            </h3>
+          <div className="relative flex flex-col flex-1 min-h-0">
             <MessageEditor
               ref={editorRef}
               fillHeight
               className="flex-1 min-h-0"
+              textareaClassName="pb-16"
               value={mensagem}
               onChange={setMensagem}
               placeholder="Olá {nome_cliente}, você deixou itens no carrinho. Posso te ajudar?"
               showChaves
               showCheckout
+              checkoutIconOnly
               rows={4}
+              toolbarBeforeEmoji={<TemplatePicker onPick={setMensagem} iconOnly label="Template" />}
+              toolbarExtra={midia.toolbarExtra}
             />
+
+            {/* Prévia dos anexos: flutuante no canto inferior esquerdo */}
+            {midia.previews && <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2 max-w-[70%]">{midia.previews}</div>}
+
+            {/* Botão enviar: ícone flutuante no canto inferior direito (igual ao Disparo) */}
             <button
               onClick={handleEnviar}
               disabled={enviando || selectedCarts.length === 0 || !mensagem.trim()}
-              className="btn-primary mt-3 w-full py-2.5 min-h-[44px] touch-manipulation shrink-0 text-sm"
+              title={enviando ? 'Enviando…' : `Enviar para ${selectedCarts.length} contato(s)`}
+              className={`absolute bottom-3 right-3 z-20 h-11 w-11 flex items-center justify-center rounded-xl shadow-sm transition-colors ${
+                enviando
+                  ? 'bg-primary-50 text-primary-600'
+                  : 'bg-surface-100 text-stone-500 hover:bg-primary-600 hover:text-white disabled:opacity-40 disabled:hover:bg-surface-100 disabled:hover:text-stone-500'
+              }`}
             >
-              {enviando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {enviando ? 'Enviando...' : `Enviar (${selectedCarts.length})`}
+              {enviando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
             </button>
           </div>
+
         </aside>
 
         <div className="app-panel rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col flex-1 min-h-0 min-w-0">
-        <div className="p-3 sm:p-4 border-b border-surface-200 space-y-2 shrink-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 text-stone-700">
+        <div className="px-3 sm:px-4 py-1.5 min-h-[56px] flex items-center border-b border-surface-200 shrink-0">
+          <div className="flex items-center gap-2 w-full min-w-0">
+            <div className="flex items-center gap-2 text-stone-700 shrink-0">
               <Users className="w-4 h-4" />
               <p className="text-sm font-semibold">Lista de contatos</p>
             </div>
-            <div className="flex flex-col items-end gap-0.5 shrink-0">
-              <button
-                type="button"
-                onClick={selectAll}
-                className="text-sm font-medium text-primary-600 hover:underline py-0.5 touch-manipulation"
-              >
-                {selectedIds.size === filtered.length ? 'Desmarcar todos' : 'Selecionar todos'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setApenasNaoEnviados((v) => !v)}
-                className="text-sm font-medium py-0.5 hover:underline touch-manipulation text-primary-600"
-              >
-                {apenasNaoEnviados ? 'Desmarcar não enviados' : 'Apenas não enviados'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-              <input
-                type="text"
-                value={filtroNome}
-                onChange={(e) => setFiltroNome(e.target.value)}
-                placeholder="Nome, e-mail ou telefone"
-                className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-xl border border-surface-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm"
+            <div className="flex items-center gap-2 ml-auto min-w-0 justify-end">
+              <CollapsibleSearch value={filtroNome} onChange={setFiltroNome} placeholder="Nome, e-mail ou telefone" />
+              <Select
+                value={filtroTag}
+                onChange={setFiltroTag}
+                compact
+                title="Filtrar por evento"
+                className="w-28 sm:w-32 shrink-0"
+                options={[{ value: '', label: 'Eventos' }, ...KIWIFY_EVENTS.map((e) => ({ value: e.label, label: e.label }))]}
+              />
+              <Select
+                searchable={false}
+                title="Filtros e seleção"
+                value={apenasNaoEnviados ? 'naoenviados' : ''}
+                onChange={(v) => {
+                  if (v === 'todos') selectAll()
+                  else if (v === 'naoenviados') setApenasNaoEnviados((x) => !x)
+                }}
+                options={[
+                  { value: 'todos', label: selectedIds.size === filtered.length && filtered.length > 0 ? 'Desmarcar todos' : 'Selecionar todos' },
+                  { value: 'naoenviados', label: apenasNaoEnviados ? 'Mostrar todos os contatos' : 'Apenas não enviados' },
+                ]}
+                trigger={
+                  <button type="button" title="Filtros e seleção" className="inline-flex items-center gap-1.5 px-3 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:border-primary-300 text-sm text-stone-600 shrink-0 transition-colors">
+                    <Filter className="w-4 h-4" />
+                    <span className="hidden sm:inline">Filtros</span>
+                  </button>
+                }
               />
             </div>
-            <Select
-              value={filtroTag}
-              onChange={setFiltroTag}
-              className="w-full sm:w-56 shrink-0"
-              options={[{ value: '', label: 'Todos os eventos' }, ...KIWIFY_EVENTS.map((e) => ({ value: e.label, label: e.label }))]}
-            />
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-stone-500">
-            <Filter className="w-3.5 h-3.5" />
-            <span>{filtered.length} contato(s) após filtros</span>
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto scroll-y-soft">
@@ -411,7 +442,7 @@ export default function Remarketing() {
                     </button>
 
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-x-4 md:gap-y-1 flex-1 min-w-0 items-start md:items-center w-full">
-                      <div className="md:col-span-4 min-w-0">
+                      <div className="md:col-span-5 min-w-0">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <p className="font-semibold text-stone-800 truncate">
                             {cart.nome || cart.name || cart.email || 'Sem nome'}
@@ -423,13 +454,10 @@ export default function Remarketing() {
                           )}
                         </div>
                       </div>
-                      <p className="md:col-span-2 text-sm text-stone-600 tabular-nums md:text-right md:justify-self-end truncate">
+                      <p className="md:col-span-3 text-sm text-stone-600 tabular-nums md:text-right md:justify-self-end truncate">
                         {(cart.telefone || cart.phone || cart.numero || '—').toString()}
                       </p>
-                      <p className="md:col-span-3 text-sm text-stone-500 truncate md:text-right">
-                        {cart.email || '—'}
-                      </p>
-                      <div className="md:col-span-3 flex md:justify-end min-w-0">
+                      <div className="md:col-span-4 flex md:justify-end min-w-0">
                         {cart.tag ? (
                           <span className="inline-flex items-center max-w-full text-xs font-medium bg-primary-100/80 text-primary-800 px-2.5 py-1 rounded-full truncate">
                             {cart.tag}
@@ -475,6 +503,73 @@ export default function Remarketing() {
         )}
         </div>
       </div>
+
+      {historico.length > 0 && (
+        <Panel title="Histórico" icon={History} noPadding collapsible open={histOpen} onToggle={() => setHistOpen((v) => !v)} className="shrink-0 mt-4">
+          <div className="divide-y divide-surface-100">
+            {historicoPagina.map((item) => {
+              const aberto = expandedHist === item.disparoId
+              const enviados = item.enviados ?? 0
+              const falhas = item.falhas ?? 0
+              const status = item.status || 'enviando'
+              return (
+                <div key={item.disparoId}>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-4">
+                    <button onClick={() => setExpandedHist(aberto ? null : item.disparoId)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                      <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${aberto ? 'rotate-180' : ''}`} />
+                      <div className="min-w-0">
+                        <p className="font-medium text-stone-800 text-sm truncate">{item.nomeDisparo}</p>
+                        <p className="text-xs text-stone-500 flex items-center gap-1.5 flex-wrap">
+                          <span>{fmtDataHist(item.createdAt)}</span>
+                          {item.sessao && (
+                            <span className="inline-flex items-center gap-1 text-stone-600 max-w-[160px]">
+                              <span className="text-stone-300">·</span>
+                              <WhatsAppIcon className="w-3 h-3 text-green-600 shrink-0" />
+                              <span className="truncate">{item.sessao}</span>
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </button>
+                    <div className="flex items-center gap-3">
+                      {item.imagemUrl && <ImageLucide className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                      {item.audioUrl && <AudioLines className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
+                      <span className="text-xs text-stone-600">{enviados}/{item.total} enviados</span>
+                      {falhas > 0 && <span className="text-xs text-red-500 font-medium">{falhas} falha{falhas > 1 ? 's' : ''}</span>}
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${HIST_STATUS[status] || 'bg-stone-100 text-stone-600'}`}>{HIST_STATUS_LABEL[status] || status}</span>
+                      <button onClick={() => excluirHist(item.disparoId, item.nomeDisparo)} className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                  {aberto && (
+                    <div className="px-4 pb-4 space-y-3">
+                      <div className="text-xs text-stone-500 p-3 bg-surface-50 rounded-xl space-y-1">
+                        <p className="text-stone-700 font-medium">Mensagem enviada:</p>
+                        <p className="whitespace-pre-wrap break-words">{item.mensagem || '—'}</p>
+                      </div>
+                      {(item.imagemUrl || item.audioUrl) && (
+                        <div className="flex flex-wrap items-center gap-3">
+                          {item.imagemUrl && <img src={item.imagemUrl} alt="" className="w-16 h-16 rounded-xl object-cover border border-surface-200" />}
+                          {item.audioUrl && <AudioPlayer src={item.audioUrl} className="w-[320px] max-w-full" />}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {totalPagHist > 1 && (
+            <div className="px-4 py-3 border-t border-surface-100 flex items-center justify-between gap-3">
+              <p className="text-xs text-stone-600">Página {pagHist} de {totalPagHist} · {historico.length} envio(s)</p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setHistPagina((p) => Math.max(1, p - 1))} disabled={pagHist <= 1} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronLeft className="w-4 h-4" /></button>
+                <button onClick={() => setHistPagina((p) => Math.min(totalPagHist, p + 1))} disabled={pagHist >= totalPagHist} className="px-3 py-2 min-h-[38px] rounded-xl border border-surface-200 bg-white hover:bg-surface-50 disabled:opacity-50"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            </div>
+          )}
+        </Panel>
+      )}
+      {midia.popups}
     </PageShell>
   )
 }

@@ -283,7 +283,7 @@ export default function CallAutomacoes() {
   const [autos, setAutos] = useState([])
   const [grupos, setGrupos] = useState([])
   const [grupoId, setGrupoId] = useState('')
-  const [autoAberto, setAutoAberto] = useState(true)
+  const [autoAberto, setAutoAberto] = useState(false)
   const [leads, setLeads] = useState([])
   const [callLogs, setCallLogs] = useState([])
   const [filtroNome, setFiltroNome] = useState('')

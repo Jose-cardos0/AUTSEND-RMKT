@@ -101,8 +101,9 @@ export default function EnviarMensagem() {
   useEffect(() => {
     if (!user?.uid) return
     let cancelled = false
-    getDisparos(user.uid).then((list) => {
+    getDisparos(user.uid).then((todos) => {
       if (cancelled) return
+      const list = todos.filter((d) => d.origem !== 'remarketing') // remarketing tem tela própria
       if (list.length > 0) {
         setHistorico(list)
         return
@@ -135,7 +136,7 @@ export default function EnviarMensagem() {
   const temDisparoAtivo = historico.some((h) => h.status === 'enviando')
   useEffect(() => {
     if (!user?.uid || !temDisparoAtivo) return
-    const id = setInterval(() => { getDisparos(user.uid).then(setHistorico).catch(() => {}) }, 20000)
+    const id = setInterval(() => { getDisparos(user.uid).then((l) => setHistorico(l.filter((d) => d.origem !== 'remarketing'))).catch(() => {}) }, 20000)
     return () => clearInterval(id)
   }, [user?.uid, temDisparoAtivo])
 
@@ -283,7 +284,7 @@ export default function EnviarMensagem() {
         contatos: contatos.map((c) => ({ telefone: c.telefone, nome: c.nome })),
       })
       setMensagem(''); setImgAnexo(null); setAudioAnexo(null); setLista('')
-      setHistorico(await getDisparos(user.uid))
+      setHistorico((await getDisparos(user.uid)).filter((d) => d.origem !== 'remarketing'))
       setTimelineOpen(true)
       setMsg({ type: 'success', text: `Disparo iniciado: ${r.total} contato(s).` })
       toast.success(`Disparo "${nome}" iniciado: ${r.total} contato(s).`)

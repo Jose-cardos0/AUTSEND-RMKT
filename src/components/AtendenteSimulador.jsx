@@ -32,7 +32,7 @@ export default function AtendenteSimulador({ grupoId, nome, onClose }) {
     setEnviando(true)
     try {
       const r = await simularAtendente(grupoId, novoHist)
-      setMsgs((m) => [...m, { role: 'assistant', text: r?.resposta || '(sem resposta)' }])
+      setMsgs((m) => [...m, { role: 'assistant', text: r?.resposta || '(sem resposta)', midias: Array.isArray(r?.midias) ? r.midias : [] }])
     } catch (err) {
       toast.error(err.message || 'A IA não respondeu.')
       setMsgs((m) => m.slice(0, -1)) // desfaz a msg do usuário se falhou
@@ -63,10 +63,22 @@ export default function AtendenteSimulador({ grupoId, nome, onClose }) {
             </div>
           )}
           {msgs.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[82%] rounded-lg px-3 py-2 shadow-sm text-sm text-stone-800 whitespace-pre-wrap break-words ${m.role === 'user' ? 'bg-[#d9fdd3] rounded-tr-sm' : 'bg-white rounded-tl-sm'}`}>
-                {comLinks(m.text)}
+            <div key={i} className="space-y-1.5">
+              <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[82%] rounded-lg px-3 py-2 shadow-sm text-sm text-stone-800 whitespace-pre-wrap break-words ${m.role === 'user' ? 'bg-[#d9fdd3] rounded-tr-sm' : 'bg-white rounded-tl-sm'}`}>
+                  {comLinks(m.text)}
+                </div>
               </div>
+              {/* Mídias que saem logo após a resposta (imagem/áudio ligados ao checkout) */}
+              {Array.isArray(m.midias) && m.midias.map((mid, j) => (
+                <div key={j} className="flex justify-start">
+                  <div className="max-w-[82%] rounded-lg rounded-tl-sm p-1 shadow-sm bg-white">
+                    {mid.tipo === 'audio'
+                      ? <audio controls src={mid.url} className="w-[240px] max-w-full" />
+                      : <img src={mid.url} alt={mid.nome || ''} className="rounded-md max-w-full max-h-64 object-contain" />}
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
           {enviando && (

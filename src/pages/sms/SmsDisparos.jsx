@@ -269,9 +269,6 @@ export default function SmsDisparos() {
               {enviando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
             </button>
           </div>
-          <p className="text-[11px] text-stone-400 mt-2 shrink-0 px-1">
-            {mensagem.length} caractere(s) · <span className={segmentos > 1 ? 'text-amber-600 font-medium' : ''}>{segmentos} segmento(s) por SMS</span>. Acentos são removidos automaticamente. Coloque o nome da sua marca no texto.
-          </p>
         </aside>
 
         {/* Lista */}

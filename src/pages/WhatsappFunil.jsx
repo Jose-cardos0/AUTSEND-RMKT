@@ -17,6 +17,7 @@ import WhatsAppIcon from '../components/WhatsAppIcon'
 import GerarMensagemIA from '../components/GerarMensagemIA'
 import TemplatePicker from '../components/TemplatePicker'
 import MessageEditor from '../components/MessageEditor'
+import useMidiaWhatsApp from '../hooks/useMidiaWhatsApp'
 import CollapsibleSearch from '../components/CollapsibleSearch'
 import ErroTip from '../components/ErroTip'
 import { Play, Clock, GitBranch, Plus, Save, Trash2, Loader2, X, UserPlus, CheckCircle2, XCircle, RefreshCw, Send, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react'
@@ -186,6 +187,13 @@ export default function WhatsappFunil() {
   }
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) || null, [nodes, selectedNodeId])
+  // Anexo de imagem/áudio do nó "enviar" (controlado — persiste em node.data.imagemUrl/audioUrl).
+  const midia = useMidiaWhatsApp(user?.uid, {
+    img: selectedNode?.data?.imagemUrl ? { src: selectedNode.data.imagemUrl, name: 'imagem' } : null,
+    audio: selectedNode?.data?.audioUrl ? { url: selectedNode.data.audioUrl, nome: 'Áudio' } : null,
+    onImg: (v) => selectedNode && updateNodeData(selectedNode.id, { imagemUrl: v?.src || null }),
+    onAudio: (v) => selectedNode && updateNodeData(selectedNode.id, { audioUrl: v?.url || null }),
+  })
 
   const handleSalvar = async () => {
     if (!user?.uid) return
@@ -386,7 +394,9 @@ export default function WhatsappFunil() {
                   showChaves
                   showCheckout
                   rows={5}
+                  toolbarExtra={midia.toolbarExtra}
                 />
+                {midia.previews && <div className="mt-2">{midia.previews}</div>}
                 <TemplatePicker
                   onPick={(msg) => updateNodeData(selectedNode.id, { mensagem: msg })}
                   className="mt-2 w-full justify-center"
@@ -397,6 +407,7 @@ export default function WhatsappFunil() {
                   onResult={(msg) => updateNodeData(selectedNode.id, { mensagem: msg })}
                   className="mt-2 text-sm w-full min-h-[40px] px-4 rounded-xl border-2 border-violet-200 text-violet-700 font-medium hover:bg-violet-50 disabled:opacity-50 flex items-center justify-center gap-2"
                 />
+                {midia.popups}
               </div>
             )}
 
