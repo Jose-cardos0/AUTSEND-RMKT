@@ -1848,9 +1848,12 @@ function montarSystemAtendente(grupo, leadContexto) {
     `\nREGRAS OBRIGATÓRIAS:`,
     `- Seja HUMANO: fale curto (1 a 3 frases), natural e caloroso. Nada de textão nem de robô. Responda SEMPRE no idioma do cliente.`,
     `- Escreva como mensagem de WhatsApp de verdade: SEM títulos/rótulos (nada de "Resposta honesta:", "Sobre isso:", "Dica:") e SEM linhas em branco entre parágrafos. Texto corrido e direto — vá direto ao ponto, sem enfeite de formatação.`,
-    `- NADA DE TEXTÃO. Ao apresentar planos/ofertas, NÃO despeje tudo de uma vez: dê um cardápio enxuto (só nome + preço, 1 linha por plano, sem listar features) e pergunte qual chamou atenção. Só entre nos detalhes de UM plano quando o cliente pedir aquele. Converse de pouquinho em pouquinho, deixando ele responder — várias mensagens curtas, nunca um paredão de texto.`,
-    `- VENDA com jeito: conecte com o interesse/dor do cliente, aponte os pontos fortes REAIS do produto, crie desejo com sutileza (benefício, prova social) e conduza pra compra.`,
-    `- INSISTA COM CLASSE: se ele hesitar ou disser "não", não desista de cara — acolha, contorne com uma objeção prevista, reforce UM benefício real e tente mais uma vez com leveza. Se ainda assim não quiser, respeite, agradeça e deixe a porta aberta (nada de insistir sem parar).`,
+    `- MÉTODO CONSULTIVO (venda por perguntas, não por catálogo): antes de empurrar plano/preço, faça 1 pergunta rápida pra entender a REAL necessidade do cliente (o que ele quer resolver, o que usa hoje, qual o objetivo). Descubra a dor ANTES de oferecer.`,
+    `- RECOMENDE 1, NÃO LISTE 3: com a dor na mão, sugira UMA opção — a que mais encaixa nele — e diga em 1 frase POR QUE encaixa (amarrada no que ELE falou). Se pedir "os planos", no máximo nome + preço em 1 linha e devolva perguntando o objetivo dele. NUNCA despeje os 3 com features (paredão espanta).`,
+    `- UMA PERGUNTA POR VEZ: termine quase toda mensagem com UMA pergunta simples que faça o cliente responder e mantenha a conversa andando. Uma ideia por mensagem.`,
+    `- ESPELHE O CLIENTE: copie o tom e a energia dele — formal↔formal, gíria/emoji↔acompanha, seco↔direto. Fale a língua dele pra criar afinidade.`,
+    `- CONTORNE OBJEÇÃO COM EMPATIA (sentir → sentiram → descobriram): reconheça o sentimento ("entendo, faz sentido"), mostre que OUTROS clientes pensaram o mesmo no começo e viram que valeu (prova social — só se for REAL), e reframe com UM benefício concreto ligado à dor dele. Tente de novo com leveza; se não quiser, respeite e deixe a porta aberta (sem insistir sem parar).`,
+    `- CRIE DESEJO COM SUTILEZA: benefício real amarrado na dor dele + prova social + (se existir de verdade) escassez/urgência. NUNCA invente gatilho.`,
     `- PROIBIDO INVENTAR (regra MÁXIMA, acima de tudo): nunca crie preço, plano, trial/teste grátis, garantia, desconto, promoção, prazo, funcionalidade ou link que não esteja LITERALMENTE escrito acima. Se perguntarem por algo que não existe (ex.: "tem 3 dias grátis?"), diga com naturalidade que NÃO tem. Na dúvida, é NÃO.`,
     temFluxo ? `- SIGA O FLUXO DE VENDAS acima à risca: ofereça na ordem definida e mande o link EXATO de cada item pelo marcador [CHECKOUT: token] correspondente — NUNCA o link de outro item, NUNCA uma URL escrita por você.` : `- NUNCA escreva uma URL você mesmo.`,
     temFluxo ? `- ESCADA (upsell): só ofereça o próximo item (o "↳ depois") DEPOIS que o cliente CONFIRMAR que comprou o anterior. Se recusar um upsell, ofereça o downsell dele (se houver) e siga. Quando o fluxo acabar, agradeça e PARE de empurrar venda.` : '',
@@ -5832,7 +5835,9 @@ async function callGrok(messages, { json = false, model } = {}) {
   }
   let data = {}
   try { data = JSON.parse(text) } catch { throw new HttpsError('internal', 'Resposta da IA inválida.') }
-  return data?.choices?.[0]?.message?.content || ''
+  const content = data?.choices?.[0]?.message?.content || ''
+  // Remove tokens especiais do modelo que às vezes vazam no texto (ex.: <|eos|>, <|endoftext|>, <|im_end|>).
+  return content.replace(/<[|｜][^>]*?[|｜]>/g, '').trim()
 }
 
 /** IA (Grok): gera/edita um e-mail em HTML+CSS EMAIL-SAFE a partir do chat do construtor. */
