@@ -52,7 +52,7 @@ export default function Atendentes() {
   const novaInstObj = useMemo(() => instLivres.find((i) => i.id === novaInst) || null, [instLivres, novaInst])
 
   const abrirCriar = () => {
-    if (!podeCriar) { toast.error(`Seu plano permite ${limite} atendente(s). Compre uma instância ou faça upgrade pra liberar mais.`); return }
+    if (!podeCriar) { toast.error(`Seu plano permite ${limite} vendedor(es). Compre uma instância ou faça upgrade pra liberar mais.`); return }
     setNovoNome(''); setNovoGrupo(gruposLivres[0]?.id || ''); setNovaInst(instLivres[0]?.id || ''); setShowCriar(true)
   }
 
@@ -65,8 +65,8 @@ export default function Atendentes() {
       await criarAtendente({ nome: novoNome.trim() || (g?.nome || 'Atendente'), grupoId: novoGrupo, instanceId: novaInst })
       await load()
       setShowCriar(false)
-      toast.success('Atendente criado! Configure o contexto do produto e ative.')
-    } catch (err) { toast.error(err.message || 'Erro ao criar atendente') }
+      toast.success('Vendedor criado! Configure o contexto do produto e ative.')
+    } catch (err) { toast.error(err.message || 'Erro ao criar vendedor') }
     finally { setCriando(false) }
   }
 
@@ -88,8 +88,8 @@ export default function Atendentes() {
 
   const excluir = async (a) => {
     const g = grupoById[a.grupoId]
-    if (!(await confirm({ title: `Excluir atendente "${g?.nome || a.nome}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir', danger: true }))) return
-    try { await deleteAtendente(user.uid, a.id); setAtendentes((prev) => prev.filter((x) => x.id !== a.id)); toast.success('Atendente excluído.') }
+    if (!(await confirm({ title: `Excluir vendedor "${g?.nome || a.nome}"?`, message: 'Essa ação não pode ser desfeita.', confirmLabel: 'Excluir', danger: true }))) return
+    try { await deleteAtendente(user.uid, a.id); setAtendentes((prev) => prev.filter((x) => x.id !== a.id)); toast.success('Vendedor excluído.') }
     catch (err) { toast.error(err.message || 'Erro ao excluir') }
   }
 
@@ -100,16 +100,16 @@ export default function Atendentes() {
       badge="Comercial · Vendedores"
       title="Vendedores"
       right={
-        <button onClick={abrirCriar} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Novo atendente</button>
+        <button onClick={abrirCriar} className="btn-primary text-sm min-h-[44px]"><Plus className="w-4 h-4" /> Novo vendedor</button>
       }
     >
       {/* Limite */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 bg-surface-100 rounded-full px-3 py-1.5">
-          <Rocket className="w-3.5 h-3.5" /> {atendentes.length}{isAdmin ? '' : ` de ${limite}`} atendente(s)
+          <Rocket className="w-3.5 h-3.5" /> {atendentes.length}{isAdmin ? '' : ` de ${limite}`} vendedor(es)
         </span>
         {!isAdmin && atendentes.length >= limite && (
-          <span className="text-xs text-stone-500">Comprou uma instância? Ela libera +1 atendente. <MelhorarPlano label="Ver planos" className="inline-flex" /></span>
+          <span className="text-xs text-stone-500">Comprou uma instância? Ela libera +1 vendedor. <MelhorarPlano label="Ver planos" className="inline-flex" /></span>
         )}
       </div>
 
@@ -117,11 +117,11 @@ export default function Atendentes() {
         <Panel>
           <div className="flex flex-col items-center justify-center text-center gap-3 py-12">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-100 to-violet-100 text-primary-600"><Rocket className="w-7 h-7" /></span>
-            <h2 className="text-lg font-semibold text-stone-800">Nenhum atendente ainda</h2>
+            <h2 className="text-lg font-semibold text-stone-800">Nenhum vendedor ainda</h2>
             <p className="text-sm text-stone-500 max-w-md leading-relaxed">
-              Crie um <strong>bot de IA no WhatsApp</strong> que conversa com seus leads, tira dúvidas do produto e envia o checkout na hora certa. Um atendente por produto.
+              Crie um <strong>bot de IA no WhatsApp</strong> que conversa com seus leads, tira dúvidas do produto e envia o checkout na hora certa. Um vendedor por produto.
             </p>
-            <button onClick={abrirCriar} className="btn-primary min-h-[44px]"><Plus className="w-4 h-4" /> Criar atendente</button>
+            <button onClick={abrirCriar} className="btn-primary min-h-[44px]"><Plus className="w-4 h-4" /> Criar vendedor</button>
           </div>
         </Panel>
       ) : (
@@ -188,7 +188,7 @@ export default function Atendentes() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600 shrink-0"><Rocket className="w-5 h-5" /></span>
-              <h3 className="text-base font-semibold text-stone-800">Novo atendente</h3>
+              <h3 className="text-base font-semibold text-stone-800">Novo vendedor</h3>
               <button onClick={() => setShowCriar(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
             </div>
 
@@ -196,8 +196,8 @@ export default function Atendentes() {
               <div className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  {gruposLivres.length === 0 && <>Todos os produtos já têm atendente. Crie um novo grupo em <Link to="/produtos" className="underline font-semibold">Produtos</Link>. </>}
-                  {instLivres.length === 0 && <>Nenhuma instância livre. Cada atendente usa uma instância — conecte outra em <Link to="/integracoes" className="underline font-semibold">WhatsApp → Integrações</Link>.</>}
+                  {gruposLivres.length === 0 && <>Todos os produtos já têm vendedor. Crie um novo grupo em <Link to="/produtos" className="underline font-semibold">Produtos</Link>. </>}
+                  {instLivres.length === 0 && <>Nenhuma instância livre. Cada vendedor usa uma instância — conecte outra em <Link to="/integracoes" className="underline font-semibold">WhatsApp → Integrações</Link>.</>}
                 </span>
               </div>
             ) : (

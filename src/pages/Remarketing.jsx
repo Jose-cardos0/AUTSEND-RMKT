@@ -262,7 +262,7 @@ export default function Remarketing() {
       midia.clear()
       setProgresso({ disparoId: r.disparoId, total: r.total, enviados: 0, falhas: 0, status: 'enviando' })
       carregarHistorico()
-      toast.success(`Remarketing iniciado: ${r.total} contato(s). Enviando em lotes de 50.`)
+      toast.success(`Remarketing iniciado: ${r.total} contato(s).`)
 
       // Persiste status dos leads/carts + log (em segundo plano; a tag já apareceu).
       for (const cart of cartsEnviados) {

@@ -2115,9 +2115,11 @@ exports.disparos = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory
 
     const b = req.body || {}
     const campanhaId = String(b.campanhaId || '').trim()
+    // O campanhaId vem com o sufixo do lote (ex.: rmkt_123_0). O disparo é o id SEM o _<lote>.
+    const disparoId = campanhaId.replace(/_\d+$/, '')
     const sessao = String(b.sessao || b.nomeInstancia || '').trim()
     const telefone = String(b.telefone || '').replace(/\D/g, '')
-    if (!campanhaId || !sessao || !telefone) { res.status(200).json({ ok: true, ignored: 'faltam campos' }); return }
+    if (!disparoId || !sessao || !telefone) { res.status(200).json({ ok: true, ignored: 'faltam campos' }); return }
 
     // Resolve o uid dono da instância pelo nome da sessão (mesmo índice do atendente).
     let uid = null
@@ -2127,16 +2129,21 @@ exports.disparos = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory
     } catch (e) { console.error('disparos collectionGroup (índice?):', e?.message || e) }
     if (!uid) { res.status(200).json({ ok: true, ignored: 'sessao sem dono' }); return }
 
-    // Só contabiliza se o disparo existir (idempotente: 1 doc de entrega por telefone).
-    const dRef = db.doc(`users/${uid}/disparos/${campanhaId}`)
+    // Conta a entrega (idempotente por telefone) E incrementa `enviados` (campo que o front lê),
+    // auto-concluindo quando todos os contatos foram contabilizados.
+    const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
     const entregaRef = dRef.collection('entregas').doc(telefone)
     await db.runTransaction(async (tx) => {
       const dDoc = await tx.get(dRef)
       if (!dDoc.exists) return
       const eDoc = await tx.get(entregaRef)
       if (eDoc.exists) return // já contado
+      const d = dDoc.data()
+      const enviados = (d.enviados || 0) + 1
+      const total = d.total || 0
+      const concluido = total > 0 && (enviados + (d.falhas || 0)) >= total && d.status === 'enviando'
       tx.set(entregaRef, { telefone, nome: b.nome || '', chatId: b.chatId || '', enviadoEm: b.enviadoEm || null, ts: admin.firestore.FieldValue.serverTimestamp() })
-      tx.set(dRef, { entregues: admin.firestore.FieldValue.increment(1), ultimaEntregaEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      tx.set(dRef, { enviados, entregues: admin.firestore.FieldValue.increment(1), ...(concluido ? { status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp() } : {}), ultimaEntregaEm: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     })
 
     res.status(200).json({ ok: true })

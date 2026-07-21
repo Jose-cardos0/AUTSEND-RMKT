@@ -90,6 +90,7 @@ export default function Integracoes() {
   const toggleSecao = (k) => setSecoes((s) => ({ ...s, [k]: !s[k] }))
   const [instanceEmConexao, setInstanceEmConexao] = useState(null)
   const [verificando, setVerificando] = useState(false)
+  const [gerandoQr, setGerandoQr] = useState(false)
   const [buscandoGruposId, setBuscandoGruposId] = useState(null)
   const [copiado, setCopiado] = useState(null)
   const [gerenciarInst, setGerenciarInst] = useState(null) // instância aberta no popup de gerenciar
@@ -292,6 +293,7 @@ export default function Integracoes() {
   const tentarReconectar = async (instancia, statusAtual) => {
     const nome = instancia?.nomeInstancia
     if (!nome || !instancia?.id) { toast.error('Instância inválida pra reconectar.'); return }
+    setGerandoQr(true)
     try {
       const pegarQr = async () => {
         const qr = await obterQr(nome)
@@ -315,6 +317,8 @@ export default function Integracoes() {
       }
     } catch (e) {
       toast.error(e.message || 'Falha ao reconectar.')
+    } finally {
+      setGerandoQr(false)
     }
   }
 
@@ -519,7 +523,7 @@ export default function Integracoes() {
                   className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-surface-50 text-left transition disabled:opacity-50"
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-100 text-stone-600 shrink-0">{verificando ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}</span>
-                  <span className="text-sm font-semibold text-stone-800">Verificar conexão</span>
+                  <span className="text-sm font-semibold text-stone-800">{gerandoQr ? 'Gerando QR…' : verificando ? 'Verificando…' : 'Verificar conexão'}</span>
                 </button>
                 {/* Disparo para grupos removido (não portado pro WAHA) — botão "Puxar grupos" escondido. */}
                 <button
