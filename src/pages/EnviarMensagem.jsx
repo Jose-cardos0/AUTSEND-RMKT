@@ -3,7 +3,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { auth } from '../lib/firebase'
-import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo, uploadCallAudio, saveAudioTemplate, iniciarDisparoWA } from '../lib/firestore'
+import { getEvolutionConfig, getInstances, getDisparos, setDisparo, updateDisparo, deleteDisparo, uploadCallAudio, saveAudioTemplate, iniciarDisparoWA, getDisparoFalhas } from '../lib/firestore'
 import { enviarMensagemWhatsApp, normalizeNomeContato } from '../lib/mensagemApi'
 import { uploadEmailAsset } from '../lib/storageAssets'
 import MessageEditor from '../components/MessageEditor'
@@ -36,6 +36,14 @@ const formatDate = (ts) => {
   const d = ts.toDate ? ts.toDate() : ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
   return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
+/** Traduz o motivo técnico da falha pra algo que qualquer pessoa entende. */
+const erroAmigavel = (motivo, detalhe) => {
+  const m = (String(motivo || '') + ' ' + String(detalhe || '')).toLowerCase()
+  if (/whats|exist|inval|not.?found|nao.?exist|numero|number|no.?wa|sem.?whats/.test(m)) return 'Número inválido ou sem WhatsApp'
+  if (/block|spam|ban|recus/.test(m)) return 'Número bloqueou ou recusou o envio'
+  if (/timeout|time.?out|indispon|offline/.test(m)) return 'WhatsApp indisponível no momento'
+  return 'Não foi possível entregar (número inválido)'
+}
 
 function loadHistoricoLocal(uid) {
   if (!uid) return []
@@ -57,6 +65,18 @@ export default function EnviarMensagem() {
   const [instOpen, setInstOpen] = useState(false)
   const [timelineOpen, setTimelineOpen] = useState(false)
   const [expandedWa, setExpandedWa] = useState(null)
+  const [falhasPorDisparo, setFalhasPorDisparo] = useState({}) // disparoId -> [{telefone, motivo, ...}]
+
+  const toggleWaExpand = async (item) => {
+    if (expandedWa === item.disparoId) { setExpandedWa(null); return }
+    setExpandedWa(item.disparoId)
+    if ((item.falhas || 0) > 0 && !falhasPorDisparo[item.disparoId]) {
+      try {
+        const fs = await getDisparoFalhas(user.uid, item.disparoId)
+        setFalhasPorDisparo((p) => ({ ...p, [item.disparoId]: fs }))
+      } catch (_) { setFalhasPorDisparo((p) => ({ ...p, [item.disparoId]: [] })) }
+    }
+  }
   const [lightboxImg, setLightboxImg] = useState(null)
   const [lista, setLista] = useState('')
   const [mensagem, setMensagem] = useState('')
@@ -565,7 +585,7 @@ export default function EnviarMensagem() {
               return (
                 <div key={item.disparoId}>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-4">
-                    <button onClick={() => setExpandedWa(aberto ? null : item.disparoId)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    <button onClick={() => toggleWaExpand(item)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
                       <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${aberto ? 'rotate-180' : ''}`} />
                       <div className="min-w-0">
                         <p className="font-medium text-stone-800 text-sm truncate">{item.nomeDisparo}</p>
@@ -584,8 +604,7 @@ export default function EnviarMensagem() {
                     <div className="flex items-center gap-3">
                       {item.imagemUrl && <ImageLucide className="w-3.5 h-3.5 text-stone-400 shrink-0" title="Imagem anexada" />}
                       {item.audioUrl && <AudioLines className="w-3.5 h-3.5 text-stone-400 shrink-0" title="Áudio anexado" />}
-                      <span className="text-xs text-stone-600">{enviados}/{item.total} enviados</span>
-                      {falhas > 0 && <span className="text-xs text-red-500 font-medium">{falhas} falha{falhas > 1 ? 's' : ''}</span>}
+                      <span className="text-xs text-stone-600">{enviados}/<span className={falhas > 0 ? 'text-red-500 font-semibold' : ''}>{item.total}</span> enviados</span>
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${WA_STATUS[status] || 'bg-stone-100 text-stone-600'}`}>
                         {WA_STATUS_LABEL[status] || status}
                       </span>
@@ -600,6 +619,24 @@ export default function EnviarMensagem() {
                         <p className="text-stone-700 font-medium">Mensagem enviada:</p>
                         <p className="whitespace-pre-wrap break-words">{item.mensagem || '—'}</p>
                       </div>
+                      {falhas > 0 && (
+                        <div className="text-xs p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 space-y-1.5">
+                          <p className="font-medium">{falhas} não {falhas > 1 ? 'foram entregues' : 'foi entregue'}:</p>
+                          {!falhasPorDisparo[item.disparoId] ? (
+                            <p className="text-red-400">Carregando…</p>
+                          ) : falhasPorDisparo[item.disparoId].length === 0 ? (
+                            <p className="text-red-500">Não foi possível entregar (número inválido).</p>
+                          ) : (
+                            falhasPorDisparo[item.disparoId].slice(0, 30).map((f, i) => (
+                              <p key={i} className="flex items-center gap-2 flex-wrap">
+                                <span className="tabular-nums text-red-600/90 font-medium">{f.telefone || '—'}</span>
+                                <span className="text-red-300">·</span>
+                                <span>{erroAmigavel(f.motivo, f.detalhe)}</span>
+                              </p>
+                            ))
+                          )}
+                        </div>
+                      )}
                       {(item.imagemUrl || item.audioUrl) && (
                         <div className="flex flex-wrap items-center gap-3">
                           {item.imagemUrl && (

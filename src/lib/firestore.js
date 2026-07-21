@@ -88,6 +88,13 @@ export async function deleteDisparo(uid, disparoId) {
   await deleteDoc(ref)
 }
 
+/** Lê as falhas (números que deram erro) de um disparo — pra mostrar o motivo amigável ao expandir. */
+export async function getDisparoFalhas(uid, disparoId) {
+  if (!uid || !disparoId) return []
+  const snap = await getDocs(collection(db, 'users', uid, 'disparos', disparoId, 'falhas'))
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
 /** Remove campos undefined do objeto (Firestore não aceita undefined) */
 function removeUndefined(obj) {
   if (obj == null || typeof obj !== 'object') return obj

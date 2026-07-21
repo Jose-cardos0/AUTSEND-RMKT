@@ -12,6 +12,7 @@ import {
   getDisparos,
   iniciarRemarketingWA,
   deleteDisparo,
+  getDisparoFalhas,
 } from '../lib/firestore'
 import MessageEditor from '../components/MessageEditor'
 import useMidiaWhatsApp from '../hooks/useMidiaWhatsApp'
@@ -54,6 +55,14 @@ const fmtDataHist = (ts) => {
   const d = ts.toDate ? ts.toDate() : ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
   return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
+/** Traduz o motivo técnico da falha pra algo que qualquer pessoa entende. */
+const erroAmigavel = (motivo, detalhe) => {
+  const m = (String(motivo || '') + ' ' + String(detalhe || '')).toLowerCase()
+  if (/whats|exist|inval|not.?found|nao.?exist|numero|number|no.?wa|sem.?whats/.test(m)) return 'Número inválido ou sem WhatsApp'
+  if (/block|spam|ban|recus/.test(m)) return 'Número bloqueou ou recusou o envio'
+  if (/timeout|time.?out|indispon|offline/.test(m)) return 'WhatsApp indisponível no momento'
+  return 'Não foi possível entregar (número inválido)'
+}
 
 export default function Remarketing() {
   const [user] = useAuthState(auth)
@@ -69,6 +78,18 @@ export default function Remarketing() {
   const [histOpen, setHistOpen] = useState(false)
   const [expandedHist, setExpandedHist] = useState(null)
   const [histPagina, setHistPagina] = useState(1)
+  const [falhasPorDisparo, setFalhasPorDisparo] = useState({}) // disparoId -> [{telefone, motivo, ...}]
+
+  const toggleHistExpand = async (item) => {
+    if (expandedHist === item.disparoId) { setExpandedHist(null); return }
+    setExpandedHist(item.disparoId)
+    if ((item.falhas || 0) > 0 && !falhasPorDisparo[item.disparoId]) {
+      try {
+        const fs = await getDisparoFalhas(user.uid, item.disparoId)
+        setFalhasPorDisparo((p) => ({ ...p, [item.disparoId]: fs }))
+      } catch (_) { setFalhasPorDisparo((p) => ({ ...p, [item.disparoId]: [] })) }
+    }
+  }
 
   const carregarHistorico = useCallback(async () => {
     if (!user?.uid) return
@@ -515,7 +536,7 @@ export default function Remarketing() {
               return (
                 <div key={item.disparoId}>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-4">
-                    <button onClick={() => setExpandedHist(aberto ? null : item.disparoId)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                    <button onClick={() => toggleHistExpand(item)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
                       <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform ${aberto ? 'rotate-180' : ''}`} />
                       <div className="min-w-0">
                         <p className="font-medium text-stone-800 text-sm truncate">{item.nomeDisparo}</p>
@@ -534,8 +555,7 @@ export default function Remarketing() {
                     <div className="flex items-center gap-3">
                       {item.imagemUrl && <ImageLucide className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
                       {item.audioUrl && <AudioLines className="w-3.5 h-3.5 text-stone-400 shrink-0" />}
-                      <span className="text-xs text-stone-600">{enviados}/{item.total} enviados</span>
-                      {falhas > 0 && <span className="text-xs text-red-500 font-medium">{falhas} falha{falhas > 1 ? 's' : ''}</span>}
+                      <span className="text-xs text-stone-600">{enviados}/<span className={falhas > 0 ? 'text-red-500 font-semibold' : ''}>{item.total}</span> enviados</span>
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${HIST_STATUS[status] || 'bg-stone-100 text-stone-600'}`}>{HIST_STATUS_LABEL[status] || status}</span>
                       <button onClick={() => excluirHist(item.disparoId, item.nomeDisparo)} className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-stone-400 hover:bg-red-50 hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4" /></button>
                     </div>
@@ -546,6 +566,24 @@ export default function Remarketing() {
                         <p className="text-stone-700 font-medium">Mensagem enviada:</p>
                         <p className="whitespace-pre-wrap break-words">{item.mensagem || '—'}</p>
                       </div>
+                      {falhas > 0 && (
+                        <div className="text-xs p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 space-y-1.5">
+                          <p className="font-medium">{falhas} não {falhas > 1 ? 'foram entregues' : 'foi entregue'}:</p>
+                          {!falhasPorDisparo[item.disparoId] ? (
+                            <p className="text-red-400">Carregando…</p>
+                          ) : falhasPorDisparo[item.disparoId].length === 0 ? (
+                            <p className="text-red-500">Não foi possível entregar (número inválido).</p>
+                          ) : (
+                            falhasPorDisparo[item.disparoId].slice(0, 30).map((f, i) => (
+                              <p key={i} className="flex items-center gap-2 flex-wrap">
+                                <span className="tabular-nums text-red-600/90 font-medium">{f.telefone || '—'}</span>
+                                <span className="text-red-300">·</span>
+                                <span>{erroAmigavel(f.motivo, f.detalhe)}</span>
+                              </p>
+                            ))
+                          )}
+                        </div>
+                      )}
                       {(item.imagemUrl || item.audioUrl) && (
                         <div className="flex flex-wrap items-center gap-3">
                           {item.imagemUrl && <img src={item.imagemUrl} alt="" className="w-16 h-16 rounded-xl object-cover border border-surface-200" />}

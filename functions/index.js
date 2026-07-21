@@ -1847,6 +1847,8 @@ function montarSystemAtendente(grupo, leadContexto) {
     vendaBloco,
     `\nREGRAS OBRIGATÓRIAS:`,
     `- Seja HUMANO: fale curto (1 a 3 frases), natural e caloroso. Nada de textão nem de robô. Responda SEMPRE no idioma do cliente.`,
+    `- Escreva como mensagem de WhatsApp de verdade: SEM títulos/rótulos (nada de "Resposta honesta:", "Sobre isso:", "Dica:") e SEM linhas em branco entre parágrafos. Texto corrido e direto — vá direto ao ponto, sem enfeite de formatação.`,
+    `- NADA DE TEXTÃO. Ao apresentar planos/ofertas, NÃO despeje tudo de uma vez: dê um cardápio enxuto (só nome + preço, 1 linha por plano, sem listar features) e pergunte qual chamou atenção. Só entre nos detalhes de UM plano quando o cliente pedir aquele. Converse de pouquinho em pouquinho, deixando ele responder — várias mensagens curtas, nunca um paredão de texto.`,
     `- VENDA com jeito: conecte com o interesse/dor do cliente, aponte os pontos fortes REAIS do produto, crie desejo com sutileza (benefício, prova social) e conduza pra compra.`,
     `- INSISTA COM CLASSE: se ele hesitar ou disser "não", não desista de cara — acolha, contorne com uma objeção prevista, reforce UM benefício real e tente mais uma vez com leveza. Se ainda assim não quiser, respeite, agradeça e deixe a porta aberta (nada de insistir sem parar).`,
     `- PROIBIDO INVENTAR (regra MÁXIMA, acima de tudo): nunca crie preço, plano, trial/teste grátis, garantia, desconto, promoção, prazo, funcionalidade ou link que não esteja LITERALMENTE escrito acima. Se perguntarem por algo que não existe (ex.: "tem 3 dias grátis?"), diga com naturalidade que NÃO tem. Na dúvida, é NÃO.`,
@@ -1873,6 +1875,9 @@ function paraFormatoWhatsApp(texto) {
     .replace(/^\s{0,3}#{1,6}\s+(.+?)\s*$/gm, '*$1*') // # Título → *Título*
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1: $2') // [txt](url) → txt: url
     .replace(/^\s{0,3}[-*]\s+/gm, '• ')           // bullets markdown → •
+    .replace(/[ \t]+\n/g, '\n')                   // tira espaço no fim das linhas
+    .replace(/\n{2,}/g, '\n')                     // sem linha em branco entre parágrafos
+    .trim()
 }
 
 function injetarCheckouts(texto, grupo) {
@@ -2110,6 +2115,7 @@ exports.disparos = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory
     if (req.method !== 'POST') { res.status(405).json({ ok: false, erro: 'method' }); return }
     const token = process.env.API_SAAS_TOKEN || ''
     if (!token || String(req.headers.authorization || '') !== `Bearer ${token}`) {
+      console.warn('[disparos] 401 — token invalido/faltando (Authorization: Bearer <API_SAAS_TOKEN>)')
       res.status(401).json({ ok: false, erro: 'unauthorized' }); return
     }
 
@@ -2119,7 +2125,8 @@ exports.disparos = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory
     const disparoId = campanhaId.replace(/_\d+$/, '')
     const sessao = String(b.sessao || b.nomeInstancia || '').trim()
     const telefone = String(b.telefone || '').replace(/\D/g, '')
-    if (!disparoId || !sessao || !telefone) { res.status(200).json({ ok: true, ignored: 'faltam campos' }); return }
+    console.log('[disparos] IN', { campanhaId, disparoId, sessao, telefone })
+    if (!disparoId || !sessao || !telefone) { console.warn('[disparos] faltam campos', { disparoId, sessao, telefone }); res.status(200).json({ ok: true, ignored: 'faltam campos' }); return }
 
     // Resolve o uid dono da instância pelo nome da sessão (mesmo índice do atendente).
     let uid = null
@@ -2127,24 +2134,27 @@ exports.disparos = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory
       const s = await db.collectionGroup('instances').where('nomeInstancia', '==', sessao).limit(1).get()
       if (!s.empty) uid = s.docs[0].ref.path.split('/')[1]
     } catch (e) { console.error('disparos collectionGroup (índice?):', e?.message || e) }
-    if (!uid) { res.status(200).json({ ok: true, ignored: 'sessao sem dono' }); return }
+    if (!uid) { console.warn('[disparos] sessao sem dono', sessao); res.status(200).json({ ok: true, ignored: 'sessao sem dono' }); return }
 
     // Conta a entrega (idempotente por telefone) E incrementa `enviados` (campo que o front lê),
     // auto-concluindo quando todos os contatos foram contabilizados.
     const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
     const entregaRef = dRef.collection('entregas').doc(telefone)
+    let dbg = { achou: false }
     await db.runTransaction(async (tx) => {
       const dDoc = await tx.get(dRef)
-      if (!dDoc.exists) return
+      if (!dDoc.exists) { dbg = { achou: false }; return }
       const eDoc = await tx.get(entregaRef)
-      if (eDoc.exists) return // já contado
+      if (eDoc.exists) { dbg = { achou: true, jaContado: true }; return } // já contado
       const d = dDoc.data()
       const enviados = (d.enviados || 0) + 1
       const total = d.total || 0
       const concluido = total > 0 && (enviados + (d.falhas || 0)) >= total && d.status === 'enviando'
+      dbg = { achou: true, enviados, falhas: d.falhas || 0, total, concluido }
       tx.set(entregaRef, { telefone, nome: b.nome || '', chatId: b.chatId || '', enviadoEm: b.enviadoEm || null, ts: admin.firestore.FieldValue.serverTimestamp() })
       tx.set(dRef, { enviados, entregues: admin.firestore.FieldValue.increment(1), ...(concluido ? { status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp() } : {}), ultimaEntregaEm: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     })
+    console.log('[disparos] OUT', { uid, disparoId, ...dbg })
 
     res.status(200).json({ ok: true })
   } catch (err) {
@@ -2385,30 +2395,34 @@ exports.disparoOk = onRequest({ region: 'us-central1', timeoutSeconds: 30, memor
 /** WF4 /disparoFalha — número sem WhatsApp (ou verificação falhou). Conta a falha. */
 exports.disparoFalha = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
   try {
-    if (!callbackAutorizado(req)) { res.status(401).json({ ok: false }); return }
+    if (!callbackAutorizado(req)) { console.warn('[disparoFalha] 401 — token invalido/faltando'); res.status(401).json({ ok: false }); return }
     const b = req.body || {}
     const campanhaId = String(b.campanhaId || '').trim()
     const disparoId = campanhaId.replace(/_\d+$/, '')
     const sessao = String(b.sessao || '').trim()
     const telefone = String(b.telefone || '').replace(/\D/g, '')
-    if (!disparoId || !sessao) { res.status(200).json({ ok: true }); return }
+    console.log('[disparoFalha] IN', { campanhaId, disparoId, sessao, telefone, motivo: b.motivo || '' })
+    if (!disparoId || !sessao) { console.warn('[disparoFalha] faltam campos', { disparoId, sessao }); res.status(200).json({ ok: true }); return }
     const uid = await uidPorSessao(sessao)
-    if (!uid) { res.status(200).json({ ok: true }); return }
+    if (!uid) { console.warn('[disparoFalha] sessao sem dono', sessao); res.status(200).json({ ok: true }); return }
     const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
     const falhaRef = dRef.collection('falhas').doc(telefone || `x_${Date.now()}`)
+    let dbg = { achou: false }
     await db.runTransaction(async (tx) => {
       const dDoc = await tx.get(dRef)
-      if (!dDoc.exists) return
+      if (!dDoc.exists) { dbg = { achou: false }; return }
       const fDoc = await tx.get(falhaRef)
-      if (fDoc.exists) return
+      if (fDoc.exists) { dbg = { achou: true, jaContado: true }; return }
       const d = dDoc.data()
       const falhas = (d.falhas || 0) + 1
       const total = d.total || 0
       // Auto-conclui quando todos os contatos foram contabilizados (WF4 não avisa fim quando tudo falha).
       const concluido = total > 0 && ((d.enviados || 0) + falhas) >= total && d.status === 'enviando'
+      dbg = { achou: true, enviados: d.enviados || 0, falhas, total, concluido }
       tx.set(falhaRef, { telefone, nome: b.nome || '', motivo: b.motivo || 'sem_whatsapp', detalhe: b.detalhe || '', ts: admin.firestore.FieldValue.serverTimestamp() })
       tx.set(dRef, { falhas, ...(concluido ? { status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp() } : {}), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     })
+    console.log('[disparoFalha] OUT', { uid, disparoId, ...dbg })
     res.status(200).json({ ok: true })
   } catch (err) { console.error('disparoFalha', err?.message || err); res.status(200).json({ ok: false }) }
 })
@@ -2416,26 +2430,29 @@ exports.disparoFalha = onRequest({ region: 'us-central1', timeoutSeconds: 30, me
 /** WF4 /campanhaConcluida — um LOTE terminou. Dispara o próximo, ou fecha o disparo. */
 exports.campanhaConcluida = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
   try {
-    if (!callbackAutorizado(req)) { res.status(401).json({ ok: false }); return }
+    if (!callbackAutorizado(req)) { console.warn('[campanhaConcluida] 401 — token invalido/faltando'); res.status(401).json({ ok: false }); return }
     const b = req.body || {}
     const campanhaId = String(b.campanhaId || '').trim()
     const mm = campanhaId.match(/_(\d+)$/)
     const loteIndex = mm ? parseInt(mm[1], 10) : 0
     const disparoId = campanhaId.replace(/_\d+$/, '')
     const sessao = String(b.sessao || '').trim()
-    if (!disparoId || !sessao) { res.status(200).json({ ok: true }); return }
+    console.log('[campanhaConcluida] IN', { campanhaId, disparoId, loteIndex, sessao })
+    if (!disparoId || !sessao) { console.warn('[campanhaConcluida] faltam campos', { disparoId, sessao }); res.status(200).json({ ok: true }); return }
     const uid = await uidPorSessao(sessao)
-    if (!uid) { res.status(200).json({ ok: true }); return }
+    if (!uid) { console.warn('[campanhaConcluida] sessao sem dono', sessao); res.status(200).json({ ok: true }); return }
     const dRef = db.doc(`users/${uid}/disparos/${disparoId}`)
     const dSnap = await dRef.get()
-    if (!dSnap.exists) { res.status(200).json({ ok: true }); return }
+    if (!dSnap.exists) { console.warn('[campanhaConcluida] disparo nao encontrado', disparoId); res.status(200).json({ ok: true }); return }
     const disp = dSnap.data()
     await dRef.collection('lotes').doc(String(loteIndex)).set({ enviado: true }, { merge: true }).catch(() => {})
     const proximo = loteIndex + 1
     if (proximo < (disp.totalLotes || 1)) {
+      console.log('[campanhaConcluida] proximo lote', { disparoId, proximo })
       await dispararLoteWF4(uid, disparoId, proximo, sessao, disp.webhookUrl)
       res.status(200).json({ ok: true, proximoLote: proximo }); return
     }
+    console.log('[campanhaConcluida] CONCLUIDO', { disparoId })
     await dRef.set({ status: 'concluido', concluidoEm: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ ok: true, concluido: true })
   } catch (err) { console.error('campanhaConcluida', err?.message || err); res.status(200).json({ ok: false }) }
