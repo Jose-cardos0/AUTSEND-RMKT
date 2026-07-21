@@ -52,7 +52,8 @@ const navGroups = [
     label: 'Comercial',
     icon: GlobeCheckIcon,
     items: [
-      { to: '/atendentes', label: 'Vendedores', icon: Rocket },
+      { to: '/atendentes', label: 'Vendedores', icon: Rocket, end: true },
+      { to: '/atendentes/relatorio', label: 'Relatório', icon: BarChart3 },
     ],
   },
   {
@@ -198,6 +199,7 @@ function SubItemLink({ item, onLocked }) {
   return (
     <NavLink
       to={item.to}
+      end={item.end}
       className={({ isActive }) =>
         clsx(
           'relative flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] transition-all duration-200',
@@ -571,7 +573,7 @@ export default function Layout() {
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               className={clsx(
                 'w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 flex flex-col flex-1 min-h-0',
-                location.pathname.startsWith('/admin') ? 'lg:max-w-[95%]' : location.pathname.startsWith('/banco-leads') ? 'lg:max-w-[95%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
+                location.pathname.startsWith('/admin') ? 'lg:max-w-[95%]' : location.pathname.startsWith('/banco-leads') ? 'lg:max-w-[95%]' : location.pathname === '/atendentes/relatorio' ? 'lg:max-w-[85%]' : wide ? 'lg:max-w-[92%]' : 'max-w-6xl'
               )}
             >
               {rotaBloqueada ? <UpgradeScreen /> : outlet}

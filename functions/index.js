@@ -1912,6 +1912,18 @@ function injetarCheckouts(texto, grupo) {
  * No editor, a mídia é ligada embaixo de um nó de checkout → gatilho { tipo:'checkout', link }.
  * Se o link daquele checkout está na resposta, a mídia acompanha (imagem/áudio depois do texto).
  */
+/** True se a resposta contém ALGUM link de checkout do grupo (= Initiate Checkout / IC). */
+function atingiuCheckout(grupo, texto) {
+  if (!texto) return false
+  const links = Object.values(serializarFluxoGrafo(grupo?.iaGraph)?.linkPorToken || {})
+  const f = grupo?.iaFunil || {}
+  ;(Array.isArray(grupo?.iaPlanos) ? grupo.iaPlanos : []).forEach((p) => p.checkoutLink && links.push(p.checkoutLink))
+  if (f.principal?.checkoutLink) links.push(f.principal.checkoutLink)
+  ;(Array.isArray(f.upsells) ? f.upsells : []).forEach((u) => u.checkoutLink && links.push(u.checkoutLink))
+  ;(Array.isArray(f.downsells) ? f.downsells : []).forEach((d) => d.checkoutLink && links.push(d.checkoutLink))
+  return links.some((l) => l && texto.includes(l))
+}
+
 function midiasDisparadas(grupo, textoFinal) {
   const graph = grupo?.iaGraph
   const nodes = Array.isArray(graph?.nodes) ? graph.nodes : []
@@ -2104,7 +2116,7 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
       ...novoHist.slice(-16).map((x) => ({ role: x.role === 'assistant' ? 'assistant' : 'user', content: x.text })),
     ]
     let respostaIA = ''
-    try { respostaIA = await callGrok(messages, { model: GROK_MODEL_ATENDENTE }) } catch (e) { console.error('atendente Grok', e?.message || e) }
+    try { respostaIA = await callGrok(messages, { model: GROK_MODEL_ATENDENTE, uso: { uid, atendenteId: atendente.id } }) } catch (e) { console.error('atendente Grok', e?.message || e) }
     respostaIA = injetarCheckouts(respostaIA, grupo)
     if (!respostaIA) { await convRef.set({ messages: novoHist, fupStatus: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ responder: false, semResposta: true }); return }
 
@@ -2113,24 +2125,102 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     // Custo de IA (Gastos CRM)
     try { const mesId = new Date(agora).toISOString().slice(0, 7); await db.doc(`tenants/${uid}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
 
+    // IC (Initiate Checkout): o vendedor mandou um link de checkout nesta resposta?
+    const ic = atingiuCheckout(grupo, respostaIA)
+
     await convRef.set({
       messages: [...novoHist, { role: 'assistant', text: respostaIA, ts: Date.now() }].slice(-30),
-      iaUltimaMsg: respostaIA, atendenteId: atendente.id, nome: m.nome || conv.nome || '',
+      iaUltimaMsg: respostaIA, atendenteId: atendente.id, grupoId: atendente.grupoId, nome: m.nome || conv.nome || '',
+      ...(convSnap.exists ? {} : { criadaEm: admin.firestore.FieldValue.serverTimestamp() }),
+      ...(ic ? { atingiuCheckout: true, atingiuCheckoutEm: admin.firestore.FieldValue.serverTimestamp() } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true })
 
     // Follow-up: o lead respondeu e o bot respondeu → (re)arma a janela de silêncio.
     await armarFollowup(convRef, grupo, atendente)
 
-    // Mídias (imagem/áudio) ligadas ao checkout enviado → saem logo após o texto.
+    // Mídias (imagem/áudio) ligadas ao nó enviado → saem logo após o texto.
     const midias = midiasDisparadas(grupo, respostaIA)
-
-    // Contrato WF2: { responder, mensagem, midias } — o n8n picota o texto e depois envia cada mídia.
-    res.status(200).json({ responder: true, mensagem: respostaIA, resposta: respostaIA, midias })
+    // Contrato WF2: `blocos` = texto + mídias. O n8n picota o texto e envia cada bloco na ordem.
+    const blocos = [{ tipo: 'texto', conteudo: respostaIA }, ...midias.map((md) => md.tipo === 'audio' ? { tipo: 'audio', url: md.url } : { tipo: 'imagem', url: md.url, legenda: '' })]
+    res.status(200).json({ responder: true, blocos, mensagem: respostaIA, resposta: respostaIA, midias })
   } catch (err) {
     console.error('waAtendenteWebhook', err?.message || err)
     res.status(200).json({ responder: false, ok: false })
   }
+})
+
+/**
+ * Relatório dos vendedores (Comercial → Relatório). Agrega por vendedor/produto:
+ * pessoas atendidas, IC (chegaram ao checkout), vendas (webhook de compra do grupo),
+ * conversão, tokens consumidos, e a série diária pro gráfico.
+ * data: { mes?: 'YYYY-MM' } (default = mês atual, pros tokens)
+ */
+exports.getVendedorRelatorio = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const mesId = String(request.data?.mes || new Date().toISOString().slice(0, 7))
+
+  const [atSnap, gSnap, cSnap] = await Promise.all([
+    db.collection(`users/${uid}/atendentes`).get(),
+    db.collection(`users/${uid}/productGroups`).get(),
+    db.collection(`users/${uid}/waConversas`).limit(5000).get(),
+  ])
+  const atendentes = atSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const grupos = {}
+  gSnap.docs.forEach((d) => { grupos[d.id] = { nome: d.data().nome || '', imagem: d.data().imagem || d.data().imagemUrl || null, produtos: (Array.isArray(d.data().produtos) ? d.data().produtos : []).map((x) => String(x).toLowerCase()) } })
+  const conversas = cSnap.docs.map((d) => ({ telefone: d.id, ...d.data() }))
+
+  // Compras (leads com evento de compra) → telefone => [produtos comprados]
+  const compraPorTel = {}
+  try {
+    const lSnap = await db.collection(`users/${uid}/leads`).limit(5000).get()
+    lSnap.docs.forEach((d) => {
+      const v = d.data()
+      if (canonicalEvento(v.evento) !== 'order_status.purchase_approved') return
+      const tel = String(v.telefone || '').replace(/\D/g, '')
+      if (!tel) return
+      ;(compraPorTel[tel] = compraPorTel[tel] || []).push(String(v.produto || '').toLowerCase())
+    })
+  } catch (_) {}
+  const comprouDoGrupo = (tel, grupoId) => {
+    const prods = compraPorTel[String(tel || '').replace(/\D/g, '')]
+    if (!prods || !prods.length) return false
+    const g = grupos[grupoId]
+    if (!g || !g.produtos.length) return true // grupo sem produtos definidos → qualquer compra conta
+    return prods.some((p) => g.produtos.includes(p))
+  }
+
+  const porDia = {}
+  const vendedores = atendentes.map((a) => {
+    const convs = conversas.filter((c) => c.atendenteId === a.id)
+    const pessoas = convs.length
+    const ic = convs.filter((c) => c.atingiuCheckout === true).length
+    let vendas = 0
+    convs.forEach((c) => {
+      const vendeu = comprouDoGrupo(c.telefone, a.grupoId || c.grupoId)
+      if (vendeu) vendas++
+      const ts = c.criadaEm?.toMillis?.() ?? c.updatedAt?.toMillis?.() ?? 0
+      if (ts) {
+        const dia = new Date(ts).toISOString().slice(0, 10)
+        const dd = (porDia[dia] = porDia[dia] || { pessoas: 0, ic: 0, vendas: 0 })
+        dd.pessoas++; if (c.atingiuCheckout) dd.ic++; if (vendeu) dd.vendas++
+      }
+    })
+    const tokens = (a.tokensMes && a.tokensMes[mesId]) || 0
+    return {
+      atendenteId: a.id, nome: a.nome || 'Vendedor', grupoId: a.grupoId || '',
+      grupoNome: grupos[a.grupoId]?.nome || '', grupoImagem: grupos[a.grupoId]?.imagem || null, ativo: a.ativo === true,
+      pessoas, ic, vendas,
+      conversaoIC: pessoas ? Math.round((ic / pessoas) * 100) : 0,
+      conversaoVenda: pessoas ? Math.round((vendas / pessoas) * 100) : 0,
+      tokens, tokensTotal: a.tokensTotal || 0,
+    }
+  })
+
+  const total = vendedores.reduce((acc, r) => ({ pessoas: acc.pessoas + r.pessoas, ic: acc.ic + r.ic, vendas: acc.vendas + r.vendas, tokens: acc.tokens + r.tokens }), { pessoas: 0, ic: 0, vendas: 0, tokens: 0 })
+  const serie = Object.keys(porDia).sort().map((dia) => ({ dia, ...porDia[dia] }))
+  return { mes: mesId, total, vendedores, serie }
 })
 
 /**
@@ -4767,7 +4857,7 @@ async function tryAtendenteEvento(userId, evento, customer, product, produtos, a
       { role: 'user', content: '[INÍCIO PROATIVO] Você está começando a conversa (o lead ainda não falou). Mande a PRIMEIRA mensagem, curta e humana (1-2 frases), puxando papo com base no contexto do lead acima. Não diga que é um bot nem cite "sistema".' },
     ]
     let abertura = ''
-    try { abertura = await callGrok(messages, { model: GROK_MODEL_ATENDENTE }) } catch (e) { console.error('atendente abertura Grok', e?.message || e) }
+    try { abertura = await callGrok(messages, { model: GROK_MODEL_ATENDENTE, uso: { uid: userId, atendenteId: atendente.id } }) } catch (e) { console.error('atendente abertura Grok', e?.message || e) }
     abertura = injetarCheckouts(abertura, grupo)
     if (!abertura) return
 
@@ -5844,7 +5934,7 @@ const GROK_MODEL_IA = process.env.GROK_MODEL_IA || 'grok-code-fast-1'
 // grok-4.1-fast: geração nova, barato e conversacional. Trocável via .env sem mexer no resto.
 const GROK_MODEL_ATENDENTE = process.env.GROK_MODEL_ATENDENTE || 'grok-4.20-0309-reasoning'
 
-async function callGrok(messages, { json = false, model } = {}) {
+async function callGrok(messages, { json = false, model, uso } = {}) {
   if (!GROK_API_KEY) throw new HttpsError('failed-precondition', 'Chave do Grok não configurada (functions/.env → GROK_API).')
   const body = { model: model || GROK_MODEL, messages, temperature: 0.5 }
   if (json) body.response_format = { type: 'json_object' }
@@ -5862,6 +5952,12 @@ async function callGrok(messages, { json = false, model } = {}) {
   }
   let data = {}
   try { data = JSON.parse(text) } catch { throw new HttpsError('internal', 'Resposta da IA inválida.') }
+  // Rastreia tokens por vendedor (pro Relatório). uso = { uid, atendenteId }.
+  const totalTokens = data?.usage?.total_tokens || 0
+  if (uso?.uid && uso?.atendenteId && totalTokens) {
+    const mesId = new Date().toISOString().slice(0, 7)
+    db.doc(`users/${uso.uid}/atendentes/${uso.atendenteId}`).set({ tokensMes: { [mesId]: admin.firestore.FieldValue.increment(totalTokens) }, tokensTotal: admin.firestore.FieldValue.increment(totalTokens) }, { merge: true }).catch(() => {})
+  }
   const content = data?.choices?.[0]?.message?.content || ''
   // Remove tokens especiais do modelo que às vezes vazam no texto (ex.: <|eos|>, <|endoftext|>, <|im_end|>).
   return content.replace(/<[|｜][^>]*?[|｜]>/g, '').trim()

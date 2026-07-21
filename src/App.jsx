@@ -11,6 +11,7 @@ import Integracoes from './pages/Integracoes'
 import Remarketing from './pages/Remarketing'
 import RemarketingGrupos from './pages/RemarketingGrupos'
 import Atendentes from './pages/Atendentes'
+import VendedorRelatorio from './pages/VendedorRelatorio'
 import EnviarMensagem from './pages/EnviarMensagem'
 import Automacoes from './pages/Automacoes'
 import Checkouts from './pages/Checkouts'
@@ -131,6 +132,7 @@ export default function App() {
           <Route path="remarketing" element={<Remarketing />} />
           <Route path="remarketing-grupos" element={<RemarketingGrupos />} />
           <Route path="atendentes" element={<Atendentes />} />
+          <Route path="atendentes/relatorio" element={<VendedorRelatorio />} />
           <Route path="enviar-mensagem" element={<EnviarMensagem />} />
           <Route
             path="metricas"

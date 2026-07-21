@@ -145,7 +145,9 @@ function MensagemNode({ data, selected }) {
     <div className={`relative rounded-xl border-2 px-4 py-3 bg-white shadow-sm min-w-[160px] max-w-[220px] ${selected ? 'border-primary-500' : 'border-cyan-300'}`}>
       <Handle type="target" position={Position.Top} />
       <div className="flex items-center gap-2 text-cyan-700 font-semibold text-sm"><Bell className="w-4 h-4" /> Mensagem</div>
-      <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{data?.gerarIA ? '⚡ Gerada pela IA (reativação)' : (data?.texto || 'Escreva a mensagem')}</p>
+      {data?.gerarIA
+        ? <p className="text-[11px] text-stone-500 mt-0.5 flex items-center gap-1"><Rocket className="w-3 h-3 text-primary-600 shrink-0" /> Gerada pela IA (reativação)</p>
+        : <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{data?.texto || 'Escreva a mensagem'}</p>}
       <Handle type="source" position={Position.Bottom} />
     </div>
   )
@@ -370,56 +372,48 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
         <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-100">
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-100 text-violet-600 shrink-0"><Rocket className="w-4 h-4" /></span>
           <h3 className="text-sm font-semibold text-stone-800 truncate flex-1">Atendente IA · {grupo?.nome}</h3>
-          <span className="text-xs text-stone-400 hidden lg:flex items-center gap-1">Shift+clique seleciona vários · Ctrl+C / Ctrl+V copia e cola</span>
+          <span className="text-xs text-stone-400 hidden xl:flex items-center gap-1">Shift+clique · Ctrl+C/V</span>
+          <button onClick={copiar} title="Copiar blocos selecionados (Ctrl+C)" className="btn-secondary text-xs min-h-[36px] px-3 hidden sm:inline-flex"><Copy className="w-3.5 h-3.5" /> Copiar</button>
+          <button onClick={colar} title="Colar (Ctrl+V)" className="btn-secondary text-xs min-h-[36px] px-3 hidden sm:inline-flex"><ClipboardPaste className="w-3.5 h-3.5" /> Colar</button>
+          <button onClick={() => salvar(false)} disabled={salvando} title="Grava sem fechar o fluxo" className="inline-flex items-center gap-1.5 text-xs min-h-[36px] px-3 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-600 disabled:opacity-50">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Gravar</button>
           <button onClick={onClose} className="p-1.5 rounded-lg text-stone-400 hover:bg-surface-100"><X className="w-4 h-4" /></button>
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-surface-100 flex-wrap">
-          <span className="text-xs text-stone-400">Adicionar:</span>
-          <button onClick={() => addNode('contexto')} className="btn-secondary text-xs min-h-[36px] px-3"><FileText className="w-3.5 h-3.5" /> Contexto</button>
-          <button onClick={() => addNode('objetivo')} className="btn-secondary text-xs min-h-[36px] px-3"><Target className="w-3.5 h-3.5" /> Objetivo</button>
-          <button onClick={() => addNode('regras')} className="btn-secondary text-xs min-h-[36px] px-3"><Shield className="w-3.5 h-3.5" /> Regras</button>
-          <button onClick={() => addNode('objecoes')} className="btn-secondary text-xs min-h-[36px] px-3"><MessageCircle className="w-3.5 h-3.5" /> Objeções</button>
-          <button onClick={() => addNode('provasocial')} className="btn-secondary text-xs min-h-[36px] px-3"><Star className="w-3.5 h-3.5" /> Prova social</button>
-          <span className="w-px h-5 bg-surface-200 mx-1" />
-          {/* Páginas do funil (VSL/TSL/UP/DW) */}
-          <div className="relative">
-            <button onClick={() => setPagMenuOpen((v) => !v)} className="btn-secondary text-xs min-h-[36px] px-3"><Layers className="w-3.5 h-3.5" /> Páginas <ChevronDown className="w-3 h-3" /></button>
+        {/* Layout: barra lateral (adicionar blocos) + canvas */}
+        <div className="flex flex-1 min-h-0">
+          {/* Barra lateral esquerda */}
+          <div className="w-40 shrink-0 border-r border-surface-100 overflow-y-auto p-2 flex flex-col gap-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-stone-400 px-1 pt-0.5 pb-0.5">Adicionar</p>
+            <button onClick={() => addNode('contexto')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><FileText className="w-3.5 h-3.5" /> Contexto</button>
+            <button onClick={() => addNode('objetivo')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><Target className="w-3.5 h-3.5" /> Objetivo</button>
+            <button onClick={() => addNode('regras')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><Shield className="w-3.5 h-3.5" /> Regras</button>
+            <button onClick={() => addNode('objecoes')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><MessageCircle className="w-3.5 h-3.5" /> Objeções</button>
+            <button onClick={() => addNode('provasocial')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><Star className="w-3.5 h-3.5" /> Prova social</button>
+            <div className="h-px bg-surface-200 my-1" />
+            {/* Páginas do funil (VSL/TSL/UP/DW) — acordeão */}
+            <button onClick={() => setPagMenuOpen((v) => !v)} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><Layers className="w-3.5 h-3.5" /> Páginas <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${pagMenuOpen ? 'rotate-180' : ''}`} /></button>
             {pagMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setPagMenuOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 z-20 w-52 rounded-xl border border-surface-200 bg-white shadow-lg p-1.5">
-                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-stone-400">Página principal</p>
-                  <button onClick={() => addOferta('vsl')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><Video className="w-4 h-4 text-indigo-500" /> Página VSL <span className="text-[10px] text-stone-400">(vídeo)</span></button>
-                  <button onClick={() => addOferta('tsl')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><FileText className="w-4 h-4 text-blue-500" /> Página TSL <span className="text-[10px] text-stone-400">(texto)</span></button>
-                  <div className="h-px bg-surface-100 my-1" />
-                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-stone-400">Depois da compra</p>
-                  <button onClick={() => addOferta('up')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><TrendingUp className="w-4 h-4 text-emerald-500" /> Upsell (UP)</button>
-                  <button onClick={() => addOferta('dw')} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-sm text-stone-700"><TrendingDown className="w-4 h-4 text-amber-500" /> Downsell (DW)</button>
-                </div>
-              </>
+              <div className="flex flex-col gap-1 pl-2">
+                <button onClick={() => { addOferta('vsl'); setPagMenuOpen(false) }} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-xs text-stone-700"><Video className="w-4 h-4 text-indigo-500 shrink-0" /> Página VSL</button>
+                <button onClick={() => { addOferta('tsl'); setPagMenuOpen(false) }} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-xs text-stone-700"><FileText className="w-4 h-4 text-blue-500 shrink-0" /> Página TSL</button>
+                <button onClick={() => { addOferta('up'); setPagMenuOpen(false) }} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-xs text-stone-700"><TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" /> Upsell (UP)</button>
+                <button onClick={() => { addOferta('dw'); setPagMenuOpen(false) }} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-50 text-left text-xs text-stone-700"><TrendingDown className="w-4 h-4 text-amber-500 shrink-0" /> Downsell (DW)</button>
+              </div>
             )}
+            <button onClick={() => addNode('plano')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><Package className="w-3.5 h-3.5" /> Plano</button>
+            <button onClick={() => addNode('checkout')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><ShoppingBag className="w-3.5 h-3.5" /> Checkout</button>
+            <button onClick={() => addNode('agradecimento')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><Gift className="w-3.5 h-3.5" /> Agradecimento</button>
+            <div className="h-px bg-surface-200 my-1" />
+            <button onClick={() => addNode('imagem')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><ImageIcon className="w-3.5 h-3.5" /> Imagem</button>
+            <button onClick={() => addNode('audio')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5"><AudioLines className="w-3.5 h-3.5" /> Áudio</button>
+            <div className="h-px bg-surface-200 my-1" />
+            <button onClick={() => addNode('esperar')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5" title="Follow-up: aguarda o lead ficar em silêncio"><Clock className="w-3.5 h-3.5" /> Esperar</button>
+            <button onClick={() => addNode('condicao')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5" title="Ramifica por Comprou? (Sim/Não)"><GitBranch className="w-3.5 h-3.5" /> Condição</button>
+            <button onClick={() => addNode('mensagem')} className="btn-secondary w-full justify-start text-xs min-h-[34px] px-2.5" title="Mensagem de reativação (IA ou texto fixo)"><Bell className="w-3.5 h-3.5" /> Mensagem</button>
           </div>
-          <span className="w-px h-5 bg-surface-200 mx-1" />
-          <button onClick={() => addNode('plano')} className="btn-secondary text-xs min-h-[36px] px-3"><Package className="w-3.5 h-3.5" /> Plano</button>
-          <button onClick={() => addNode('checkout')} className="btn-secondary text-xs min-h-[36px] px-3"><ShoppingBag className="w-3.5 h-3.5" /> Checkout</button>
-          <button onClick={() => addNode('agradecimento')} className="btn-secondary text-xs min-h-[36px] px-3"><Gift className="w-3.5 h-3.5" /> Agradecimento</button>
-          <span className="w-px h-5 bg-surface-200 mx-1" />
-          <button onClick={() => addNode('imagem')} className="btn-secondary text-xs min-h-[36px] px-3"><ImageIcon className="w-3.5 h-3.5" /> Imagem</button>
-          <button onClick={() => addNode('audio')} className="btn-secondary text-xs min-h-[36px] px-3"><AudioLines className="w-3.5 h-3.5" /> Áudio</button>
-          <span className="w-px h-5 bg-surface-200 mx-1" />
-          <button onClick={() => addNode('esperar')} className="btn-secondary text-xs min-h-[36px] px-3" title="Follow-up: aguarda o lead ficar em silêncio"><Clock className="w-3.5 h-3.5" /> Esperar</button>
-          <button onClick={() => addNode('condicao')} className="btn-secondary text-xs min-h-[36px] px-3" title="Ramifica por Comprou? (Sim/Não)"><GitBranch className="w-3.5 h-3.5" /> Condição</button>
-          <button onClick={() => addNode('mensagem')} className="btn-secondary text-xs min-h-[36px] px-3" title="Mensagem de reativação (IA ou texto fixo)"><Bell className="w-3.5 h-3.5" /> Mensagem</button>
-          <span className="w-px h-5 bg-surface-200 mx-1 ml-auto" />
-          <button onClick={copiar} title="Copiar blocos selecionados (Ctrl+C)" className="btn-secondary text-xs min-h-[36px] px-3"><Copy className="w-3.5 h-3.5" /> Copiar</button>
-          <button onClick={colar} title="Colar (Ctrl+V)" className="btn-secondary text-xs min-h-[36px] px-3"><ClipboardPaste className="w-3.5 h-3.5" /> Colar</button>
-          <button onClick={() => salvar(false)} disabled={salvando} title="Grava sem fechar o fluxo" className="inline-flex items-center gap-1.5 text-xs min-h-[36px] px-3 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-600 disabled:opacity-50">{salvando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Gravar</button>
-        </div>
 
-        {/* Canvas */}
-        <div ref={wrapRef} className="relative flex-1 min-h-0">
+          {/* Canvas */}
+          <div ref={wrapRef} className="relative flex-1 min-h-0">
           <ReactFlow
             onInit={(inst) => { rfRef.current = inst }}
             nodes={nodes}
@@ -622,10 +616,12 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
 
               {sel.type === 'mensagem' && (
                 <>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={sel.data?.gerarIA !== false} onChange={(e) => upd(sel.id, { gerarIA: e.target.checked })} className="w-4 h-4 rounded accent-primary-600" />
-                    <span className="text-xs font-medium text-stone-700">Gerar com IA (reativação natural, usando o contexto)</span>
-                  </label>
+                  <button type="button" onClick={() => upd(sel.id, { gerarIA: sel.data?.gerarIA === false })} className="flex items-center gap-2.5 w-full text-left">
+                    <span className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${sel.data?.gerarIA !== false ? 'bg-primary-600' : 'bg-stone-300'}`}>
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${sel.data?.gerarIA !== false ? 'translate-x-5' : ''}`} />
+                    </span>
+                    <span className="text-xs font-medium text-stone-700">Gerar com IA <span className="text-stone-400 font-normal">(reativação natural, usando o contexto)</span></span>
+                  </button>
                   {sel.data?.gerarIA !== false ? (
                     <div>
                       <label className="block text-xs font-medium text-stone-600 mb-1">Instrução pra IA <span className="text-stone-400">(opcional)</span></label>
@@ -646,6 +642,7 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
               )}
             </div>
           )}
+          </div>
         </div>
 
         {/* Footer */}
