@@ -543,7 +543,7 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
                   <button onClick={() => imgInputRef.current?.click()} disabled={uploadingImg} className="w-full inline-flex items-center justify-center gap-2 min-h-[42px] rounded-xl border border-surface-200 text-sm text-stone-600 hover:bg-surface-50 disabled:opacity-50">
                     {uploadingImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} {sel.data?.url ? 'Trocar imagem' : 'Subir imagem'}
                   </button>
-                  <p className="text-[11px] text-stone-400">A IA manda essa imagem depois do bloco ligado a ela (checkout, plano, objeção...).</p>
+                  <p className="text-[11px] text-stone-400">A IA manda essa imagem logo depois de enviar o link do bloco ligado a ela. Só dispara embaixo de: <b>Plano</b>, <b>Checkout</b>, <b>Upsell/Downsell</b> ou <b>Agradecimento</b>.</p>
                 </div>
               )}
 
@@ -553,7 +553,7 @@ export default function AtendenteFlowEditor({ grupo, grupos = [], checkoutsFlat 
                   <button onClick={() => setAudioPickerFor(sel.id)} className="w-full inline-flex items-center justify-center gap-2 min-h-[42px] rounded-xl border border-surface-200 text-sm text-stone-600 hover:bg-surface-50">
                     <AudioLines className="w-4 h-4" /> {sel.data?.url ? 'Trocar áudio' : 'Escolher áudio'}
                   </button>
-                  <p className="text-[11px] text-stone-400">Os áudios ficam em <b>Templates → Áudio</b> (grave ou suba lá). A IA manda depois do bloco ligado.</p>
+                  <p className="text-[11px] text-stone-400">Os áudios ficam em <b>Templates → Áudio</b> (grave ou suba lá). A IA manda logo depois de enviar o link do bloco ligado. Só dispara embaixo de: <b>Plano</b>, <b>Checkout</b>, <b>Upsell/Downsell</b> ou <b>Agradecimento</b>.</p>
                 </div>
               )}
 

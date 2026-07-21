@@ -1857,6 +1857,7 @@ function montarSystemAtendente(grupo, leadContexto) {
     `- PROIBIDO INVENTAR (regra MÁXIMA, acima de tudo): nunca crie preço, plano, trial/teste grátis, garantia, desconto, promoção, prazo, funcionalidade ou link que não esteja LITERALMENTE escrito acima. Se perguntarem por algo que não existe (ex.: "tem 3 dias grátis?"), diga com naturalidade que NÃO tem. Na dúvida, é NÃO.`,
     temFluxo ? `- SIGA O FLUXO DE VENDAS acima à risca: ofereça na ordem definida e mande o link EXATO de cada item pelo marcador [CHECKOUT: token] correspondente — NUNCA o link de outro item, NUNCA uma URL escrita por você.` : `- NUNCA escreva uma URL você mesmo.`,
     temFluxo ? `- ESCADA (upsell): só ofereça o próximo item (o "↳ depois") DEPOIS que o cliente CONFIRMAR que comprou o anterior. Se recusar um upsell, ofereça o downsell dele (se houver) e siga. Quando o fluxo acabar, agradeça e PARE de empurrar venda.` : '',
+    `- VOCÊ vende TUDO que está no fluxo — inclusive os upsells/downsells (ex.: Fireon). Você JÁ TEM os planos, preços e links deles aqui em cima. NUNCA diga que vai "chamar um especialista", "passar pra alguém" ou "te apresentar depois" pra mostrar plano/preço que já está no fluxo — isso é SEU trabalho: apresente e feche você mesmo, na hora. Só chame um humano de verdade pra suporte técnico/uso ou algo REALMENTE fora do que está escrito.`,
     `- Mande o link do que ELE pediu. Se pediu o GRATUITO, mande o gratuito — nunca empurre um pago no lugar. Se o item pedido não tem link configurado, chame um humano.`,
     `- COMO USAR / aprender / configurar / login / algo não funciona: NÃO ensine passo a passo nem invente telas/etapas. ${grupo?.iaSuporte ? 'Encaminhe pro SUPORTE acima.' : 'Diga que vai chamar um atendente humano.'}${grupo?.iaLinkApp ? ' Se quiser acessar, mande só o link do app acima.' : ''}`,
     grupo?.iaRegras ? `- ${grupo.iaRegras.replace(/\n/g, '\n- ')}` : '',
@@ -1912,16 +1913,42 @@ function injetarCheckouts(texto, grupo) {
  * Se o link daquele checkout está na resposta, a mídia acompanha (imagem/áudio depois do texto).
  */
 function midiasDisparadas(grupo, textoFinal) {
-  const midias = Array.isArray(grupo?.iaMidias) ? grupo.iaMidias : []
-  if (!midias.length || !textoFinal) return []
+  const graph = grupo?.iaGraph
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : []
+  const edges = Array.isArray(graph?.edges) ? graph.edges : []
+  if (!nodes.length || !textoFinal) return []
+  const byId = {}; nodes.forEach((n) => { byId[n.id] = n })
+  const pais = (id) => edges.filter((e) => e.target === id).map((e) => byId[e.source]).filter(Boolean)
+  const filhos = (id) => edges.filter((e) => e.source === id).map((e) => byId[e.target]).filter(Boolean)
+  const norm = (s) => String(s || '').toLowerCase().replace(/[*_~`]/g, '').replace(/\s+/g, ' ').trim()
+  const resp = norm(textoFinal)
+
+  // A mídia dispara pelo NÓ PAI DIRETO dela (não pelo avô!):
+  //  - checkout      → quando o link daquele checkout vai na resposta
+  //  - plano/oferta  → quando o link do checkout DELE (filho) vai na resposta
+  //  - agradecimento → só quando a MENSAGEM de agradecimento é enviada (texto na resposta)
+  const disparaPor = (pai) => {
+    if (!pai) return false
+    if (pai.type === 'checkout') return !!(pai.data?.link && textoFinal.includes(pai.data.link))
+    if (pai.type === 'plano' || pai.type === 'oferta') {
+      const ck = filhos(pai.id).find((n) => n.type === 'checkout' && n.data?.link)
+      return !!(ck && textoFinal.includes(ck.data.link))
+    }
+    if (pai.type === 'agradecimento') {
+      const t = norm(pai.data?.texto)
+      if (!t) return false
+      return resp.includes(t.length > 24 ? t.slice(0, 24) : t)
+    }
+    return false
+  }
+
   const out = []
   const vistos = new Set()
-  for (const m of midias) {
-    if (!m.url || vistos.has(m.url)) continue
-    const g = m.gatilho || {}
-    if (g.tipo === 'checkout' && g.link && textoFinal.includes(g.link)) {
-      vistos.add(m.url)
-      out.push({ tipo: m.tipo === 'audio' ? 'audio' : 'imagem', url: m.url, nome: m.nome || '' })
+  for (const m of nodes) {
+    if ((m.type !== 'imagem' && m.type !== 'audio') || !m.data?.url || vistos.has(m.data.url)) continue
+    if (pais(m.id).some(disparaPor)) {
+      vistos.add(m.data.url)
+      out.push({ tipo: m.type === 'audio' ? 'audio' : 'imagem', url: m.data.url, nome: m.data.nome || '' })
     }
   }
   return out
