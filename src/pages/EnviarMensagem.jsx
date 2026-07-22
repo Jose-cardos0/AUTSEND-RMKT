@@ -18,6 +18,7 @@ import StatCard from '../components/StatCard'
 import PageShell, { Panel } from '../components/PageShell'
 import WhatsAppIcon from '../components/WhatsAppIcon'
 import excelImg from '../assets/excel.png'
+import chipFire from '../assets/fireon/chipfire.png'
 
 const MINUTOS_POR_MENSAGEM = 5
 const ITEMS_POR_PAGINA_TIMELINE = 5
@@ -562,15 +563,28 @@ export default function EnviarMensagem() {
           </div>
       </div>
 
-      {/* Aviso de intervalo + propaganda Fireon */}
+      {/* Aviso de intervalo + oferta Fireon */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl border border-surface-200 bg-surface-50/60">
         <div className="flex items-start gap-2 flex-1 min-w-0">
           <Clock className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
           <p className="text-xs text-stone-600 leading-relaxed">As mensagens são enviadas em <strong>intervalos de 1 a 5 minutos</strong> pra imitar um envio humano e reduzir o risco de bloqueio.</p>
         </div>
-        <a href="https://fireon.com.br" target="_blank" rel="noopener noreferrer" className="group flex items-center gap-2.5 rounded-xl border border-surface-200 bg-white px-3 py-2 hover:border-primary-300 hover:shadow-sm transition shrink-0">
-          <img src="https://www.fireon.com.br/assets/logo2-ChO_Qgix.png" alt="Fireon" className="h-6 object-contain" onError={(e) => { e.currentTarget.style.display = 'none' }} />
-          <span className="text-[11px] text-stone-600 leading-tight">Levou ban? <strong className="text-stone-800">Aqueça seus números no Fireon</strong> <span className="text-primary-600 group-hover:underline">→</span></span>
+        <a
+          href="https://pay.kiwify.com.br/ph1JNRc"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group relative overflow-hidden flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-[#070d0a] pl-2.5 pr-4 py-2 shrink-0 shadow-sm shadow-emerald-950/30 transition hover:border-emerald-400/50"
+        >
+          <span aria-hidden className="pointer-events-none absolute -left-6 -top-6 h-20 w-20 rounded-full bg-emerald-500/25 blur-2xl" />
+          <img src={chipFire} alt="" className="relative h-10 w-auto object-contain drop-shadow-[0_0_10px_rgba(52,211,153,0.4)]" />
+          <span className="relative leading-tight">
+            <span className="block text-[10px] font-medium text-emerald-100/60">Levou ban no WhatsApp?</span>
+            <span className="block text-xs font-bold text-white">Aqueça seus números no Fireon</span>
+            <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-300">
+              <span className="rounded bg-emerald-400/15 px-1 py-px">50% OFF vitalício</span>
+              <span className="transition group-hover:translate-x-0.5">→</span>
+            </span>
+          </span>
         </a>
       </div>
 
