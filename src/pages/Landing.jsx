@@ -98,10 +98,10 @@ const FEATURES = [
 ]
 
 const PLANOS_LP = [
-  { key: 'free', preco: 'R$0', tag: null, destaque: false, features: ['1 tracker', 'E-mail (50/mês) via sua API', '1 template + 1 grupo de produto', 'Automação de compra aprovada'] },
-  { key: 'inicial', preco: 'R$67', tag: 'Entrada', destaque: false, features: ['2 trackers', 'WhatsApp ilimitado · 1 instância', '1 Vendedor IA · 100 conversas/mês', '500 e-mails/mês · 1 domínio', '200 SMS/mês (EUA)', '30 e-mails com IA/mês', 'Banco de Leads, Funil e Métricas'] },
-  { key: 'padrao', preco: 'R$147', tag: 'Mais popular', destaque: true, features: ['10 trackers', 'WhatsApp ilimitado · 2 instâncias', '2 Vendedores IA · 200 conversas/mês', '2.500 e-mails/mês · 1 domínio', '500 SMS/mês (EUA)', '100 e-mails com IA/mês', 'Tudo desbloqueado'] },
-  { key: 'pro', preco: 'R$197', tag: 'Máximo', destaque: false, features: ['20 trackers', 'WhatsApp ilimitado · 4 instâncias', '3 Vendedores IA · 300 conversas/mês', '5.000 e-mails/mês · 2 domínios', '1.000 SMS/mês (EUA)', '200 e-mails com IA/mês', 'Limites maiores e prioridade'] },
+  { key: 'free', preco: 'R$0', tag: null, destaque: false, features: ['1 webhook', 'E-mail (50/mês) via sua API', '1 template + 1 grupo de produto', 'Automação de compra aprovada'] },
+  { key: 'inicial', preco: 'R$67', tag: 'Entrada', destaque: false, features: ['2 webhooks', 'WhatsApp ilimitado · 1 instância', '1 Vendedor IA · 100 conversas/mês', '500 e-mails/mês · 1 domínio', '200 SMS/mês (EUA)', '30 e-mails com IA/mês', 'Banco de Leads, Funil e Métricas'] },
+  { key: 'padrao', preco: 'R$147', tag: 'Mais popular', destaque: true, features: ['10 webhooks', 'WhatsApp ilimitado · 2 instâncias', '2 Vendedores IA · 200 conversas/mês', '2.500 e-mails/mês · 1 domínio', '500 SMS/mês (EUA)', '100 e-mails com IA/mês', 'Tudo desbloqueado'] },
+  { key: 'pro', preco: 'R$197', tag: 'Máximo', destaque: false, features: ['20 webhooks', 'WhatsApp ilimitado · 4 instâncias', '3 Vendedores IA · 300 conversas/mês', '5.000 e-mails/mês · 2 domínios', '1.000 SMS/mês (EUA)', '200 e-mails com IA/mês', 'Limites maiores e prioridade'] },
 ]
 
 

@@ -27,7 +27,7 @@ const navGroups = [
     label: 'Geral',
     icon: Settings,
     items: [
-      { to: '/tracker', label: 'Tracker', icon: Radar },
+      { to: '/tracker', label: 'Webhooks', icon: Radar },
       { to: '/banco-leads', label: 'Banco de Leads', icon: Database },
       { to: '/produtos', label: 'Produtos', icon: Package },
       { to: '/checkouts', label: 'Checkouts', icon: ShoppingBag },
