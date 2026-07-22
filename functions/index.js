@@ -4017,13 +4017,16 @@ async function getResendWebhookSecret() {
  * a assinatura Svix é validada e eventos forjados são rejeitados (401).
  */
 exports.resendWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
-  // Validação de assinatura (opt-in: só ativa se um secret estiver configurado)
+  // SEGURANÇA: exige assinatura Svix válida. Sem secret configurado, recusa (evita forjar
+  // bounce/reclamação que pausaria o e-mail de um cliente — DoS — e inflar métricas).
   const secret = await getResendWebhookSecret()
-  if (secret) {
-    const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : (typeof req.rawBody === 'string' ? req.rawBody : '')
-    if (!verifySvixSignature(secret, req.headers || {}, raw)) {
-      res.status(401).json({ error: 'assinatura inválida' }); return
-    }
+  if (!secret) {
+    console.error('resendWebhook: secret ausente — recusando (evento não verificável).')
+    res.status(500).json({ error: 'webhook não configurado' }); return
+  }
+  const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : (typeof req.rawBody === 'string' ? req.rawBody : '')
+  if (!verifySvixSignature(secret, req.headers || {}, raw)) {
+    res.status(401).json({ error: 'assinatura inválida' }); return
   }
 
   const body = parseRequestBody(req)
@@ -4466,15 +4469,16 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
   if (!secretKey) { res.status(500).send('Stripe não configurado'); return }
   const stripe = require('stripe')(secretKey)
   const whSecret = process.env.STRIPE_WEBHOOK_SECRET
+  // SEGURANÇA: nunca aceitar evento sem verificar a assinatura. Sem o secret, recusa (evita forjar
+  // créditos/planos com um POST falso). O secret DEVE estar configurado em produção.
+  if (!whSecret) {
+    console.error('stripeWebhook: STRIPE_WEBHOOK_SECRET ausente — recusando (evento não verificável).')
+    res.status(500).send('Webhook não configurado'); return
+  }
 
   let event
   try {
-    if (whSecret) {
-      event = stripe.webhooks.constructEvent(req.rawBody, req.headers['stripe-signature'], whSecret)
-    } else {
-      event = typeof req.body === 'object' && req.body ? req.body : JSON.parse((req.rawBody || Buffer.from('{}')).toString('utf8'))
-      console.warn('stripeWebhook: STRIPE_WEBHOOK_SECRET vazio — evento NÃO verificado (configure após registrar o endpoint).')
-    }
+    event = stripe.webhooks.constructEvent(req.rawBody, req.headers['stripe-signature'], whSecret)
   } catch (err) {
     console.error('stripeWebhook assinatura inválida:', err.message)
     res.status(400).send(`Webhook Error: ${err.message}`); return

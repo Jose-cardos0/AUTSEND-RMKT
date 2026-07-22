@@ -21,11 +21,15 @@ service cloud.firestore {
           && coll != 'atendentes'
           && !(coll == 'webhooks' && request.resource.data.tipo == 'custom');
 
-        // UPDATE liberado, exceto "virar" um webhook em tracker (tipo→'custom') pra burlar a trava.
+        // UPDATE liberado, exceto:
+        //  - "virar" um webhook em tracker (tipo→'custom') pra burlar a trava;
+        //  - mexer no flag admin `bloqueadaPorAdmin` da instância (kill-switch anti-abuso; só o servidor seta).
         allow update: if isOwner()
           && !(coll == 'webhooks'
                && request.resource.data.tipo == 'custom'
-               && resource.data.tipo != 'custom');
+               && resource.data.tipo != 'custom')
+          && !(coll == 'instances'
+               && request.resource.data.get('bloqueadaPorAdmin', false) != resource.data.get('bloqueadaPorAdmin', false));
 
         // Profundidade 3+ (subcoleções dos docs, ex.: webhooks/{id}/samples): tudo do dono
         match /{rest=**} {
