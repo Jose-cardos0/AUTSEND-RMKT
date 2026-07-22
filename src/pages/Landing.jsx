@@ -234,8 +234,8 @@ export default function Landing() {
         </section>
 
         {/* ── Recursos ── */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <section className="max-w-7xl xl:max-w-[88rem] mx-auto px-4 sm:px-6 py-12 sm:py-16">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
             {FEATURES.map((f, i) => (
               <div key={i} className="relative h-full">
                 {f.title === 'Vendedor IA' && (
