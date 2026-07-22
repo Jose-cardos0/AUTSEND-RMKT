@@ -791,7 +791,7 @@ export default function SmsIntegracao() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => !salvandoSmsdev && setNovoSmsdev(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 shrink-0"><MessageSquare className="w-5 h-5" /></span>
+              <img src={smsdevLogo} alt="" className="h-7 w-auto object-contain shrink-0" />
               <h3 className="text-base font-semibold text-stone-800">Conectar conta SMSDev</h3>
               <button onClick={() => setNovoSmsdev(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
             </div>
@@ -814,7 +814,7 @@ export default function SmsIntegracao() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => !salvandoApi && setNovoApi(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Globe className="w-5 h-5" /></span>
+              <img src={telnyxLogo} alt="" className="h-8 w-auto object-contain shrink-0" />
               <h3 className="text-base font-semibold text-stone-800">Conectar conta Telnyx</h3>
               <button onClick={() => !salvandoApi && setNovoApi(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
             </div>
