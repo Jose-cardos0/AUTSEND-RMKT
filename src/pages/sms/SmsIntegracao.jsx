@@ -773,7 +773,7 @@ export default function SmsIntegracao() {
             <p className="text-xs text-stone-500">Escolha o provedor que você quer conectar.</p>
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => { setEscolherProv(false); setFormApi({ apiKey: '', nome: '' }); setNovoApi(true) }} className="flex flex-col items-center gap-2 rounded-2xl border-2 border-surface-200 hover:border-primary-300 hover:bg-primary-50/40 p-4 transition">
-                <img src={telnyxLogo} alt="Telnyx" className="h-12 w-auto object-contain" />
+                <img src={telnyxLogo} alt="Telnyx" className="h-[38px] w-auto object-contain" />
                 <span className="text-sm font-semibold text-stone-800">Telnyx</span>
                 <span className="text-[11px] text-stone-500 text-center leading-tight">SMS internacional (EUA)</span>
               </button>
