@@ -68,10 +68,9 @@ function limitesDoTenant(t) {
   merged.instancias = (Number(merged.instancias) || 0) + extras
   // Comprar instância libera +1 atendente (a sacada comercial: 1 atendente por instância).
   merged.atendentes = (Number(merged.atendentes) || 0) + extras
-  // Vendedor IA avulso (assinatura R$45/mês): +1 slot de vendedor E +100 conversas/mês por unidade.
+  // Vendedor IA avulso (assinatura R$45/mês): +1 slot de vendedor por unidade (só o slot; conversas à parte).
   const vend = Number(t && t.vendedoresExtras) || 0
   merged.atendentes = (Number(merged.atendentes) || 0) + vend
-  merged.conversasMes = (Number(merged.conversasMes) || 0) + vend * 100
   return merged
 }
 
@@ -3092,7 +3091,7 @@ function creditosConversaDoPriceStripe(priceId) {
   return 0
 }
 
-// Assinatura de Vendedor IA avulso (R$45/mês). Cada unidade: +1 slot de vendedor E +100 conversas/mês.
+// Assinatura de Vendedor IA avulso (R$45/mês). Cada unidade: +1 slot de vendedor (conversas compradas à parte).
 const STRIPE_PRICE_VENDEDOR = process.env.STRIPE_PRICE_VENDEDOR || 'price_1TvpjNLvVsGXtCnT0yuuxqzM'
 
 /** Cria o checkout Stripe (pagamento único) pra recarregar créditos de SMS. */
@@ -3159,7 +3158,7 @@ exports.conversaCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSe
   }
 })
 
-/** Cria o checkout Stripe (assinatura R$45/mês) pra comprar Vendedor(es) IA avulso(s). +1 slot e +100 conversas/mês cada. */
+/** Cria o checkout Stripe (assinatura R$45/mês) pra comprar Vendedor(es) IA avulso(s). +1 slot de vendedor cada. */
 exports.vendedorCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
@@ -4577,7 +4576,7 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         res.status(200).json({ ok: true, creditadoConversa: quantidade, uid: uidC }); return
       }
 
-      // ── Compra de VENDEDOR(ES) IA (assinatura) — soma vendedoresExtras (+1 slot e +100 conversas/mês cada). ──
+      // ── Compra de VENDEDOR(ES) IA (assinatura) — soma vendedoresExtras (+1 slot de vendedor cada). ──
       if (session.metadata?.tipo === 'vendedor') {
         const uidC = session.metadata.uid
         const qtd = Math.max(1, Number(session.metadata.quantidade) || 1)

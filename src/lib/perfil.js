@@ -90,7 +90,7 @@ export async function criarCheckoutCreditoConversa(pacote) {
 
 export const PRECO_VENDEDOR = 'R$ 45,00/mês'
 
-/** Cria o checkout Stripe embutido (assinatura R$45/mês por vendedor) pra comprar Vendedor(es) IA. +1 slot e +100 conversas/mês cada. */
+/** Cria o checkout Stripe embutido (assinatura R$45/mês por vendedor) pra comprar Vendedor(es) IA. +1 slot de vendedor cada. */
 export async function criarCheckoutVendedor(quantidade) {
   const r = await call('vendedorCriarCheckout')({ quantidade })
   return r.data // { clientSecret }

@@ -24,6 +24,7 @@ import imgSmsBr2500 from '../assets/chip/2500sms-brl.png'
 import Bandeira from '../components/Bandeira'
 import CheckoutModal from '../components/CheckoutModal'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
+import FireonPromoCard from '../components/FireonPromoCard'
 import instanciaWhats from '../assets/whtatsicons/instancia-whats.png'
 import vendedorIcon from '../assets/vendedor/vendedor.png'
 import imgConv100 from '../assets/conversas/100conversas.png'
@@ -280,6 +281,9 @@ export default function Perfil() {
           </div>
         </Panel>
 
+        {/* Oferta cruzada: Fireon (aquecedor de chips) — 50% vitalício pra cliente Autsend */}
+        <FireonPromoCard />
+
         {/* Uso do mês */}
         <Panel title="Uso deste mês" icon={Zap}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -332,7 +336,7 @@ export default function Perfil() {
             <div className="flex-1 text-center sm:text-left">
               <h3 className="text-lg font-bold text-stone-800">Vendedor IA no WhatsApp</h3>
               <p className="text-sm text-stone-600 mt-1">
-                Um vendedor de IA a mais pra atender e vender no automático. Cada um já vem com <b>+100 conversas/mês</b> inclusas.
+                Um slot de vendedor de IA a mais pra atender e vender no automático. As conversas saem da cota do plano ou do seu crédito.
               </p>
               <p className="text-lg font-bold text-primary-600 mt-1">R$ 45,00<span className="text-sm font-medium text-stone-500">/mês cada</span></p>
               {!isAdminCtx && Number.isFinite(limiteDe('atendentes')) && (
