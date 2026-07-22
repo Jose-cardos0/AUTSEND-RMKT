@@ -37,12 +37,18 @@ export default function FireonPromoCard() {
         </span>
 
         {/* hero */}
-        <div className="mt-4 grid items-center gap-6 lg:grid-cols-[1fr_auto]">
-          <div>
+        <div className="relative mt-4">
+          {/* chip em chamas — grande, atrás dos textos */}
+          <div className="pointer-events-none absolute -right-10 -top-16 z-0 hidden select-none sm:block">
+            <div className="absolute inset-0 rounded-full bg-emerald-500/25 blur-3xl" />
+            <img src={chipFire} alt="" className="relative h-[26rem] w-auto object-contain lg:h-[32rem]" />
+          </div>
+
+          <div className="relative z-10 max-w-md">
             <h2 className="text-3xl font-black leading-[1.05] tracking-tight text-white sm:text-4xl">
               Pare de ter número<br /><span className="text-emerald-400">banido.</span> Aqueça no<br />automático.
             </h2>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-emerald-100/60">
+            <p className="mt-4 max-w-sm text-sm leading-relaxed text-emerald-100/70">
               O <b className="text-emerald-200">Fireon</b> aquece seus chips de WhatsApp imitando um usuário humano, em 5 fases ao longo de ~3 semanas — pra você disparar campanhas sem medo de bloqueio.
             </p>
 
@@ -73,12 +79,6 @@ export default function FireonPromoCard() {
               </a>
             </div>
           </div>
-
-          {/* chip em chamas */}
-          <div className="relative mx-auto hidden sm:block">
-            <div className="pointer-events-none absolute inset-0 rounded-full bg-emerald-500/25 blur-2xl" />
-            <img src={chipFire} alt="Chip aquecido" className="relative h-56 w-auto object-contain lg:h-64" />
-          </div>
         </div>
 
         {/* benefícios */}
@@ -91,24 +91,6 @@ export default function FireonPromoCard() {
               {b}
             </div>
           ))}
-        </div>
-
-        {/* transformação: número novo → aquecido */}
-        <div className="mt-7 rounded-2xl border border-white/5 bg-white/[0.03] p-5">
-          <p className="text-center text-lg font-bold text-white">
-            Do número novo ao <span className="text-emerald-400">aquecido</span>
-          </p>
-          <div className="mt-4 flex items-center justify-center gap-5 sm:gap-10">
-            <div className="text-center">
-              <img src={chipVirgem} alt="Número novo" className="mx-auto h-24 w-auto object-contain sm:h-28" />
-              <p className="mt-1 text-xs font-semibold text-sky-200/70">Número novo</p>
-            </div>
-            <ArrowRight className="h-7 w-7 shrink-0 text-emerald-400" />
-            <div className="text-center">
-              <img src={chipAquecido} alt="Número aquecido" className="mx-auto h-24 w-auto object-contain sm:h-28 drop-shadow-[0_0_20px_rgba(52,211,153,0.35)]" />
-              <p className="mt-1 text-xs font-semibold text-emerald-300">Número aquecido</p>
-            </div>
-          </div>
         </div>
 
         {/* vídeo de apresentação (facade → iframe ao clicar) */}
@@ -137,6 +119,24 @@ export default function FireonPromoCard() {
                 </span>
               </button>
             )}
+          </div>
+        </div>
+
+        {/* transformação: número novo → aquecido */}
+        <div className="mt-6 rounded-2xl border border-white/5 bg-white/[0.03] p-5">
+          <p className="text-center text-lg font-bold text-white">
+            Do número novo ao <span className="text-emerald-400">aquecido</span>
+          </p>
+          <div className="mt-4 flex items-center justify-center gap-5 sm:gap-10">
+            <div className="text-center">
+              <img src={chipVirgem} alt="Número novo" className="mx-auto h-24 w-auto object-contain sm:h-28" />
+              <p className="mt-1 text-xs font-semibold text-sky-200/70">Número novo</p>
+            </div>
+            <ArrowRight className="h-7 w-7 shrink-0 text-emerald-400" />
+            <div className="text-center">
+              <img src={chipAquecido} alt="Número aquecido" className="mx-auto h-24 w-auto object-contain sm:h-28 drop-shadow-[0_0_20px_rgba(52,211,153,0.35)]" />
+              <p className="mt-1 text-xs font-semibold text-emerald-300">Número aquecido</p>
+            </div>
           </div>
         </div>
       </div>

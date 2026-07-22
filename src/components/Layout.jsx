@@ -600,15 +600,19 @@ export default function Layout() {
       <motion.button
         type="button"
         onClick={() => setFireonOpen(true)}
-        animate={{ y: [0, -7, 0] }}
-        transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.94 }}
+        whileHover={{ scale: 1.28 }}
+        whileTap={{ scale: 0.92 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 16 }}
         className="fixed z-50 w-14 h-14 sm:w-16 sm:h-16 bottom-[4.5rem] right-[max(0.9rem,env(safe-area-inset-right))] sm:bottom-24 sm:right-[1.9rem] touch-manipulation"
         title="Oferta exclusiva pra você"
         aria-label="Ver oferta exclusiva do Fireon"
       >
-        <img src={gifteImg} alt="Presente" className="w-full h-full object-contain select-none pointer-events-none" draggable="false" />
+        <motion.img
+          src={gifteImg} alt="Presente" draggable="false"
+          animate={{ y: [0, -7, 0] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+          className="w-full h-full object-contain select-none pointer-events-none"
+        />
       </motion.button>
 
       {/* Popup da oferta Fireon */}
