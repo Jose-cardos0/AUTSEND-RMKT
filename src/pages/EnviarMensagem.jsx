@@ -572,6 +572,8 @@ export default function EnviarMensagem() {
         {/* degradê esfumaçado verde saindo do canto inferior direito → esquerda */}
         <span aria-hidden className="pointer-events-none absolute -bottom-12 -right-10 h-44 w-44 rounded-full bg-emerald-500/30 blur-3xl" />
         <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-l from-emerald-500/20 via-emerald-500/5 to-transparent" />
+        {/* light sweep — passa uma vez ao passar o mouse */}
+        <span aria-hidden className="sweep-shine pointer-events-none absolute inset-y-0 left-0 z-20 w-1/3 -translate-x-[160%] skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/25 to-transparent" />
         <img src={chipFire} alt="" className="relative h-16 w-auto object-contain drop-shadow-[0_0_12px_rgba(52,211,153,0.45)]" />
         <span className="relative leading-tight">
           <span className="block text-[11px] font-medium text-emerald-100/60">Levou ban no WhatsApp?</span>

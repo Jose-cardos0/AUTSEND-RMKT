@@ -229,3 +229,10 @@ select {
 @media (prefers-reduced-motion: reduce) {
   .animate-hint { animation: none; color: #5b5eeb; }
 }
+
+/* Light sweep (brilho passa uma vez no hover) */
+@keyframes lightSweep {
+  from { transform: translateX(-160%) skewX(-20deg); }
+  to   { transform: translateX(460%) skewX(-20deg); }
+}
+.group:hover .sweep-shine { animation: lightSweep 0.75s ease-in-out 1; }
