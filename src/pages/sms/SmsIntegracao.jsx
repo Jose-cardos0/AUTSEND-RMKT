@@ -34,6 +34,8 @@ import brflag from '../../assets/flags/br-flag.png'
 import euaflag from '../../assets/euaflag.png'
 import chipastron from '../../assets/chip/chipastron.png'
 import usFlagBg from '../../assets/flags/us-flag.png'
+import telnyxLogo from '../../assets/telnyx.png'
+import smsdevLogo from '../../assets/smsdevlogo.png'
 import CheckoutModal from '../../components/CheckoutModal'
 
 const PRECO_MES = 'R$ 29,90/mês'
@@ -771,12 +773,12 @@ export default function SmsIntegracao() {
             <p className="text-xs text-stone-500">Escolha o provedor que você quer conectar.</p>
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => { setEscolherProv(false); setFormApi({ apiKey: '', nome: '' }); setNovoApi(true) }} className="flex flex-col items-center gap-2 rounded-2xl border-2 border-surface-200 hover:border-primary-300 hover:bg-primary-50/40 p-4 transition">
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600"><Globe className="w-6 h-6" /></span>
+                <img src={telnyxLogo} alt="Telnyx" className="h-12 w-auto object-contain" />
                 <span className="text-sm font-semibold text-stone-800">Telnyx</span>
                 <span className="text-[11px] text-stone-500 text-center leading-tight">SMS internacional (EUA)</span>
               </button>
               <button onClick={() => { setEscolherProv(false); setFormSmsdev({ apiKey: '', nome: '' }); setNovoSmsdev(true) }} className="flex flex-col items-center gap-2 rounded-2xl border-2 border-surface-200 hover:border-emerald-300 hover:bg-emerald-50/40 p-4 transition">
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><MessageSquare className="w-6 h-6" /></span>
+                <img src={smsdevLogo} alt="SMSDev" className="h-12 w-auto object-contain" />
                 <span className="text-sm font-semibold text-stone-800">SMSDev</span>
                 <span className="text-[11px] text-stone-500 text-center leading-tight">SMS Brasil (+55)</span>
               </button>
