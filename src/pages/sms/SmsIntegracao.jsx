@@ -766,7 +766,7 @@ export default function SmsIntegracao() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => setEscolherProv(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Plus className="w-5 h-5" /></span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Globe className="w-5 h-5" /></span>
               <h3 className="text-base font-semibold text-stone-800">Conectar conta de SMS</h3>
               <button onClick={() => setEscolherProv(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
             </div>
