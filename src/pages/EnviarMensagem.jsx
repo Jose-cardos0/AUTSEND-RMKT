@@ -563,30 +563,26 @@ export default function EnviarMensagem() {
           </div>
       </div>
 
-      {/* Aviso de intervalo + oferta Fireon */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl border border-surface-200 bg-surface-50/60">
-        <div className="flex items-start gap-2 flex-1 min-w-0">
-          <Clock className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-stone-600 leading-relaxed">As mensagens são enviadas em <strong>intervalos de 1 a 5 minutos</strong> pra imitar um envio humano e reduzir o risco de bloqueio.</p>
-        </div>
-        <a
-          href="https://pay.kiwify.com.br/ph1JNRc"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group relative overflow-hidden flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-[#070d0a] pl-2.5 pr-4 py-2 shrink-0 shadow-sm shadow-emerald-950/30 transition hover:border-emerald-400/50"
-        >
-          <span aria-hidden className="pointer-events-none absolute -left-6 -top-6 h-20 w-20 rounded-full bg-emerald-500/25 blur-2xl" />
-          <img src={chipFire} alt="" className="relative h-10 w-auto object-contain drop-shadow-[0_0_10px_rgba(52,211,153,0.4)]" />
-          <span className="relative leading-tight">
-            <span className="block text-[10px] font-medium text-emerald-100/60">Levou ban no WhatsApp?</span>
-            <span className="block text-xs font-bold text-white">Aqueça seus números no Fireon</span>
-            <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-300">
-              <span className="rounded bg-emerald-400/15 px-1 py-px">50% OFF vitalício</span>
-              <span className="transition group-hover:translate-x-0.5">→</span>
-            </span>
+      {/* Oferta Fireon */}
+      <a
+        href="https://pay.kiwify.com.br/ph1JNRc"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group relative w-fit overflow-hidden flex items-center gap-3.5 rounded-2xl border border-emerald-500/25 bg-[#070d0a] pl-3 pr-6 py-3 shadow-sm shadow-emerald-950/30 transition hover:border-emerald-400/50"
+      >
+        {/* degradê esfumaçado verde saindo do canto inferior direito → esquerda */}
+        <span aria-hidden className="pointer-events-none absolute -bottom-12 -right-10 h-44 w-44 rounded-full bg-emerald-500/30 blur-3xl" />
+        <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-l from-emerald-500/20 via-emerald-500/5 to-transparent" />
+        <img src={chipFire} alt="" className="relative h-16 w-auto object-contain drop-shadow-[0_0_12px_rgba(52,211,153,0.45)]" />
+        <span className="relative leading-tight">
+          <span className="block text-[11px] font-medium text-emerald-100/60">Levou ban no WhatsApp?</span>
+          <span className="block text-sm font-bold text-white">Aqueça seus números no Fireon</span>
+          <span className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-extrabold text-emerald-300">
+            <span className="rounded bg-emerald-400/15 px-1.5 py-0.5">50% OFF vitalício</span>
+            <span className="transition group-hover:translate-x-0.5">→</span>
           </span>
-        </a>
-      </div>
+        </span>
+      </a>
 
       {historico.length > 0 && (
         <Panel title="Histórico de disparos" icon={History} noPadding collapsible open={timelineOpen} onToggle={() => setTimelineOpen((v) => !v)}>
