@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Check, Play, ArrowRight, Flame } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Check, ArrowRight, Flame } from 'lucide-react'
 import chipFire from '../assets/fireon/chipfire.png'
 import chipVirgem from '../assets/fireon/chipvirgem.png'
 import chipAquecido from '../assets/fireon/chipaquecido.png'
+import playImg from '../assets/play.png'
 
 const CHECKOUT = 'https://pay.kiwify.com.br/ph1JNRc'
 const SITE = 'https://fireon.com.br'
@@ -113,9 +115,12 @@ export default function FireonPromoCard() {
               >
                 <img src={`https://img.youtube.com/vi/${YT_ID}/hqdefault.jpg`} alt="" className="h-full w-full object-cover opacity-70 transition group-hover:opacity-90" />
                 <span className="absolute inset-0 flex items-center justify-center">
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400 shadow-lg shadow-emerald-500/40 transition group-hover:scale-110">
-                    <Play className="ml-1 h-7 w-7 fill-emerald-950 text-emerald-950" />
-                  </span>
+                  <motion.img
+                    src={playImg} alt="Play"
+                    animate={{ scale: [1, 1.12, 1] }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                    className="h-16 w-16 object-contain drop-shadow-[0_6px_20px_rgba(52,211,153,0.45)] transition group-hover:scale-110"
+                  />
                 </span>
               </button>
             )}
