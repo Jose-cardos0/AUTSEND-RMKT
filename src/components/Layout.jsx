@@ -370,7 +370,12 @@ export default function Layout() {
   }))
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const abrirUpgrade = () => setUpgradeOpen(true)
-  const [fireonOpen, setFireonOpen] = useState(false) // popup da oferta Fireon (disparado pelo gift)
+  const [fireonOpen, setFireonOpen] = useState(false) // popup da oferta Fireon (disparado pelo gift ou por qualquer página)
+  useEffect(() => {
+    const abrir = () => setFireonOpen(true)
+    window.addEventListener('open-fireon', abrir)
+    return () => window.removeEventListener('open-fireon', abrir)
+  }, [])
   // Rota bloqueada pelo plano (acesso direto por URL)
   const rotaBloqueada = (() => {
     const k = Object.keys(ROTA_FEATURE).find((k) => location.pathname === k || location.pathname.startsWith(k + '/'))

@@ -563,12 +563,11 @@ export default function EnviarMensagem() {
           </div>
       </div>
 
-      {/* Oferta Fireon */}
-      <a
-        href="https://pay.kiwify.com.br/ph1JNRc"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="group relative w-fit overflow-hidden flex items-center gap-3.5 rounded-2xl border border-emerald-500/25 bg-[#070d0a] pl-3 pr-6 py-3 shadow-sm shadow-emerald-950/30 transition hover:border-emerald-400/50"
+      {/* Oferta Fireon → abre o popup do gift (Layout escuta 'open-fireon') */}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new Event('open-fireon'))}
+        className="group relative w-fit overflow-hidden flex items-center gap-3.5 rounded-2xl border border-emerald-500/25 bg-[#070d0a] pl-3 pr-6 py-3 shadow-sm shadow-emerald-950/30 transition hover:border-emerald-400/50 text-left"
       >
         {/* degradê esfumaçado verde saindo do canto inferior direito → esquerda */}
         <span aria-hidden className="pointer-events-none absolute -bottom-12 -right-10 h-44 w-44 rounded-full bg-emerald-500/30 blur-3xl" />
@@ -582,7 +581,7 @@ export default function EnviarMensagem() {
             <span className="transition group-hover:translate-x-0.5">→</span>
           </span>
         </span>
-      </a>
+      </button>
 
       {historico.length > 0 && (
         <Panel title="Histórico de disparos" icon={History} noPadding collapsible open={timelineOpen} onToggle={() => setTimelineOpen((v) => !v)}>
