@@ -91,6 +91,7 @@ export default function SmsIntegracao() {
   const [numOpen, setNumOpen] = useState(false) // dropdown recolhido por padrão (como WhatsApp)
   const [apiOpen, setApiOpen] = useState(false)
   const [contaAberta, setContaAberta] = useState(null) // id da conta Telnyx expandida
+  const [escolherProv, setEscolherProv] = useState(false) // popup: escolher Telnyx ou SMSDev
   const [novoApi, setNovoApi] = useState(false) // popup de conectar conta
   const [formApi, setFormApi] = useState({ apiKey: '', nome: '' })
   const [salvandoApi, setSalvandoApi] = useState(false)
@@ -341,8 +342,8 @@ export default function SmsIntegracao() {
               <Plus className="w-4 h-4" /> Comprar Número
             </button>
           ) : (
-            <button onClick={() => { if (!liberado) { setUpgradeOpen(true); return } setNovoApi(true) }} className="btn-primary text-sm min-h-[40px]">
-              <Plus className="w-4 h-4" /> Conectar Telnyx
+            <button onClick={() => { if (!liberado) { setUpgradeOpen(true); return } setEscolherProv(true) }} className="btn-primary text-sm min-h-[40px]">
+              <Plus className="w-4 h-4" /> Conectar
             </button>
           )}
         </div>
@@ -725,16 +726,30 @@ export default function SmsIntegracao() {
           ) : (
             <div className="space-y-2.5">
               {smsdevProvs.map((p) => (
-                <div key={p.id} className={`relative flex items-center gap-2.5 p-3 sm:p-4 rounded-xl border-2 transition ${p.principal ? 'border-emerald-300 bg-emerald-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
-                  {p.principal && <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm"><Star className="w-2.5 h-2.5" /> Principal</span>}
-                  <img src={brflag} alt="BR" className="w-5 h-auto rounded-sm shrink-0" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-semibold text-stone-800 truncate">{p.nome}</span>
-                    <span className="block text-[11px] text-stone-400 font-mono">{p.apiKeyMasked}</span>
-                  </span>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {!p.principal && <button onClick={() => principalSmsdev(p.id)} disabled={acaoSmsdev === p.id} className="p-2 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-60" title="Definir como principal">{acaoSmsdev === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}</button>}
-                    <button onClick={() => removerSmsdev(p)} disabled={acaoSmsdev === p.id} className="p-2 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-60" title="Remover"><Trash2 className="w-4 h-4" /></button>
+                <div key={p.id} className="rounded-xl border-2 border-surface-200 bg-surface-50/60 transition">
+                  <div className="relative flex items-center gap-2 p-3 sm:p-4">
+                    {p.principal && (
+                      <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
+                        <Star className="w-2.5 h-2.5" /> Principal
+                      </span>
+                    )}
+                    <span className="flex items-center gap-2 min-w-0 flex-1">
+                      <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-stone-800 truncate">{p.nome}</span>
+                        <span className="block text-[11px] text-stone-400 font-mono">{p.apiKeyMasked}</span>
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!p.principal && (
+                        <button type="button" onClick={() => principalSmsdev(p.id)} disabled={acaoSmsdev === p.id} className="p-2 rounded-lg border border-surface-200 bg-white text-stone-600 hover:bg-surface-100 transition-colors disabled:opacity-60" title="Definir como principal" aria-label="Definir como principal">
+                          {acaoSmsdev === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
+                        </button>
+                      )}
+                      <button type="button" onClick={() => removerSmsdev(p)} disabled={acaoSmsdev === p.id} className="p-2 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-60" title="Remover" aria-label="Remover">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -744,7 +759,32 @@ export default function SmsIntegracao() {
         </>)}
       </div>
 
-      {/* Popup: conectar conta SMSDev (Apelido + Chave Key) */}
+      {/* Popup: escolher o provedor (Telnyx ou SMSDev) */}
+      {escolherProv && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => setEscolherProv(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-100 text-primary-600 shrink-0"><Plus className="w-5 h-5" /></span>
+              <h3 className="text-base font-semibold text-stone-800">Conectar conta de SMS</h3>
+              <button onClick={() => setEscolherProv(false)} className="ml-auto p-1 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-xs text-stone-500">Escolha o provedor que você quer conectar.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => { setEscolherProv(false); setFormApi({ apiKey: '', nome: '' }); setNovoApi(true) }} className="flex flex-col items-center gap-2 rounded-2xl border-2 border-surface-200 hover:border-primary-300 hover:bg-primary-50/40 p-4 transition">
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600"><Globe className="w-6 h-6" /></span>
+                <span className="text-sm font-semibold text-stone-800">Telnyx</span>
+                <span className="text-[11px] text-stone-500 text-center leading-tight">SMS internacional (EUA)</span>
+              </button>
+              <button onClick={() => { setEscolherProv(false); setFormSmsdev({ apiKey: '', nome: '' }); setNovoSmsdev(true) }} className="flex flex-col items-center gap-2 rounded-2xl border-2 border-surface-200 hover:border-emerald-300 hover:bg-emerald-50/40 p-4 transition">
+                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600"><MessageSquare className="w-6 h-6" /></span>
+                <span className="text-sm font-semibold text-stone-800">SMSDev</span>
+                <span className="text-[11px] text-stone-500 text-center leading-tight">SMS Brasil (+55)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {novoSmsdev && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={() => !salvandoSmsdev && setNovoSmsdev(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
