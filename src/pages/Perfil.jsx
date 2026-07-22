@@ -22,6 +22,7 @@ import imgSmsBr500 from '../assets/chip/500sms-brl.png'
 import imgSmsBr1000 from '../assets/chip/1000sms-brl.png'
 import imgSmsBr2500 from '../assets/chip/2500sms-brl.png'
 import Bandeira from '../components/Bandeira'
+import WhatsAppIcon from '../components/WhatsAppIcon'
 import CheckoutModal from '../components/CheckoutModal'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
 import instanciaWhats from '../assets/whtatsicons/instancia-whats.png'
@@ -94,11 +95,13 @@ function FaixaPopular({ tema = 'red' }) {
   const grad = tema === 'red' ? 'from-rose-500 via-red-500 to-red-600'
     : tema === 'green' ? 'from-emerald-500 via-emerald-500 to-green-600'
     : 'from-primary-500 via-primary-600 to-violet-600'
-  // E-mail é global → globo branco; SMS EUA → bandeira EUA; SMS BR → globo (simples).
+  // E-mail é global → globo branco; SMS EUA → bandeira EUA; SMS BR → globo; conversa → WhatsApp.
   const icone = () => tema === 'red'
     ? <Globe className="w-2.5 h-2.5 shrink-0" />
     : tema === 'green'
     ? <Bandeira code="BR" className="w-3 h-auto rounded-sm shrink-0" />
+    : tema === 'whats'
+    ? <WhatsAppIcon className="w-3 h-3 shrink-0" white />
     : <img src={euaFlag} alt="" className="w-3 h-auto object-contain shrink-0" />
   return (
     <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden pointer-events-none z-10">
@@ -361,7 +364,7 @@ export default function Perfil() {
               const id = `conversa:${p.key}`
               return (
                 <div key={p.key} className={`relative overflow-hidden flex flex-col p-5 rounded-2xl border-2 transition ${p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
-                  {p.destaque && <FaixaPopular tema="blue" />}
+                  {p.destaque && <FaixaPopular tema="whats" />}
                   <div className="text-center">
                     <img src={PACOTE_IMG_CONVERSA[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
                     <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
