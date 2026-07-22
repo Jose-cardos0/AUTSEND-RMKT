@@ -51,12 +51,13 @@ async function assertTermosAceito(request, tenant) {
 const PLAN_LIMITS = {
   // callMin = minutos de Ligação IA grátis por mês (pagos por nós, isca). Editável via overrides.
   // iaMes = criações/edições de e-mail com IA (Grok) no construtor, por mês.
-  // atendentes = bots de IA no WhatsApp (Central de Atendentes). 1 por produto e 1 por instância;
+  // atendentes = bots de IA no WhatsApp (Central de Atendentes / Vendedor IA). 1 por produto e 1 por instância;
   // cada instância avulsa comprada libera +1 atendente (somado abaixo).
-  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, callMin: 0, iaMes: 0, atendentes: 0 },
-  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, callMin: 5, iaMes: 30, atendentes: 1 },
-  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, callMin: 10, iaMes: 100, atendentes: 2 },
-  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, callMin: 15, iaMes: 200, atendentes: 4 },
+  // conversasMes = conversas do Vendedor IA por mês (1 conversa = 1 lead atendido no mês). Crédito antes da cota.
+  free: { trackers: 1, instancias: 0, emailsMes: 50, smsMes: 0, dominios: 0, callMin: 0, iaMes: 0, atendentes: 0, conversasMes: 0 },
+  inicial: { trackers: 2, instancias: 1, emailsMes: 500, smsMes: 200, dominios: 1, callMin: 5, iaMes: 30, atendentes: 1, conversasMes: 100 },
+  padrao: { trackers: 10, instancias: 2, emailsMes: 2500, smsMes: 500, dominios: 1, callMin: 10, iaMes: 100, atendentes: 2, conversasMes: 200 },
+  pro: { trackers: 20, instancias: 4, emailsMes: 5000, smsMes: 1000, dominios: 2, callMin: 15, iaMes: 200, atendentes: 3, conversasMes: 300 },
 }
 function limitesDoTenant(t) {
   const plano = t && PLAN_LIMITS[t.plano] ? t.plano : 'free'
@@ -67,7 +68,39 @@ function limitesDoTenant(t) {
   merged.instancias = (Number(merged.instancias) || 0) + extras
   // Comprar instância libera +1 atendente (a sacada comercial: 1 atendente por instância).
   merged.atendentes = (Number(merged.atendentes) || 0) + extras
+  // Vendedor IA avulso (assinatura R$45/mês): +1 slot de vendedor E +100 conversas/mês por unidade.
+  const vend = Number(t && t.vendedoresExtras) || 0
+  merged.atendentes = (Number(merged.atendentes) || 0) + vend
+  merged.conversasMes = (Number(merged.conversasMes) || 0) + vend * 100
   return merged
+}
+
+// Teto de mensagens do vendedor por conversa/mês — trava o custo de uma conversa que vira "textão eterno".
+const TETO_MSGS_CONVERSA = Math.max(1, Number(process.env.TETO_MSGS_CONVERSA) || 40)
+
+/**
+ * Trava de CONVERSA do Vendedor IA: 1 conversa = 1 lead atendido no mês. Crédito comprado é
+ * consumido ANTES da cota do plano (crédito não expira; cota zera no mês) — igual ao SMS.
+ * NÃO consome aqui (só decide); a consumição é aplicada pelo chamador após a IA responder de fato.
+ * @returns {{ ok: boolean, fonte?: 'admin'|'credito'|'quota' }}
+ */
+function decidirCotaConversa(uid, tenant) {
+  if (tenant?.email && String(tenant.email).toLowerCase() === ADMIN_EMAIL) return { ok: true, fonte: 'admin' }
+  const lim = limitesDoTenant(tenant)
+  const creditos = Number(tenant?.conversaCreditos) || 0
+  const quotaUsada = Number(tenant?.conversaUso?.[mesAtualStr()] || 0)
+  const restanteQuota = Math.max(0, (Number(lim.conversasMes) || 0) - quotaUsada)
+  if (creditos + restanteQuota <= 0) return { ok: false }
+  return { ok: true, fonte: creditos > 0 ? 'credito' : 'quota' }
+}
+
+/** Aplica a consumição de 1 conversa no tenant (crédito primeiro; senão cota do mês). */
+async function consumirConversa(uid, fonte) {
+  if (fonte === 'credito') {
+    await db.doc(`tenants/${uid}`).set({ conversaCreditos: admin.firestore.FieldValue.increment(-1) }, { merge: true })
+  } else if (fonte === 'quota') {
+    await db.doc(`tenants/${uid}`).set({ conversaUso: { [mesAtualStr()]: admin.firestore.FieldValue.increment(1) } }, { merge: true })
+  }
 }
 
 /**
@@ -2110,6 +2143,31 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     }
     if (!m.texto) { res.status(200).json({ responder: false, ignored: 'sem texto' }); return }
 
+    // ── Trava de CONVERSA (cota/crédito) + teto de mensagens ──
+    // 1 conversa = 1 lead atendido no mês. Só cobra na 1ª msg do lead no mês; depois é continuação (grátis)
+    // até o teto de mensagens. Sem cota/crédito → não responde (não gasta Grok).
+    const mesConversa = mesAtualStr()
+    let tenantDoc = {}
+    try { const ts = await db.doc(`tenants/${uid}`).get(); tenantDoc = ts.exists ? ts.data() : {} } catch (_) {}
+    const ehAdminTenant = String(tenantDoc.email || '').toLowerCase() === ADMIN_EMAIL
+    const novaConversaMes = conv.conversaMes !== mesConversa
+    let fonteConsumo = null
+    if (!ehAdminTenant) {
+      if (novaConversaMes) {
+        const gate = decidirCotaConversa(uid, tenantDoc)
+        if (!gate.ok) {
+          console.log('waAtendente: SEM cota/crédito de conversa (não responde)', { uid, telefone: m.telefone })
+          await convRef.set({ messages: novoHist, nome: m.nome || conv.nome || '', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+          res.status(200).json({ responder: false, semCota: true }); return
+        }
+        fonteConsumo = gate.fonte
+      } else if ((Number(conv.botMsgsMes) || 0) >= TETO_MSGS_CONVERSA) {
+        console.log('waAtendente: teto de mensagens da conversa atingido (encerra)', { uid, telefone: m.telefone, teto: TETO_MSGS_CONVERSA })
+        await convRef.set({ messages: novoHist, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        res.status(200).json({ responder: false, limiteMsgs: true }); return
+      }
+    }
+
     // Monta o prompt e chama a Grok (com o contexto do lead, se veio de um evento)
     const messages = [
       { role: 'system', content: montarSystemAtendente(grupo, conv.leadContexto) },
@@ -2125,12 +2183,16 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     // Custo de IA (Gastos CRM)
     try { const mesId = new Date(agora).toISOString().slice(0, 7); await db.doc(`tenants/${uid}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
 
+    // Consome 1 conversa (crédito antes da cota) na 1ª msg do lead no mês.
+    try { if (fonteConsumo) await consumirConversa(uid, fonteConsumo) } catch (e) { console.error('consumirConversa', e?.message || e) }
+
     // IC (Initiate Checkout): o vendedor mandou um link de checkout nesta resposta?
     const ic = atingiuCheckout(grupo, respostaIA)
 
     await convRef.set({
       messages: [...novoHist, { role: 'assistant', text: respostaIA, ts: Date.now() }].slice(-30),
       iaUltimaMsg: respostaIA, atendenteId: atendente.id, grupoId: atendente.grupoId, nome: m.nome || conv.nome || '',
+      conversaMes: mesConversa, botMsgsMes: novaConversaMes ? 1 : (Number(conv.botMsgsMes) || 0) + 1,
       ...(convSnap.exists ? {} : { criadaEm: admin.firestore.FieldValue.serverTimestamp() }),
       ...(ic ? { atingiuCheckout: true, atingiuCheckoutEm: admin.firestore.FieldValue.serverTimestamp() } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -3013,6 +3075,26 @@ function creditosDoPriceStripe(priceId) {
   return 0
 }
 
+/** Pacotes de crédito de CONVERSA do Vendedor IA (pagamento único): chave → { priceId, quantidade, valor }. */
+function pacotesCreditoConversa() {
+  return {
+    '100': { priceId: process.env.STRIPE_PRICE_CONVERSA_100 || 'price_1TvpvkLvVsGXtCnTaGcuWTHy', quantidade: 100, valor: 79 },
+    '300': { priceId: process.env.STRIPE_PRICE_CONVERSA_300 || 'price_1TvpwjLvVsGXtCnTCHwVISvR', quantidade: 300, valor: 199 },
+    '1000': { priceId: process.env.STRIPE_PRICE_CONVERSA_1000 || 'price_1TvpxALvVsGXtCnTBDS6KYS5', quantidade: 1000, valor: 590 },
+  }
+}
+
+/** priceId de crédito de conversa → quantidade (usado no webhook). */
+function creditosConversaDoPriceStripe(priceId) {
+  if (!priceId) return 0
+  const p = pacotesCreditoConversa()
+  for (const k of Object.keys(p)) { if (p[k].priceId && p[k].priceId === priceId) return p[k].quantidade }
+  return 0
+}
+
+// Assinatura de Vendedor IA avulso (R$45/mês). Cada unidade: +1 slot de vendedor E +100 conversas/mês.
+const STRIPE_PRICE_VENDEDOR = process.env.STRIPE_PRICE_VENDEDOR || 'price_1TvpjNLvVsGXtCnT0yuuxqzM'
+
 /** Cria o checkout Stripe (pagamento único) pra recarregar créditos de SMS. */
 exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
   const uid = request.auth?.uid
@@ -3042,6 +3124,67 @@ exports.smsCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds
     return { clientSecret: session.client_secret }
   } catch (e) {
     console.error('smsCriarCheckoutCredito', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+/** Cria o checkout Stripe (pagamento único) pra comprar um PACOTE de conversas do Vendedor IA. */
+exports.conversaCriarCheckoutCredito = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const pacote = pacotesCreditoConversa()[String(request.data?.pacote || '')]
+  if (!pacote || !pacote.priceId) throw new HttpsError('invalid-argument', 'Pacote de conversas inválido.')
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key) throw new HttpsError('failed-precondition', 'Recarga ainda não configurada.')
+  const stripe = require('stripe')(key)
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'credito_conversa', uid, quantidade: String(pacote.quantidade) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      ui_mode: 'embedded_page',
+      allow_promotion_codes: true,
+      mode: 'payment',
+      line_items: [{ price: pacote.priceId, quantity: 1 }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      payment_intent_data: { metadata: meta, description: `Autsend · ${pacote.quantidade} conversas do Vendedor IA` },
+      redirect_on_completion: 'never',
+    })
+    return { clientSecret: session.client_secret }
+  } catch (e) {
+    console.error('conversaCriarCheckoutCredito', e)
+    throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
+  }
+})
+
+/** Cria o checkout Stripe (assinatura R$45/mês) pra comprar Vendedor(es) IA avulso(s). +1 slot e +100 conversas/mês cada. */
+exports.vendedorCriarCheckout = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const tenant = await assertTenantAtivo(uid)
+  await assertTermosAceito(request, tenant)
+  const qtd = Math.max(1, Math.min(10, Number(request.data?.quantidade) || 1))
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key || !STRIPE_PRICE_VENDEDOR) throw new HttpsError('failed-precondition', 'A compra de vendedor ainda não foi configurada.')
+  const stripe = require('stripe')(key)
+  const email = (request.auth?.token?.email || tenant.email || '').toLowerCase() || undefined
+  const meta = { tipo: 'vendedor', uid, quantidade: String(qtd) }
+  try {
+    const session = await stripe.checkout.sessions.create({
+      ui_mode: 'embedded_page',
+      allow_promotion_codes: true,
+      mode: 'subscription',
+      line_items: [{ price: STRIPE_PRICE_VENDEDOR, quantity: qtd }],
+      ...(tenant.stripeCustomerId ? { customer: tenant.stripeCustomerId } : (email ? { customer_email: email } : {})),
+      metadata: meta,
+      subscription_data: { metadata: meta, description: `Autsend · ${qtd} Vendedor(es) IA` },
+      redirect_on_completion: 'never',
+    })
+    return { clientSecret: session.client_secret }
+  } catch (e) {
+    console.error('vendedorCriarCheckout', e)
     throw new HttpsError('internal', e.message || 'Falha ao criar o checkout.')
   }
 })
@@ -3803,6 +3946,9 @@ exports.getPerfilStats = onCall({ region: 'us-central1' }, async (request) => {
     smsBrCreditos: Number(t.smsBrCreditos) || 0, smsBrUsados,
     // IA do construtor de e-mail (criações/edições no mês).
     iaUsados: Number(t?.iaUso?.[mesAtualStr()] || 0), iaLimite: isAdm ? -1 : (Number(lim.iaMes) || 0),
+    // Vendedor IA: conversas do mês (1 conversa = 1 lead atendido no mês) + crédito comprado.
+    conversasUsados: Number(t?.conversaUso?.[mesAtualStr()] || 0), conversasLimite: isAdm ? -1 : (Number(lim.conversasMes) || 0),
+    conversaCreditos: Number(t.conversaCreditos) || 0,
     // Ligação IA: em minutos pra exibição (usados/limite) + crédito comprado em segundos.
     callMinUsados: Math.round((callSegUsados / 60) * 10) / 10,
     callMinLimite: isAdm ? -1 : (Number(lim.callMin) || 0),
@@ -4417,6 +4563,34 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         res.status(200).json({ ok: true, instanciasExtras: qtd, uid: uidC }); return
       }
 
+      // ── Recarga de crédito de CONVERSA do Vendedor IA (pagamento único) — soma conversaCreditos. ──
+      if (session.metadata?.tipo === 'credito_conversa') {
+        const uidC = session.metadata.uid
+        let quantidade = Number(session.metadata.quantidade) || 0
+        if (!quantidade) quantidade = creditosConversaDoPriceStripe((session.line_items?.data?.[0]?.price?.id) || null)
+        if (!uidC || !quantidade) { res.status(200).json({ ok: true, ignored: 'credito_conversa sem uid/quantidade' }); return }
+        const recRef = db.doc(`tenants/${uidC}/recargasConversa/${session.id}`)
+        if ((await recRef.get()).exists) { res.status(200).json({ ok: true, ja: true }); return }
+        await db.doc(`tenants/${uidC}`).set({ conversaCreditos: admin.firestore.FieldValue.increment(quantidade) }, { merge: true })
+        await recRef.set({ quantidade, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        await registrarFaturamento(uidC, { tipo: 'credito_conversa', descricao: `${quantidade} conversas do Vendedor IA`, quantidade, valor: (session.amount_total || 0) / 100, stripeId: session.id })
+        res.status(200).json({ ok: true, creditadoConversa: quantidade, uid: uidC }); return
+      }
+
+      // ── Compra de VENDEDOR(ES) IA (assinatura) — soma vendedoresExtras (+1 slot e +100 conversas/mês cada). ──
+      if (session.metadata?.tipo === 'vendedor') {
+        const uidC = session.metadata.uid
+        const qtd = Math.max(1, Number(session.metadata.quantidade) || 1)
+        const subId = session.subscription || null
+        if (!uidC) { res.status(200).json({ ok: true, ignored: 'vendedor sem uid' }); return }
+        const recRef = db.doc(`tenants/${uidC}/vendedorSubs/${session.id}`)
+        if ((await recRef.get()).exists) { res.status(200).json({ ok: true, ja: true }); return }
+        await db.doc(`tenants/${uidC}`).set({ vendedoresExtras: admin.firestore.FieldValue.increment(qtd) }, { merge: true })
+        await recRef.set({ quantidade: qtd, stripeSubscriptionId: subId, valor: (session.amount_total || 0) / 100, em: admin.firestore.FieldValue.serverTimestamp() })
+        await registrarFaturamento(uidC, { tipo: 'vendedor', descricao: `${qtd} Vendedor(es) IA (assinatura)`, quantidade: qtd, valor: (session.amount_total || 0) / 100, stripeId: session.id })
+        res.status(200).json({ ok: true, vendedoresExtras: qtd, uid: uidC }); return
+      }
+
       // ── Fase 2: compra de NÚMERO(S) SMS (não é plano) — compra na Telnyx e salva no cliente. ──
       if (session.metadata?.tipo === 'numero_sms') {
         const uidN = session.metadata.uid
@@ -4527,6 +4701,22 @@ exports.stripeWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, m
         const uidRev = instSnap.docs[0].ref.path.split('/')[1]
         await registrarFaturamento(uidRev, { tipo: 'cancelamento', descricao: `Cancelou assinatura de ${revogadas} instância(s)`, quantidade: revogadas, stripeId: `cancel_inst_${subId}` })
         res.status(200).json({ ok: true, instanciasRevogadas: revogadas }); return
+      }
+
+      // 1.6) Assinatura de VENDEDOR(ES) IA? Tira do vendedoresExtras e sai — não mexe no plano.
+      const vendSnap = await db.collectionGroup('vendedorSubs').where('stripeSubscriptionId', '==', subId).get()
+      if (!vendSnap.empty) {
+        let revogados = 0
+        for (const doc of vendSnap.docs) {
+          const uidV = doc.ref.path.split('/')[1] // tenants/{uid}/vendedorSubs/{id}
+          const qtd = Math.max(0, Number(doc.data().quantidade) || 0)
+          if (qtd > 0) await db.doc(`tenants/${uidV}`).set({ vendedoresExtras: admin.firestore.FieldValue.increment(-qtd) }, { merge: true })
+          await doc.ref.delete()
+          revogados += qtd
+        }
+        const uidRev = vendSnap.docs[0].ref.path.split('/')[1]
+        await registrarFaturamento(uidRev, { tipo: 'cancelamento', descricao: `Cancelou assinatura de ${revogados} Vendedor(es) IA`, quantidade: revogados, stripeId: `cancel_vend_${subId}` })
+        res.status(200).json({ ok: true, vendedoresRevogados: revogados }); return
       }
 
       // 2) Assinatura de PLANO → volta pro Free (só se for mesmo a assinatura do plano do tenant).
@@ -4866,6 +5056,19 @@ async function tryAtendenteEvento(userId, evento, customer, product, produtos, a
     const inst = { id: instSnap.id, ...instSnap.data() }
     if (!inst.nomeInstancia) return
 
+    // Trava de conversa: abrir a conversa é uma conversa nova no mês → consome 1 (crédito antes da cota).
+    const mesConversa = mesAtualStr()
+    let tenantDoc = {}
+    try { const ts = await db.doc(`tenants/${userId}`).get(); tenantDoc = ts.exists ? ts.data() : {} } catch (_) {}
+    const ehAdminTenant = String(tenantDoc.email || '').toLowerCase() === ADMIN_EMAIL
+    const novaConversaMes = conv.conversaMes !== mesConversa
+    let fonteConsumo = null
+    if (!ehAdminTenant && novaConversaMes) {
+      const gate = decidirCotaConversa(userId, tenantDoc)
+      if (!gate.ok) { console.log('tryAtendenteEvento: SEM cota/crédito de conversa (não abre)', { userId, telefone }); return }
+      fonteConsumo = gate.fonte
+    }
+
     const messages = [
       { role: 'system', content: montarSystemAtendente(grupo, leadContexto) },
       { role: 'user', content: '[INÍCIO PROATIVO] Você está começando a conversa (o lead ainda não falou). Mande a PRIMEIRA mensagem, curta e humana (1-2 frases), puxando papo com base no contexto do lead acima. Não diga que é um bot nem cite "sistema".' },
@@ -4877,9 +5080,11 @@ async function tryAtendenteEvento(userId, evento, customer, product, produtos, a
 
     await enviarWhatsAppInstancia(inst, telefone, customer.nome, abertura)
     try { const mesId = new Date().toISOString().slice(0, 7); await db.doc(`tenants/${userId}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
+    try { if (fonteConsumo) await consumirConversa(userId, fonteConsumo) } catch (e) { console.error('consumirConversa', e?.message || e) }
     await convRef.set({
       messages: [...hist, { role: 'assistant', text: abertura, ts: Date.now() }].slice(-30),
       iaUltimaMsg: abertura,
+      conversaMes: mesConversa, botMsgsMes: novaConversaMes ? 1 : (Number(conv.botMsgsMes) || 0) + 1,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true })
     await armarFollowup(convRef, grupo, atendente) // arma o follow-up após a abertura
@@ -6370,7 +6575,7 @@ exports.adminUpdateCliente = onCall({ region: 'us-central1' }, async (request) =
   if (p.overrides && typeof p.overrides === 'object') {
     if (p.overrides.limites && typeof p.overrides.limites === 'object') {
       ovLimites = {}
-      for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios', 'callMin', 'iaMes']) {
+      for (const k of ['trackers', 'instancias', 'emailsMes', 'smsMes', 'dominios', 'callMin', 'iaMes', 'atendentes', 'conversasMes']) {
         if (p.overrides.limites[k] != null) ovLimites[k] = Math.max(0, Number(p.overrides.limites[k]) || 0)
       }
     }

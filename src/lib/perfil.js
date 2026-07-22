@@ -75,6 +75,27 @@ export async function criarCheckoutInstancia(quantidade) {
   return r.data // { clientSecret }
 }
 
+/** Pacotes de conversa do Vendedor IA (pagamento único). Crédito consumido antes da cota do plano. */
+export const PACOTES_CREDITO_CONVERSA = [
+  { key: '100', quantidade: 100, valor: 'R$ 79,00' },
+  { key: '300', quantidade: 300, valor: 'R$ 199,00', destaque: true },
+  { key: '1000', quantidade: 1000, valor: 'R$ 590,00' },
+]
+
+/** Cria o checkout Stripe (pagamento único) pra comprar um pacote de conversas do Vendedor IA. */
+export async function criarCheckoutCreditoConversa(pacote) {
+  const r = await call('conversaCriarCheckoutCredito')({ pacote })
+  return r.data // { clientSecret }
+}
+
+export const PRECO_VENDEDOR = 'R$ 45,00/mês'
+
+/** Cria o checkout Stripe embutido (assinatura R$45/mês por vendedor) pra comprar Vendedor(es) IA. +1 slot e +100 conversas/mês cada. */
+export async function criarCheckoutVendedor(quantidade) {
+  const r = await call('vendedorCriarCheckout')({ quantidade })
+  return r.data // { clientSecret }
+}
+
 /** Cria o checkout Stripe embutido de PLANO (assinatura). Funciona logado (upgrade) ou deslogado (landing). */
 export async function criarCheckoutPlano(plano) {
   const r = await call('planoCriarCheckout')({ plano })

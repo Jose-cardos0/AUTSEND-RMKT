@@ -4,9 +4,9 @@ import toast from 'react-hot-toast'
 import { auth } from '../lib/firebase'
 import PageShell, { Panel } from '../components/PageShell'
 import PageLoader from '../components/PageLoader'
-import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, criarCheckoutCreditoCall, criarCheckoutCreditoSmsBr, criarCheckoutInstancia, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_SMS_BR, PACOTES_CREDITO_EMAIL, PACOTES_CREDITO_CALL } from '../lib/perfil'
+import { getPerfilStats, criarCheckoutCreditoSMS, criarCheckoutCreditoEmail, criarCheckoutCreditoCall, criarCheckoutCreditoSmsBr, criarCheckoutInstancia, criarCheckoutCreditoConversa, criarCheckoutVendedor, salvarFotoPerfil, PACOTES_CREDITO, PACOTES_CREDITO_SMS_BR, PACOTES_CREDITO_EMAIL, PACOTES_CREDITO_CALL, PACOTES_CREDITO_CONVERSA } from '../lib/perfil'
 import { usePlano } from '../lib/PlanoContext'
-import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck, Globe, Phone } from 'lucide-react'
+import { User, Mail, MessageSquare, Zap, Loader2, Sparkles, Check, Camera, ShieldCheck, Globe, Phone, MessagesSquare } from 'lucide-react'
 import img500 from '../assets/chip/emailautsend.png'
 import img1000 from '../assets/chip/1000sms.png'
 import img2500 from '../assets/chip/2500.png'
@@ -25,12 +25,17 @@ import Bandeira from '../components/Bandeira'
 import CheckoutModal from '../components/CheckoutModal'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
 import instanciaWhats from '../assets/whtatsicons/instancia-whats.png'
+import vendedorIcon from '../assets/vendedor/vendedor.png'
+import imgConv100 from '../assets/conversas/100conversas.png'
+import imgConv300 from '../assets/conversas/300conversa.png'
+import imgConv1000 from '../assets/conversas/1000conversas.png'
 
 const PLANO_LABEL = { free: 'Free', inicial: 'Inicial', padrao: 'Padrão', pro: 'Pro' }
 const PACOTE_IMG = { 500: img500, 1000: img1000, 2500: img2500 }
 const PACOTE_IMG_SMS_BR = { 500: imgSmsBr500, 1000: imgSmsBr1000, 2500: imgSmsBr2500 }
 const PACOTE_IMG_EMAIL = { 5000: imgEmail5000, 10000: imgEmail10000, 25000: imgEmail25000 }
 const PACOTE_IMG_CALL = { 30: imgCall30, 60: imgCall60, 120: imgCall120 }
+const PACOTE_IMG_CONVERSA = { 100: imgConv100, 300: imgConv300, 1000: imgConv1000 }
 
 /** Redimensiona uma imagem pra um quadrado pequeno e devolve um data URL JPEG. */
 function redimensionarImagem(file, tamanho = 256) {
@@ -118,6 +123,7 @@ export default function Perfil() {
   const [checkoutSecret, setCheckoutSecret] = useState(null) // client_secret do checkout embutido
   const [instModalOpen, setInstModalOpen] = useState(false) // modal de comprar instância
   const [comprandoInst, setComprandoInst] = useState(false)
+  const [comprandoVend, setComprandoVend] = useState(false)
   const fileRef = useRef(null)
 
   const escolherFoto = async (e) => {
@@ -177,6 +183,7 @@ export default function Perfil() {
       const r = canal === 'email' ? await criarCheckoutCreditoEmail(key)
         : canal === 'call' ? await criarCheckoutCreditoCall(key)
         : canal === 'smsbr' ? await criarCheckoutCreditoSmsBr(key)
+        : canal === 'conversa' ? await criarCheckoutCreditoConversa(key)
         : await criarCheckoutCreditoSMS(key)
       if (r?.clientSecret) setCheckoutSecret(r.clientSecret) // abre o pagamento dentro do app
       else toast.error('Não consegui abrir o checkout. Tente de novo.')
@@ -200,6 +207,19 @@ export default function Perfil() {
     }
   }
 
+  const comprarVendedor = async () => {
+    setComprandoVend(true)
+    try {
+      const r = await criarCheckoutVendedor(1)
+      if (r?.clientSecret) setCheckoutSecret(r.clientSecret)
+      else toast.error('Não consegui abrir o checkout. Tente de novo.')
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao iniciar a compra.')
+    } finally {
+      setComprandoVend(false)
+    }
+  }
+
   if (loading) return <PageLoader className="flex-1 min-h-0 py-10" />
 
   const nome = stats?.nome || ''
@@ -213,6 +233,7 @@ export default function Perfil() {
   const callLimiteEfetivo = isAdmin ? -1 : ((stats?.callMinLimite || 0) + Math.floor((stats?.callCreditosSeg || 0) / 60))
   const emailLimiteEfetivo = isAdmin ? -1 : ((stats?.emailsLimite || 0) + (stats?.emailCreditos || 0))
   const iaLimiteEfetivo = isAdmin ? -1 : (stats?.iaLimite || 0)
+  const conversasLimiteEfetivo = isAdmin ? -1 : ((stats?.conversasLimite || 0) + (stats?.conversaCreditos || 0))
   const pausada = !!stats?.pausada
 
   return (
@@ -267,6 +288,7 @@ export default function Perfil() {
             <BarraUso icon={MessageSquare} titulo="SMS (Brasil)" usados={stats?.smsBrUsados || 0} limite={smsBrLimiteEfetivo} cor="emerald" />
             <BarraUso icon={Phone} titulo="Ligação IA (min)" usados={stats?.callMinUsados || 0} limite={callLimiteEfetivo} cor="emerald" />
             <BarraUso icon={Sparkles} titulo="IA Construtor" usados={stats?.iaUsados || 0} limite={iaLimiteEfetivo} cor="amber" />
+            <BarraUso icon={MessagesSquare} titulo="Conversas do Vendedor" usados={stats?.conversasUsados || 0} limite={conversasLimiteEfetivo} cor="violet" />
           </div>
           {isAdmin ? (
             <p className="text-xs text-stone-400 mt-2">Conta de administrador — envios ilimitados.</p>
@@ -300,6 +322,61 @@ export default function Perfil() {
             >
               <Check className="w-4 h-4" /> Comprar instância
             </button>
+          </div>
+        </Panel>
+
+        {/* Comprar Vendedor IA avulso (assinatura mensal) */}
+        <Panel title="Vendedor IA" icon={MessagesSquare}>
+          <div className="flex flex-col sm:flex-row items-center gap-5 rounded-2xl border-2 border-primary-200 bg-primary-50/40 p-5">
+            <img src={vendedorIcon} alt="" className="h-24 w-auto object-contain shrink-0 drop-shadow-sm" />
+            <div className="flex-1 text-center sm:text-left">
+              <h3 className="text-lg font-bold text-stone-800">Vendedor IA no WhatsApp</h3>
+              <p className="text-sm text-stone-600 mt-1">
+                Um vendedor de IA a mais pra atender e vender no automático. Cada um já vem com <b>+100 conversas/mês</b> inclusas.
+              </p>
+              <p className="text-lg font-bold text-primary-600 mt-1">R$ 45,00<span className="text-sm font-medium text-stone-500">/mês cada</span></p>
+              {!isAdminCtx && Number.isFinite(limiteDe('atendentes')) && (
+                <p className="text-xs text-stone-400 mt-1">Seu plano hoje permite <b>{limiteDe('atendentes')}</b> vendedor(es) no total.</p>
+              )}
+            </div>
+            <button
+              onClick={comprarVendedor}
+              disabled={comprandoVend}
+              className="w-full sm:w-auto min-h-[44px] px-6 inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white bg-primary-500 hover:bg-primary-600 shadow-sm shadow-primary-500/25 transition disabled:opacity-60"
+            >
+              {comprandoVend ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {comprandoVend ? 'Abrindo…' : 'Comprar vendedor'}
+            </button>
+          </div>
+        </Panel>
+
+        {/* Comprar pacotes de conversa do Vendedor IA */}
+        <Panel title="Conversas do Vendedor IA" icon={MessagesSquare}>
+          <p className="text-xs text-stone-500 -mt-1 mb-1">
+            {stats?.conversaCreditos > 0 ? <>Você tem <b>{(stats.conversaCreditos || 0).toLocaleString('pt-BR')}</b> conversa(s) em crédito. </> : null}
+            1 conversa = 1 lead atendido no mês. O crédito é consumido antes da cota do plano e <b>não expira</b>.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {PACOTES_CREDITO_CONVERSA.map((p) => {
+              const id = `conversa:${p.key}`
+              return (
+                <div key={p.key} className={`relative overflow-hidden flex flex-col p-5 rounded-2xl border-2 transition ${p.destaque ? 'border-primary-400 bg-primary-50/40' : 'border-surface-200 bg-surface-50/60'}`}>
+                  {p.destaque && <FaixaPopular tema="blue" />}
+                  <div className="text-center">
+                    <img src={PACOTE_IMG_CONVERSA[p.quantidade]} alt="" className="h-16 w-auto mx-auto mb-2 object-contain" />
+                    <p className="text-3xl font-extrabold text-stone-800 tabular-nums">{p.quantidade.toLocaleString('pt-BR')}</p>
+                    <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide flex items-center justify-center gap-1.5">
+                      <MessagesSquare className="w-3.5 h-3.5" /> Conversas
+                    </p>
+                    <p className="text-lg font-bold text-primary-600 mt-2">{p.valor}</p>
+                  </div>
+                  <button onClick={() => comprar('conversa', p.key)} disabled={!!comprando} className="btn-primary w-full mt-4 min-h-[42px] disabled:opacity-60">
+                    {comprando === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    {comprando === id ? 'Abrindo…' : 'Comprar'}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </Panel>
 
