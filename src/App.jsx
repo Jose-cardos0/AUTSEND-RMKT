@@ -43,6 +43,7 @@ import { ConfirmProvider } from './components/ConfirmDialog'
 import { PlanoProvider, usePlano } from './lib/PlanoContext'
 
 const EmailConstrutor = lazy(() => import('./pages/email/EmailConstrutor'))
+const Docs = lazy(() => import('./pages/Docs'))
 const EmailFunil = lazy(() => import('./pages/email/EmailFunil'))
 const WhatsappFunil = lazy(() => import('./pages/WhatsappFunil'))
 const WhatsappMetricas = lazy(() => import('./pages/WhatsappMetricas'))
@@ -125,6 +126,8 @@ export default function App() {
       />
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Documentação pública (linkada no rodapé da landing) */}
+        <Route path="/docs" element={<Suspense fallback={<PageLoader className="min-h-screen" />}><Docs /></Suspense>} />
         <Route path="/" element={<RootRoute />}>
           <Route index element={<InicioRedirect />} />
           <Route path="integracoes" element={<Integracoes />} />

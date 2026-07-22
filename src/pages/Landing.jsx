@@ -393,7 +393,10 @@ export default function Landing() {
           <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <img src={autsendLogo} alt="Autsend" className="h-7 w-auto" />
             <p className="text-xs text-stone-400">© {new Date().getFullYear()} Autsend. Todos os direitos reservados.</p>
-            <button onClick={irLogin} className="text-sm font-semibold text-primary-600 hover:text-primary-700">Entrar →</button>
+            <div className="flex items-center gap-5">
+              <a href="/docs" className="text-sm font-semibold text-stone-500 hover:text-primary-700">Documentação</a>
+              <button onClick={irLogin} className="text-sm font-semibold text-primary-600 hover:text-primary-700">Entrar →</button>
+            </div>
           </div>
         </footer>
       </main>
