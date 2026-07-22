@@ -98,7 +98,7 @@ export default function Docs() {
           <Link to="/" className="flex items-center gap-2 shrink-0">
             <img src={autsendLogo} alt="Autsend" className="h-7 w-auto" />
           </Link>
-          <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide bg-primary-100 text-primary-700 border border-primary-200">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-primary-700">
             <BookOpen className="w-3 h-3" /> Documentação
           </span>
           <div className="flex-1" />
