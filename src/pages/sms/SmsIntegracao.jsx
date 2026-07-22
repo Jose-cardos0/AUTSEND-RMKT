@@ -652,7 +652,7 @@ export default function SmsIntegracao() {
                         </span>
                       )}
                       <button type="button" onClick={() => setContaAberta((v) => (v === p.id ? null : p.id))} className="flex items-center gap-2 min-w-0 flex-1 text-left">
-                        <Globe className="w-4 h-4 text-primary-600 shrink-0" />
+                        <img src={telnyxLogo} alt="" className="h-5 w-auto object-contain shrink-0" />
                         <span className="min-w-0">
                           <span className="block font-semibold text-stone-800 truncate">{p.nome}</span>
                           <span className="block text-[11px] text-stone-400">{nums.length} número(s)</span>
@@ -733,7 +733,7 @@ export default function SmsIntegracao() {
                       </span>
                     )}
                     <span className="flex items-center gap-2 min-w-0 flex-1">
-                      <MessageSquare className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <img src={smsdevLogo} alt="" className="h-5 w-auto object-contain shrink-0" />
                       <span className="min-w-0">
                         <span className="block font-semibold text-stone-800 truncate">{p.nome}</span>
                         <span className="block text-[11px] text-stone-400 font-mono">{p.apiKeyMasked}</span>
