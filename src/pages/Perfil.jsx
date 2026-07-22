@@ -24,7 +24,6 @@ import imgSmsBr2500 from '../assets/chip/2500sms-brl.png'
 import Bandeira from '../components/Bandeira'
 import CheckoutModal from '../components/CheckoutModal'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
-import FireonPromoCard from '../components/FireonPromoCard'
 import instanciaWhats from '../assets/whtatsicons/instancia-whats.png'
 import vendedorIcon from '../assets/vendedor/vendedor.png'
 import imgConv100 from '../assets/conversas/100conversas.png'
@@ -280,9 +279,6 @@ export default function Perfil() {
             </div>
           </div>
         </Panel>
-
-        {/* Oferta cruzada: Fireon (aquecedor de chips) — 50% vitalício pra cliente Autsend */}
-        <FireonPromoCard />
 
         {/* Uso do mês */}
         <Panel title="Uso deste mês" icon={Zap}>

@@ -17,6 +17,8 @@ import WhatsAppIcon from './WhatsAppIcon'
 import ParticlesBackground from './ParticlesBackground'
 import { SUPPORT_WHATSAPP } from '../lib/constants'
 import MelhorarPlano from './MelhorarPlano'
+import FireonPromoCard from './FireonPromoCard'
+import gifteImg from '../assets/gifte.webp'
 
 // Navegação por canal. Cada grupo vira uma seção colapsável na sidebar (desktop) e no menu mobile.
 const navGroups = [
@@ -368,6 +370,7 @@ export default function Layout() {
   }))
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const abrirUpgrade = () => setUpgradeOpen(true)
+  const [fireonOpen, setFireonOpen] = useState(false) // popup da oferta Fireon (disparado pelo gift)
   // Rota bloqueada pelo plano (acesso direto por URL)
   const rotaBloqueada = (() => {
     const k = Object.keys(ROTA_FEATURE).find((k) => location.pathname === k || location.pathname.startsWith(k + '/'))
@@ -592,6 +595,48 @@ export default function Layout() {
       >
         <WhatsAppIcon className="w-6 h-6 sm:w-7 sm:h-7" white />
       </a>
+
+      {/* Gift flutuante (acima do WhatsApp) → abre a oferta do Fireon */}
+      <motion.button
+        type="button"
+        onClick={() => setFireonOpen(true)}
+        animate={{ y: [0, -7, 0] }}
+        transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.94 }}
+        className="fixed z-50 w-14 h-14 sm:w-16 sm:h-16 bottom-[4.5rem] right-[max(0.9rem,env(safe-area-inset-right))] sm:bottom-24 sm:right-[1.9rem] touch-manipulation"
+        title="Oferta exclusiva pra você"
+        aria-label="Ver oferta exclusiva do Fireon"
+      >
+        <img src={gifteImg} alt="Presente" className="w-full h-full object-contain select-none pointer-events-none" draggable="false" />
+      </motion.button>
+
+      {/* Popup da oferta Fireon */}
+      <AnimatePresence>
+        {fireonOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setFireonOpen(false)}
+            className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto rounded-3xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <button
+                onClick={() => setFireonOpen(false)}
+                className="absolute top-3 right-3 z-10 flex items-center justify-center w-9 h-9 rounded-full bg-black/40 text-white/80 hover:bg-black/60 hover:text-white backdrop-blur transition"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <FireonPromoCard />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </ParticlesBackground>
   )
