@@ -4262,16 +4262,6 @@ async function getKiwifyOnboardConfig() {
   try { const s = await db.doc('config/kiwify').get(); return s.exists ? s.data() : {} } catch { return {} }
 }
 
-/** Valida a assinatura da Kiwify: ?signature = HMAC-SHA1(rawBody, token). Sem token = verificação desligada. */
-function verifyKiwifySignature(token, signature, rawBody) {
-  if (!token) return true
-  if (!signature || rawBody == null) return false
-  try {
-    const expected = crypto.createHmac('sha1', token).update(rawBody).digest('hex')
-    const a = Buffer.from(String(signature)), b = Buffer.from(expected)
-    return a.length === b.length && crypto.timingSafeEqual(a, b)
-  } catch { return false }
-}
 
 /** Descobre o plano ('padrao'|'pro') do produto comprado, via config/kiwify.produtos (por id ou nome). */
 function planoDoProdutoKiwify(cfg, product) {
@@ -4331,72 +4321,10 @@ async function enviarBoasVindasKiwify(cfg, email, nome, plano) {
   } catch (e) { console.error('Erro no e-mail de boas-vindas Kiwify:', e) }
 }
 
-/**
- * Webhook de onboarding: recebe as vendas do PLANO do app na Kiwify.
- * Compra aprovada/renovação → cria/ativa a conta e seta o plano.
- * Reembolso/chargeback/cancelamento → volta pro Free (congela, não deleta nada).
- * Config em config/kiwify. Assinatura opcional via ?signature (config/kiwify.webhookToken).
- */
-exports.kiwifyOnboarding = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
-  const cfg = await getKiwifyOnboardConfig()
-  const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : (typeof req.rawBody === 'string' ? req.rawBody : '')
-  if (cfg.webhookToken && !verifyKiwifySignature(cfg.webhookToken, req.query.signature, raw)) {
-    res.status(401).json({ error: 'assinatura inválida' }); return
-  }
-
-  const body = parseRequestBody(req)
-  const evento = extractEvent(body)
-  const customer = extractCustomer(body)
-  const product = extractProduct(body)
-  const orderId = extractOrderId(body)
-  const email = (customer.email || '').toLowerCase().trim()
-
-  // Registra o produto recebido (pro admin mapear com 1 clique no painel)
-  if (product.id || product.nome) {
-    try {
-      await db.doc('config/kiwify').set({ produtosVistos: { [String(product.id || product.nome)]: product.nome || String(product.id) } }, { merge: true })
-    } catch (_) { /* ignore */ }
-  }
-
-  if (!email) { res.status(200).json({ ok: true, ignored: 'sem e-mail no payload' }); return }
-
-  const ativa = evento === 'order_status.purchase_approved' || evento === 'subscription_renewed'
-  const revoga = ['order_status.refund', 'order_status.chargeback', 'subscription_canceled', 'subscription_overdue'].includes(evento)
-
-  try {
-    if (ativa) {
-      const plano = planoDoProdutoKiwify(cfg, product)
-      if (!plano) {
-        console.warn('Kiwify onboarding: produto sem plano mapeado.', { id: product.id, nome: product.nome })
-        res.status(200).json({ ok: true, ignored: 'produto não mapeado', product }); return
-      }
-      const { uid, criado } = await garantirUsuarioKiwify(email, customer.nome)
-      await db.doc(`tenants/${uid}`).set({
-        plano, status: 'approved', email, nome: customer.nome || null, origem: 'kiwify',
-        kiwifyOrderId: orderId || null,
-        ...(criado ? { mustChangePassword: true } : {}),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true })
-      if (criado) await enviarBoasVindasKiwify(cfg, email, customer.nome, plano)
-      res.status(200).json({ ok: true, plano, criado, uid }); return
-    }
-
-    if (revoga) {
-      try {
-        const u = await admin.auth().getUserByEmail(email)
-        await db.doc(`tenants/${u.uid}`).set({ plano: 'free', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-        res.status(200).json({ ok: true, revogado: true, uid: u.uid }); return
-      } catch (_) {
-        res.status(200).json({ ok: true, ignored: 'usuário não encontrado para revogar' }); return
-      }
-    }
-
-    res.status(200).json({ ok: true, ignored: evento })
-  } catch (err) {
-    console.error('Erro no onboarding Kiwify:', err)
-    res.status(200).json({ ok: false, error: err.message })
-  }
-})
+// [REMOVIDO por segurança em 2026-07] kiwifyOnboarding — usado quando vendíamos o PLANO do app na Kiwify.
+// Hoje os planos são 100% Stripe (stripeWebhook faz o provisionamento/boas-vindas). O endpoint era público
+// sem token (permitia criar conta/mudar plano/derrubar cliente por payload forjado), então foi apagado.
+// ⚠️ NÃO confundir com os webhooks das LOJAS dos clientes (kiwifyAbandonedCheckout/customWebhook) — esses seguem ativos.
 
 // ───────────────────────── Stripe: checkout dos planos Autsend ─────────────────────────
 
