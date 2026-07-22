@@ -119,7 +119,7 @@ export default function FireonPromoCard() {
                     src={playImg} alt="Play"
                     animate={{ scale: [1, 1.12, 1] }}
                     transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                    className="h-16 w-16 object-contain drop-shadow-[0_6px_20px_rgba(52,211,153,0.45)] transition group-hover:scale-110"
+                    className="h-32 w-32 object-contain drop-shadow-[0_6px_20px_rgba(52,211,153,0.45)] transition group-hover:scale-110"
                   />
                 </span>
               </button>
