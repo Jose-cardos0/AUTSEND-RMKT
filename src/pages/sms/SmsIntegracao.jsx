@@ -50,7 +50,7 @@ function formatarNumero(n) {
 }
 
 /** Seção recolhível — mesmo padrão do WhatsApp Integrações (marca faded no canto direito). */
-function Secao({ title, icon: Icon, open, onToggle, children, bgImg, bgIcon: BgIcon, action }) {
+function Secao({ title, icon: Icon, iconImg, open, onToggle, children, bgImg, bgIcon: BgIcon, action }) {
   return (
     <div className="app-panel rounded-2xl overflow-hidden relative">
       {bgImg && (
@@ -65,7 +65,7 @@ function Secao({ title, icon: Icon, open, onToggle, children, bgImg, bgIcon: BgI
       <div className="relative z-10 flex items-center gap-2 px-4 sm:px-5 py-3.5">
         <button type="button" onClick={onToggle} className="flex items-center gap-2 min-w-0 flex-1 text-left">
           <span className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0">
-            {Icon && <Icon className="w-5 h-5 text-primary-600 shrink-0" />}
+            {iconImg ? <img src={iconImg} alt="" className="h-5 w-auto object-contain shrink-0" /> : Icon && <Icon className="w-5 h-5 text-primary-600 shrink-0" />}
             <span className="truncate">{title}</span>
           </span>
         </button>
@@ -630,7 +630,7 @@ export default function SmsIntegracao() {
 
         {/* Aba API's — conta Telnyx PRÓPRIA do cliente (BYO) */}
         {tab === 'apis' && (<>
-        <Secao title="Minhas contas Telnyx" icon={Globe} bgIcon={Globe} open={apiOpen} onToggle={() => setApiOpen((v) => !v)}>
+        <Secao title="Minhas contas Telnyx" iconImg={telnyxLogo} bgIcon={Globe} open={apiOpen} onToggle={() => setApiOpen((v) => !v)}>
           {provedores.length === 0 ? (
             <div className="py-6 text-center">
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
@@ -716,10 +716,7 @@ export default function SmsIntegracao() {
         </Secao>
 
         {/* Minhas contas SMSDev (SMS Brasil · BYO) */}
-        <Secao title="Minhas contas SMSDev" icon={MessageSquare} bgIcon={MessageSquare} open={smsdevOpen} onToggle={() => setSmsdevOpen((v) => !v)}>
-          <div className="flex items-start justify-end gap-2 mb-3">
-            <button onClick={() => { setFormSmsdev({ apiKey: '', nome: '' }); setNovoSmsdev(true) }} className="btn-primary text-xs min-h-[36px] px-3 shrink-0"><Plus className="w-4 h-4" /> Conectar SMSDev</button>
-          </div>
+        <Secao title="Minhas contas SMSDev" iconImg={smsdevLogo} bgIcon={MessageSquare} open={smsdevOpen} onToggle={() => setSmsdevOpen((v) => !v)}>
           {smsdevProvs.length === 0 ? (
             <div className="py-6 text-center">
               <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-2"><KeyRound className="w-5 h-5" /></span>
