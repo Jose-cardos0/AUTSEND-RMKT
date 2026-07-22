@@ -7,6 +7,7 @@ import gmailIcon from '../assets/iconshome/gmailicon.png'
 import whatsappIcon from '../assets/iconshome/whtsappicon.png'
 import smsIcon from '../assets/iconshome/smsicon.png'
 import callIcon from '../assets/iconshome/callicon.png'
+import lojistaIcon from '../assets/lojista.png'
 import mock1 from '../assets/carrosell/mockup-celular1.png'
 import mock2 from '../assets/carrosell/mockup-celular2.png'
 import mock3 from '../assets/carrosell/mockup-celular-3.png'
@@ -93,6 +94,7 @@ const FEATURES = [
   { img: gmailIcon, title: 'E-mail marketing', desc: 'Campanhas e automações de e-mail com entrega e métricas de verdade.' },
   { img: smsIcon, title: 'SMS Marketing', desc: 'Mensagens diretas que chegam na hora — alta abertura e resposta.' },
   { img: callIcon, title: 'Call Marketing IA', desc: 'Ligações automáticas com IA pra reengajar e converter seus leads.' },
+  { img: lojistaIcon, title: 'Vendedor IA', desc: 'Um vendedor de IA que atende, contorna objeções e fecha a venda no WhatsApp por você.' },
 ]
 
 const PLANOS_LP = [
@@ -233,10 +235,10 @@ export default function Landing() {
 
         {/* ── Recursos ── */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
             {FEATURES.map((f, i) => (
               <div key={i} className="relative h-full">
-                {f.title === 'Call Marketing IA' && (
+                {f.title === 'Vendedor IA' && (
                   <div aria-hidden className="hidden lg:block absolute left-1/2 top-[8%] -translate-x-1/2 -translate-y-1/2 w-[155%] -z-10 pointer-events-none">
                     <Float y={12} dur={5}><img src={astrosend} alt="" className="w-full max-w-none select-none" /></Float>
                   </div>
