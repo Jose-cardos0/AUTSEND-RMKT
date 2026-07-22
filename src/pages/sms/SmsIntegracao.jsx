@@ -778,7 +778,7 @@ export default function SmsIntegracao() {
                 <span className="text-[11px] text-stone-500 text-center leading-tight">SMS internacional (EUA)</span>
               </button>
               <button onClick={() => { setEscolherProv(false); setFormSmsdev({ apiKey: '', nome: '' }); setNovoSmsdev(true) }} className="flex flex-col items-center gap-2 rounded-2xl border-2 border-surface-200 hover:border-emerald-300 hover:bg-emerald-50/40 p-4 transition">
-                <img src={smsdevLogo} alt="SMSDev" className="h-12 w-auto object-contain" />
+                <img src={smsdevLogo} alt="SMSDev" className="h-[38px] w-auto object-contain" />
                 <span className="text-sm font-semibold text-stone-800">SMSDev</span>
                 <span className="text-[11px] text-stone-500 text-center leading-tight">SMS Brasil (+55)</span>
               </button>
