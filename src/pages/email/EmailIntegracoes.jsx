@@ -10,6 +10,7 @@ import PageLoader from '../../components/PageLoader'
 import { useConfirm } from '../../components/ConfirmDialog'
 import { usePlano } from '../../lib/PlanoContext'
 import EmojiPicker from '../../components/EmojiPicker'
+import resendLogo from '../../assets/resendlogo.png'
 import ChavesPicker from '../../components/ChavesPicker'
 import { Mail, Globe, KeyRound, Eye, EyeOff, Save, Send, Loader2, Check, ExternalLink, Webhook, Copy, BarChart3, ChevronDown, Plus, Trash2, UserPlus, X, Server, BadgeCheck } from 'lucide-react'
 
@@ -18,12 +19,12 @@ const genId = () => 'rem_' + Math.random().toString(36).slice(2, 10)
 const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e || '').trim())
 
 /** Cabeçalho de seção recolhível, com botão de ação opcional (ex.: +) ao lado da setinha. */
-function Secao({ title, icon: Icon, open, onToggle, action, children }) {
+function Secao({ title, icon: Icon, iconImg, open, onToggle, action, children }) {
   return (
     <div className="app-panel rounded-2xl overflow-hidden">
       <div className="w-full flex items-center justify-between gap-2 px-4 sm:px-5 py-3">
         <button type="button" onClick={onToggle} className="flex items-center gap-2 text-sm sm:text-base font-semibold text-stone-800 min-w-0 flex-1 text-left hover:opacity-80">
-          {Icon && <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 shrink-0" />}
+          {iconImg ? <img src={iconImg} alt="" className="h-5 w-auto object-contain shrink-0" /> : Icon && <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 shrink-0" />}
           <span className="truncate">{title}</span>
         </button>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -447,7 +448,7 @@ export default function EmailIntegracoes() {
         {/* ───── Provedores de envio ───── */}
         <Secao
           title="Provedores de envio"
-          icon={Mail}
+          iconImg={resendLogo}
           open={secoes.provedores}
           onToggle={() => toggleSecao('provedores')}
           action={
