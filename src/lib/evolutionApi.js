@@ -41,6 +41,13 @@ export async function reconectarInstancia(nomeInstancia) {
   return r.data
 }
 
+/** Exclui a sessão no WAHA (via WF3, rota excluir_instancia) — servidor→n8n. Chamar ANTES de apagar o doc. */
+export async function excluirInstanciaWaha(nomeInstancia) {
+  const call = httpsCallable(functions, 'waInstanciaAcao')
+  const r = await call({ tipoAcao: 'excluir_instancia', nomeInstancia: (nomeInstancia || '').trim() })
+  return r.data
+}
+
 /** Checa no servidor (sem cache) se o cliente ainda pode criar instância. */
 export async function podeCriarInstancia() {
   const call = httpsCallable(functions, 'instanciaPodeCriar')

@@ -1761,7 +1761,7 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
 })
 
 /**
- * Proxy server-side pro WF3 (WAHA): verificar_status / obter_qr / reconectar / logout.
+ * Proxy server-side pro WF3 (WAHA): verificar_status / obter_qr / reconectar / logout / excluir_instancia.
  * O front NÃO chama o n8n direto (fetch cross-origin do browser é bloqueado por CORS → o n8n
  * não recebe nada). Aqui é servidor→n8n, sem CORS. Só age em instância do próprio usuário.
  */
@@ -1771,7 +1771,7 @@ exports.waInstanciaAcao = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   const d = request.data || {}
   const tipoAcao = String(d.tipoAcao || '').trim()
   const nomeInstancia = String(d.nomeInstancia || '').trim()
-  const ACOES = ['verificar_status', 'obter_qr', 'reconectar', 'logout']
+  const ACOES = ['verificar_status', 'obter_qr', 'reconectar', 'logout', 'excluir_instancia']
   if (!ACOES.includes(tipoAcao)) throw new HttpsError('invalid-argument', 'Ação inválida.')
   if (!nomeInstancia) throw new HttpsError('invalid-argument', 'Sem instância.')
   // A instância é do usuário?

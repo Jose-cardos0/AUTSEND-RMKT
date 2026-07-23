@@ -13,7 +13,7 @@ import {
   updateWebhook,
   deleteWebhook,
 } from '../lib/firestore'
-import { criarInstancia, podeCriarInstancia, verificarStatus, buscarGrupos, obterQr, reconectarInstancia } from '../lib/evolutionApi'
+import { criarInstancia, podeCriarInstancia, verificarStatus, buscarGrupos, obterQr, reconectarInstancia, excluirInstanciaWaha } from '../lib/evolutionApi'
 import { criarCheckoutInstancia } from '../lib/perfil'
 import ComprarInstanciaModal from '../components/ComprarInstanciaModal'
 import CheckoutModal from '../components/CheckoutModal'
@@ -393,6 +393,12 @@ export default function Integracoes() {
     const nome = inst.nomeInstancia || 'esta instância'
     if (!(await confirm({ title: `Excluir "${nome}"?`, message: 'Esta ação desconecta e remove a instância.', confirmLabel: 'Excluir' }))) return
     try {
+      // 1º avisa o WAHA (via WF3) pra excluir a sessão de verdade — best-effort (não trava a remoção do doc).
+      if (inst.nomeInstancia) {
+        try { await excluirInstanciaWaha(inst.nomeInstancia) }
+        catch (e) { console.warn('excluir_instancia no WAHA falhou (segue removendo o doc):', e?.message || e) }
+      }
+      // 2º remove o doc no Firestore.
       await deleteInstance(user.uid, docId)
       const updated = await getInstances(user.uid)
       setInstances(updated)
