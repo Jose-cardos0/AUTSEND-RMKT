@@ -7,6 +7,7 @@ import Layout from './components/Layout'
 import TermosDeUso from './components/TermosDeUso'
 import Login from './pages/Login'
 import Landing from './pages/Landing'
+import AuthAction from './pages/AuthAction'
 import Integracoes from './pages/Integracoes'
 import Remarketing from './pages/Remarketing'
 import RemarketingGrupos from './pages/RemarketingGrupos'
@@ -126,6 +127,8 @@ export default function App() {
       />
       <Routes>
         <Route path="/login" element={<Login />} />
+        {/* Ação de autenticação (reset de senha / verificar e-mail) — branded, aponta aqui no Firebase Console */}
+        <Route path="/auth/action" element={<AuthAction />} />
         {/* Documentação pública (linkada no rodapé da landing) */}
         <Route path="/docs" element={<Suspense fallback={<PageLoader className="min-h-screen" />}><Docs /></Suspense>} />
         <Route path="/" element={<RootRoute />}>
