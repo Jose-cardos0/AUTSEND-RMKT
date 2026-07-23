@@ -917,21 +917,18 @@ async function getTelnyxVozNumeroCliente(uid) {
   } catch (_) { return null }
 }
 
-/** Provedor Telnyx BYO pra LIGAÇÃO: o número marcado em vozAtivas (resolve o formato exato); senão o `from`. */
+/** Provedor Telnyx BYO com um número MARCADO pra LIGAÇÃO (vozAtivas). Só retorna se houver um; senão null. */
 async function getTelnyxVozProviderCliente(uid) {
   try {
     const snap = await db.collection(`users/${uid}/smsProviders`).get()
     if (snap.empty) return null
     const provs = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.apiKey)
-    const alvo = provs.find((p) => Array.isArray(p.vozAtivas) && p.vozAtivas.length) || provs.find((p) => p.from) || null
-    if (!alvo) return null
-    let from = alvo.from
-    if (Array.isArray(alvo.vozAtivas) && alvo.vozAtivas.length) {
-      const alvoNorm = _norm(alvo.vozAtivas[0])
-      from = (Array.isArray(alvo.numeros) ? alvo.numeros : []).find((x) => _norm(x) === alvoNorm) || from
-    }
+    const alvo = provs.find((p) => Array.isArray(p.vozAtivas) && p.vozAtivas.length)
+    if (!alvo) return null // nenhum número BYO marcado pra Ligação
+    const alvoNorm = _norm(alvo.vozAtivas[0])
+    const from = (Array.isArray(alvo.numeros) ? alvo.numeros : []).find((x) => _norm(x) === alvoNorm)
     if (!from) return null
-    return { apiKey: alvo.apiKey, from, voiceConnectionId: alvo.voiceConnectionId || '', messagingProfileId: alvo.messagingProfileId || '' }
+    return { providerId: alvo.id, apiKey: alvo.apiKey, from, voiceConnectionId: alvo.voiceConnectionId || '' }
   } catch (_) { return null }
 }
 
@@ -2986,6 +2983,13 @@ exports.numeroSetFuncao = onCall({ region: 'us-central1', timeoutSeconds: 30 }, 
   const batch = db.batch()
 
   if (funcao === 'ligacao') {
+    // BYO: provisiona a voz na conta Telnyx do cliente ANTES de marcar (se falhar, nem marca — sem estado parcial).
+    if (ativo && ehByo) {
+      const pv = provs.docs.find((d) => d.id === providerId)
+      const exato = (Array.isArray(pv?.data()?.numeros) ? pv.data().numeros : []).find((x) => _norm(x) === numNorm) || null
+      if (!pv || !exato) throw new HttpsError('not-found', 'Número não encontrado na conta.')
+      await provisionarVozBYO(uid, providerId, pv.data().apiKey, exato) // lança HttpsError claro se a conta não estiver pronta
+    }
     nums.forEach((d) => batch.set(d.ref, { vozAtiva: false }, { merge: true }))
     provs.forEach((d) => batch.set(d.ref, { vozAtivas: [] }, { merge: true }))
     if (ativo) {
@@ -2993,8 +2997,7 @@ exports.numeroSetFuncao = onCall({ region: 'us-central1', timeoutSeconds: 30 }, 
       else batch.set(db.doc(`users/${uid}/smsNumeros/${numeroId}`), { vozAtiva: true }, { merge: true })
     }
     await batch.commit()
-    // App: conecta o número à voz na Telnyx (senão a Ligação IA não consegue originar dele).
-    // BYO (conta própria do cliente) fica pro módulo de call center (usa as credenciais dele).
+    // App (nossa conta): conecta o número à voz na Telnyx (senão a Ligação IA não consegue originar dele).
     if (ativo && !ehByo) {
       try {
         const vc = await getTelnyxVoiceConfig()
@@ -3688,27 +3691,25 @@ async function getTelnyxVoiceConfig() {
 }
 
 /**
- * Resolve a config de LIGAÇÃO. Espelha resolverTelnyxEnvio.
- * forcar: 'api' → conta Telnyx própria (BYO) · 'eua' → nossa conta · null → auto (BYO primeiro).
+ * Resolve a config de LIGAÇÃO seguindo a FONTE do número marcado pra Ligação (Geral → Números):
+ * BYO marcado → conta Telnyx do cliente (provisionada) · senão → conta da plataforma (número do app / principal).
  * Retorna { cfg: { apiKey, connectionId, from }, propria } ou { erro }.
  */
 async function resolverCallEnvio(uid, ehAdmin, forcar) {
-  if (forcar !== 'eua') {
-    const prov = await getTelnyxVozProviderCliente(uid)
-    if (prov) {
-      const vc = await getTelnyxVoiceConfig()
-      // BYO usa a key do cliente; a connection precisa existir na conta dele (configurada na integração).
-      return { cfg: { apiKey: prov.apiKey, connectionId: prov.voiceConnectionId || vc.connectionId, from: prov.from }, propria: true }
-    }
-    if (forcar === 'api') return { erro: 'Conecte sua conta Telnyx para ligar por aqui.' }
+  // 1) Número da SUA conta Telnyx (BYO) marcado pra Ligação → liga pela sua conta (precisa estar provisionada).
+  const provVoz = await getTelnyxVozProviderCliente(uid)
+  if (provVoz) {
+    if (!provVoz.voiceConnectionId) return { erro: 'A voz do seu número Telnyx ainda não foi ativada. Reative a Ligação IA nele em Geral → Números.' }
+    return { cfg: { apiKey: provVoz.apiKey, connectionId: provVoz.voiceConnectionId, from: provVoz.from }, propria: true }
   }
+  // 2) Número comprado no app → conta da plataforma (o marcado como Ligação; senão o principal).
   const vc = await getTelnyxVoiceConfig()
   if (!vc.apiKey || !vc.connectionId) return { erro: 'A Ligação IA ainda não foi ativada pela plataforma.' }
   const num = await getTelnyxVozNumeroCliente(uid)
   if (num) return { cfg: { apiKey: vc.apiKey, connectionId: vc.connectionId, from: num.number }, propria: false }
   const base = await getTelnyxConfig()
   if (ehAdmin && base.from) return { cfg: { apiKey: vc.apiKey, connectionId: vc.connectionId, from: base.from }, propria: false }
-  return { erro: 'Você ainda não tem um número (EUA). Vá em Call → Integração e ative a voz no seu chip.' }
+  return { erro: 'Você ainda não tem número pra Ligação. Marque a Ligação IA num número em Geral → Números.' }
 }
 
 /** Grok escreve um roteiro curto e natural pra ser FALADO na ligação (não é texto pra ler). */
@@ -3948,6 +3949,49 @@ async function telnyxHangup(apiKey, ccid) {
 }
 
 const AUDIO_BASE_URL = 'https://us-central1-afiliadocdnx.cloudfunctions.net/telnyxAudioServe'
+const AUTSEND_VOICE_WEBHOOK = 'https://us-central1-afiliadocdnx.cloudfunctions.net/telnyxVoiceWebhook'
+
+/**
+ * BYO VOICE: provisiona a VOZ na conta Telnyx do CLIENTE pra um número. Garante um outbound voice profile,
+ * uma Call Control Application apontando pro NOSSO webhook e liga o número nela. Devolve o connectionId
+ * (guardado em smsProviders.voiceConnectionId pra reuso). Lança HttpsError claro se a conta não estiver pronta.
+ */
+async function provisionarVozBYO(uid, providerId, apiKey, numeroExato) {
+  const H = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+  const provRef = db.doc(`users/${uid}/smsProviders/${providerId}`)
+  // 1) Reusa a connection já provisionada, se ainda existir.
+  let connectionId = (await provRef.get()).data()?.voiceConnectionId || null
+  if (connectionId) {
+    try { const chk = await fetch(`https://api.telnyx.com/v2/call_control_applications/${connectionId}`, { headers: H }); if (!chk.ok) connectionId = null } catch (_) { connectionId = null }
+  }
+  if (!connectionId) {
+    // 2) Outbound voice profile (necessário pra ligação de saída). Usa o 1º; senão cria.
+    let profileId = null
+    try { const lp = await fetch('https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=1', { headers: H }); const lpd = await lp.json().catch(() => ({})); profileId = lpd?.data?.[0]?.id || null } catch (_) {}
+    if (!profileId) {
+      const cp = await fetch('https://api.telnyx.com/v2/outbound_voice_profiles', { method: 'POST', headers: H, body: JSON.stringify({ name: 'Autsend Voz' }) })
+      const cpd = await cp.json().catch(() => ({}))
+      if (!cp.ok) throw new HttpsError('failed-precondition', cpd?.errors?.[0]?.detail || 'Sua conta Telnyx não permitiu criar um perfil de voz de saída. Verifique se ela está habilitada para voz.')
+      profileId = cpd?.data?.id
+    }
+    // 3) Call Control Application (connection) apontando pro nosso webhook.
+    const ca = await fetch('https://api.telnyx.com/v2/call_control_applications', {
+      method: 'POST', headers: H,
+      body: JSON.stringify({ application_name: `Autsend Voz ${uid.slice(0, 6)}`, webhook_event_url: AUTSEND_VOICE_WEBHOOK, outbound: { outbound_voice_profile_id: profileId } }),
+    })
+    const cad = await ca.json().catch(() => ({}))
+    if (!ca.ok) throw new HttpsError('failed-precondition', cad?.errors?.[0]?.detail || 'Não consegui criar a aplicação de voz na sua conta Telnyx.')
+    connectionId = cad?.data?.id
+    await provRef.set({ voiceConnectionId: connectionId }, { merge: true })
+  }
+  // 4) Acha o phoneId do número na conta do cliente e liga na connection (pra receber/originar por ele).
+  const pn = await fetch(`https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(numeroExato)}`, { headers: H })
+  const pnd = await pn.json().catch(() => ({}))
+  const phoneId = pnd?.data?.[0]?.id
+  if (!phoneId) throw new HttpsError('failed-precondition', 'Número não encontrado na sua conta Telnyx.')
+  await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneId}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: connectionId }) })
+  return connectionId
+}
 
 /** Webhook da Telnyx Voice (Call Control). Conduz o torpedo e debita os segundos ao desligar. */
 exports.telnyxVoiceWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (req, res) => {
