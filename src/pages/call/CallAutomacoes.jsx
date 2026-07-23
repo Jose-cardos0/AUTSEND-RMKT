@@ -5,7 +5,7 @@ import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { auth, functions } from '../../lib/firebase'
 import { getCallAutomations, saveCallAutomationGrupo, getProductGroups, getLeads, getCallLogs } from '../../lib/firestore'
-import { KIWIFY_EVENTS, TEMPLATE_VARIABLES } from '../../lib/constants'
+import { KIWIFY_EVENTS, TEMPLATE_VARIABLES, canonicalEvento } from '../../lib/constants'
 import { usePlano } from '../../lib/PlanoContext'
 import PageShell, { Panel } from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
@@ -347,9 +347,12 @@ export default function CallAutomacoes() {
   }
 
   const handleLigar = async (lead) => {
-    const grupoLead = grupos.find((g) => Array.isArray(g.produtos) && g.produtos.includes(lead.produto))
-    const forEvent = autos.filter((a) => a.evento === lead.evento)
-    const auto = (grupoLead && forEvent.find((a) => a.grupoId === grupoLead.id)) || forEvent.find((a) => !a.grupoId) || null
+    const prodL = String(lead.produto || '').toLowerCase()
+    const grupoLead = grupos.find((g) => Array.isArray(g.produtos) && g.produtos.some((p) => String(p).toLowerCase() === prodL))
+    const evL = canonicalEvento(lead.evento)
+    const forEvent = autos.filter((a) => canonicalEvento(a.evento) === evL)
+    // Preferência: automação do grupo do lead; senão uma global (sem grupo); senão a 1ª do evento (fallback).
+    const auto = (grupoLead && forEvent.find((a) => a.grupoId === grupoLead.id)) || forEvent.find((a) => !a.grupoId) || forEvent[0] || null
     if (!auto?.roteiro) { toast.error('Nenhuma automação de ligação configurada para este evento. Configure primeiro.'); return }
     if (!e164Valido(lead.telefone, permitirBR)) { toast.error(permitirBR ? 'Número inválido.' : 'Este canal (EUA) não liga para números do Brasil (+55).'); return }
     setLigandoId(lead.id)
