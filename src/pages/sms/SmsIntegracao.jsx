@@ -683,40 +683,22 @@ export default function SmsIntegracao() {
                       </div>
                     </div>
 
-                    {/* Números da conta — mesmo estilo dos cards de Números */}
+                    {/* Números da conta — só INFO. As funções (SMS/Ligação/CallCenter) se definem na aba Números. */}
                     {aberta && (
                       <div className="px-3 sm:px-4 pb-4 pt-1">
-                        <p className="text-sm font-medium text-stone-700 mb-2">Selecione qual número usar como <strong>principal</strong> nos envios.</p>
+                        <p className="text-sm text-stone-500 mb-2">Números desta conta. Defina as funções (SMS · Ligação IA · CallCenter) na aba <strong>Números</strong>.</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                          {nums.map((num) => {
-                            // Só existe UM principal global: é a conta principal + o número dela em uso.
-                            const ativo = p.principal && p.from === num
-                            return (
-                              <div key={num} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${ativo ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-white'}`}>
-                                {ativo && (
-                                  <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
-                                    <Star className="w-2.5 h-2.5" /> Principal
-                                  </span>
-                                )}
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5">
-                                      <Bandeira numero={num} className="w-4 h-auto rounded-sm shrink-0" />
-                                      {formatarNumero(num)}
-                                    </p>
-                                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                                      <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
-                                    </div>
-                                  </div>
-                                  {!ativo && (
-                                    <button type="button" onClick={() => escolherFrom(p, num)} disabled={acaoId === p.id} className="p-2.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors touch-manipulation disabled:opacity-60 shrink-0" title="Definir como principal" aria-label="Definir como principal">
-                                      {acaoId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
-                                    </button>
-                                  )}
-                                </div>
+                          {nums.map((num) => (
+                            <div key={num} className="p-4 sm:p-5 rounded-xl border-2 border-surface-200 bg-white">
+                              <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5">
+                                <Bandeira numero={num} className="w-4 h-auto rounded-sm shrink-0" />
+                                {formatarNumero(num)}
+                              </p>
+                              <div className="mt-2">
+                                <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
                               </div>
-                            )
-                          })}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
