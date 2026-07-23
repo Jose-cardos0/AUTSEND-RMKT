@@ -32,7 +32,7 @@ const navGroups = [
       { to: '/produtos', label: 'Produtos', icon: Package },
       { to: '/checkouts', label: 'Checkouts', icon: ShoppingBag },
       { to: '/templates', label: 'Templates', icon: MessageSquare },
-      { to: '/numeros', label: 'Números', icon: Phone },
+      { to: '/numeros', label: 'Números', icon: Phone, img: euaflag },
     ],
   },
   {
@@ -147,12 +147,12 @@ const isGroupActive = (group, pathname) =>
   allGroupItems(group).some((it) => pathname === it.to || pathname.startsWith(it.to + '/'))
 
 // Item usado no menu mobile (drawer).
-function ItemLink({ to, label, icon: Icon, soon, locked, badge, onNavigate, onLocked }) {
+function ItemLink({ to, label, icon: Icon, img, soon, locked, badge, onNavigate, onLocked }) {
   if (locked) {
     return (
       <button type="button" onClick={onLocked} title="Disponível em planos superiores"
         className="relative w-full text-left flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-[13px] font-semibold text-stone-400 hover:text-primary-700 hover:bg-primary-50/70 transition-all duration-200">
-        <Icon className="w-4 h-4 opacity-70 shrink-0" />
+        {img ? <img src={img} alt="" className="w-4 h-auto rounded-sm shrink-0 opacity-70" /> : <Icon className="w-4 h-4 opacity-70 shrink-0" />}
         <span className="flex-1">{label}</span>
         <Lock className="w-4 h-4 shrink-0 opacity-70" />
       </button>
@@ -171,7 +171,7 @@ function ItemLink({ to, label, icon: Icon, soon, locked, badge, onNavigate, onLo
         )
       }
     >
-      <Icon className="w-4 h-4 opacity-90 shrink-0" />
+      {img ? <img src={img} alt="" className="w-4 h-auto rounded-sm shrink-0 opacity-90" /> : <Icon className="w-4 h-4 opacity-90 shrink-0" />}
       <span className="flex-1">{label}</span>
       {badge && <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" title="Alertas de segurança" />}
       {soon && (
@@ -190,7 +190,7 @@ function SubItemLink({ item, onLocked }) {
     return (
       <button type="button" onClick={onLocked} title="Disponível em planos superiores"
         className="relative w-full flex items-center gap-2.5 pl-3 pr-2.5 py-2 rounded-lg text-[13px] font-medium text-stone-400 hover:text-primary-600 hover:bg-primary-50/60 transition-all duration-200">
-        <SubIcon className="w-4 h-4 shrink-0 opacity-70" />
+        {item.img ? <img src={item.img} alt="" className="w-4 h-auto rounded-sm shrink-0 opacity-70" /> : <SubIcon className="w-4 h-4 shrink-0 opacity-70" />}
         <span className="flex-1 text-left">{item.label}</span>
         <Lock className="w-3.5 h-3.5 shrink-0 opacity-70" />
       </button>
@@ -212,7 +212,7 @@ function SubItemLink({ item, onLocked }) {
       {({ isActive }) => (
         <>
           <span className={clsx('absolute -left-[13px] top-1/2 -translate-y-1/2 h-1.5 w-1.5 rounded-full transition-colors', isActive ? 'bg-primary-600' : 'bg-transparent')} />
-          <SubIcon className="w-4 h-4 shrink-0 opacity-90" />
+          {item.img ? <img src={item.img} alt="" className="w-4 h-auto rounded-sm shrink-0 opacity-90" /> : <SubIcon className="w-4 h-4 shrink-0 opacity-90" />}
           <span className="flex-1">{item.label}</span>
           {item.badge && <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" title="Alertas de segurança" />}
         </>
