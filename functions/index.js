@@ -2878,6 +2878,110 @@ async function listarNumerosMapeados(uid) {
   return numeros
 }
 
+const _norm = (s) => String(s || '').replace(/\D/g, '')
+
+/**
+ * Lista TODOS os números EUA (comprados no app + conta Telnyx própria/BYO) com as 3 FUNÇÕES:
+ * sms (= principal global), ligacao (= vozAtiva) e callcenter (multi). Deduplicado por número.
+ * Cada item: { id, numero, fonte:'app'|'byo', sms, ligacao, callcenter }.
+ */
+exports.numerosListarComFuncoes = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const [numSnap, provSnap] = await Promise.all([
+    db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').get(),
+    db.collection(`users/${uid}/smsProviders`).get(),
+  ])
+  const vistos = new Set()
+  const out = []
+  for (const d of numSnap.docs) {
+    const x = d.data(); const num = x.number
+    if (!num) continue
+    vistos.add(_norm(num))
+    out.push({ id: d.id, numero: num, fonte: 'app', sms: !!x.principal, ligacao: !!x.vozAtiva, callcenter: !!x.callCenter })
+  }
+  for (const p of provSnap.docs) {
+    const px = p.data()
+    const nums = Array.isArray(px.numeros) ? px.numeros : []
+    const vozAtivas = new Set((Array.isArray(px.vozAtivas) ? px.vozAtivas : []).map(_norm))
+    const callCenters = new Set((Array.isArray(px.callCenters) ? px.callCenters : []).map(_norm))
+    const provPrincipal = !!px.principal
+    const provFrom = _norm(px.from)
+    for (const num of nums) {
+      const nn = _norm(num)
+      if (!nn || vistos.has(nn)) continue
+      vistos.add(nn)
+      out.push({
+        id: `byo:${p.id}:${nn}`, numero: num, fonte: 'byo',
+        sms: provPrincipal && provFrom === nn, ligacao: vozAtivas.has(nn), callcenter: callCenters.has(nn),
+      })
+    }
+  }
+  return { numeros: out }
+})
+
+/**
+ * Liga/desliga uma FUNÇÃO num número. Regras: sms e ligacao são ÚNICOS globais (ativar num
+ * número desliga nos outros); callcenter é MÚLTIPLO. Mapeia nos campos que os envios já usam
+ * (principal / vozAtiva) — callcenter fica em campo próprio (sem envio ainda).
+ * @param {{ id: string, funcao: 'sms'|'ligacao'|'callcenter', ativo?: boolean }} data
+ */
+exports.numeroSetFuncao = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const id = String(request.data?.id || '')
+  const funcao = String(request.data?.funcao || '')
+  const ativo = request.data?.ativo !== false
+  if (!id || !['sms', 'ligacao', 'callcenter'].includes(funcao)) throw new HttpsError('invalid-argument', 'Parâmetros inválidos.')
+  const ehByo = id.startsWith('byo:')
+  let providerId = null, numNorm = null, numeroId = null
+  if (ehByo) { const parts = id.split(':'); providerId = parts[1]; numNorm = parts[2] } else { numeroId = id }
+
+  // ── CALLCENTER (múltiplo) ──
+  if (funcao === 'callcenter') {
+    if (ehByo) {
+      const op = ativo ? admin.firestore.FieldValue.arrayUnion(numNorm) : admin.firestore.FieldValue.arrayRemove(numNorm)
+      await db.doc(`users/${uid}/smsProviders/${providerId}`).set({ callCenters: op }, { merge: true })
+    } else {
+      await db.doc(`users/${uid}/smsNumeros/${numeroId}`).set({ callCenter: ativo }, { merge: true })
+    }
+    return { ok: true }
+  }
+
+  // ── SMS ou LIGAÇÃO (único global) ──
+  const [nums, provs] = await Promise.all([
+    db.collection(`users/${uid}/smsNumeros`).get(),
+    db.collection(`users/${uid}/smsProviders`).get(),
+  ])
+  const batch = db.batch()
+
+  if (funcao === 'ligacao') {
+    nums.forEach((d) => batch.set(d.ref, { vozAtiva: false }, { merge: true }))
+    provs.forEach((d) => batch.set(d.ref, { vozAtivas: [] }, { merge: true }))
+    if (ativo) {
+      if (ehByo) batch.set(db.doc(`users/${uid}/smsProviders/${providerId}`), { vozAtivas: [numNorm] }, { merge: true })
+      else batch.set(db.doc(`users/${uid}/smsNumeros/${numeroId}`), { vozAtiva: true }, { merge: true })
+    }
+    await batch.commit()
+    return { ok: true }
+  }
+
+  // funcao === 'sms' → principal global (número OU provider). BYO precisa setar o `from` exato.
+  nums.forEach((d) => batch.set(d.ref, { principal: false }, { merge: true }))
+  provs.forEach((d) => batch.set(d.ref, { principal: false }, { merge: true }))
+  if (ativo) {
+    if (ehByo) {
+      const pv = provs.docs.find((d) => d.id === providerId)
+      const exato = (Array.isArray(pv?.data()?.numeros) ? pv.data().numeros : []).find((x) => _norm(x) === numNorm) || null
+      batch.set(db.doc(`users/${uid}/smsProviders/${providerId}`), { principal: true, ...(exato ? { from: exato } : {}) }, { merge: true })
+    } else {
+      batch.set(db.doc(`users/${uid}/smsNumeros/${numeroId}`), { principal: true }, { merge: true })
+    }
+  }
+  await batch.commit()
+  return { ok: true }
+})
+
 /**
  * Sincroniza o status dos números com a Telnyx (best-effort): posse do número (não-active = banido)
  * e verificação toll-free (rejeitada = restrito). Não reativa sozinho um número marcado por erro de envio.

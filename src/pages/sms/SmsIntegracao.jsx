@@ -24,6 +24,8 @@ import {
   listSmsdevProviders,
   setPrincipalSmsdev,
   deleteSmsdevProvider,
+  listarNumerosComFuncoes,
+  setFuncaoNumero,
 } from '../../lib/smsNumeros'
 import {
   Phone, Star, Trash2, Loader2, X, Plus, Check, ShoppingCart,
@@ -36,6 +38,7 @@ import chipastron from '../../assets/chip/chipastron.png'
 import usFlagBg from '../../assets/flags/us-flag.png'
 import telnyxLogo from '../../assets/telnyx.png'
 import smsdevLogo from '../../assets/smsdevlogo.png'
+import foguete from '../../assets/foguetes/foguete1.png'
 import CheckoutModal from '../../components/CheckoutModal'
 
 const PRECO_MES = 'R$ 29,90/mês'
@@ -114,18 +117,42 @@ export default function SmsIntegracao() {
   const [acaoId, setAcaoId] = useState(null) // id em ação (principal/cancelar)
   const [gerenciar, setGerenciar] = useState(null) // número aberto no popup de gerenciar
   const [gerenciando, setGerenciando] = useState(null) // 'cancelar' | 'excluir' em andamento
+  const [numsFuncoes, setNumsFuncoes] = useState([]) // todos os números (app + BYO) com as 3 funções
+  const [togglingKey, setTogglingKey] = useState(null) // "id:funcao" em ação
+
+  const recarregarFuncoes = async () => {
+    try { const r = await listarNumerosComFuncoes(); setNumsFuncoes(r?.numeros || []) } catch (_) {}
+  }
 
   const carregar = async () => {
     try {
-      const [rn, rp, rs] = await Promise.all([listarNumerosSMS(), listarProvidersSMS().catch(() => ({ provedores: [] })), listSmsdevProviders().catch(() => ({ provedores: [] }))])
+      const [rn, rp, rs, rf] = await Promise.all([
+        listarNumerosSMS(),
+        listarProvidersSMS().catch(() => ({ provedores: [] })),
+        listSmsdevProviders().catch(() => ({ provedores: [] })),
+        listarNumerosComFuncoes().catch(() => ({ numeros: [] })),
+      ])
       setNumeros(rn?.numeros || [])
       setProvedores(rp?.provedores || [])
       setSmsdevProvs(rs?.provedores || [])
+      setNumsFuncoes(rf?.numeros || [])
     } catch (_) {
-      setNumeros([]); setProvedores([]); setSmsdevProvs([])
+      setNumeros([]); setProvedores([]); setSmsdevProvs([]); setNumsFuncoes([])
     } finally {
       setLoading(false)
     }
+  }
+
+  // Liga/desliga uma função (SMS/Ligação/CallCenter) num número. Recarrega tudo (as travas mexem em outros).
+  const toggleFuncao = async (n, funcao) => {
+    const ativo = !n[funcao]
+    setTogglingKey(`${n.id}:${funcao}`)
+    try {
+      await setFuncaoNumero(n.id, funcao, ativo)
+      await recarregarFuncoes()
+    } catch (err) {
+      toast.error(err?.message || 'Não consegui alterar a função do número.')
+    } finally { setTogglingKey(null) }
   }
 
   const conectarSmsdev = async () => {
@@ -157,7 +184,7 @@ export default function SmsIntegracao() {
     carregar()
     // Em background: sincroniza status (banido/restrito) com a Telnyx e atualiza os cards.
     sincronizarNumerosSMS()
-      .then((r) => { if (r?.numeros) setNumeros(r.numeros) })
+      .then((r) => { if (r?.numeros) setNumeros(r.numeros); recarregarFuncoes() })
       .catch(() => {})
   }, [user?.uid])
 
@@ -535,95 +562,79 @@ export default function SmsIntegracao() {
       <div className="space-y-3">
         {tab === 'numeros' && (
         <Secao title="Meus números" icon={Phone} bgImg={chipastron} open={numOpen} onToggle={() => setNumOpen((v) => !v)}>
-          {numeros.length === 0 ? (
+          {numsFuncoes.length === 0 ? (
             <div className="py-8 text-center">
               <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-3">
                 <Phone className="w-6 h-6" />
               </span>
-              <p className="text-sm text-stone-600 font-medium">Você ainda não tem um número de SMS.</p>
+              <p className="text-sm text-stone-600 font-medium">Você ainda não tem números. Compre um ou conecte sua conta Telnyx nas API's.</p>
               <button onClick={abrirPopup} className="btn-primary mt-4 min-h-[42px] px-5">
                 <ShoppingCart className="w-4 h-4" /> Comprar meu primeiro número
               </button>
             </div>
           ) : (
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-stone-700">
-                Selecione qual número usar como <strong>principal</strong> nos envios.
+            <div className="space-y-5">
+              <p className="text-sm text-stone-600">
+                Clique nos selos pra definir pra que serve cada número. <strong>SMS EUA</strong> e <strong>Ligação IA</strong> só podem estar em <strong>1 número</strong> cada; <strong>CallCenter</strong> aceita vários.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {numeros.map((n) => {
-                  const isPrincipal = n.principal
-                  const comErro = n.status === 'erro'
-                  const banido = n.status === 'banido'
-                  const restrito = n.status === 'restrito'
-                  const bloqueado = restrito || banido
-                  return (
-                    <div
-                      key={n.id}
-                      className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${
-                        bloqueado ? 'border-red-300 bg-red-50'
-                          : isPrincipal ? 'border-primary-500 bg-primary-50/50'
-                          : 'border-surface-200 bg-surface-50'
-                      }`}
-                    >
-                      {bloqueado ? (
-                        <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200 shadow-sm">
-                          <Ban className="w-2.5 h-2.5" /> {banido ? 'Banido' : 'Restringido'}
-                        </span>
-                      ) : isPrincipal && (
-                        <span className="absolute -top-2 right-3 z-10 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 shadow-sm">
-                          <Star className="w-2.5 h-2.5" /> Principal
-                        </span>
-                      )}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5">
-                            <Bandeira code={n.pais} numero={n.numero} className="w-4 h-auto rounded-sm shrink-0" />
-                            {formatarNumero(n.numero)}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {bloqueado ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-red-600"><Ban className="w-3 h-3" /> {banido ? 'Banido' : 'Restringido'}</span>
-                            ) : comErro ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-red-600"><AlertCircle className="w-3 h-3" /> Falha na ativação</span>
-                            ) : (
+              {[
+                { titulo: 'Ativos — em uso', emUso: true },
+                { titulo: 'Ativos — sem uso', emUso: false },
+              ].map((grupo) => {
+                const lista = numsFuncoes.filter((n) => (!!(n.sms || n.ligacao || n.callcenter)) === grupo.emUso)
+                if (!lista.length) return null
+                return (
+                  <div key={grupo.titulo}>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-2">{grupo.titulo} · {lista.length}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                      {lista.map((n) => {
+                        const emUso = n.sms || n.ligacao || n.callcenter
+                        return (
+                          <div key={n.id} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${emUso ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5 min-w-0">
+                                <Bandeira numero={n.numero} className="w-4 h-auto rounded-sm shrink-0" />
+                                {formatarNumero(n.numero)}
+                                <img src={n.fonte === 'byo' ? telnyxLogo : foguete} alt={n.fonte === 'byo' ? 'Sua Telnyx' : 'Autsend'} title={n.fonte === 'byo' ? 'Da sua conta Telnyx' : 'Comprado no Autsend'} className="h-4 w-auto object-contain shrink-0" />
+                              </p>
+                              {n.fonte === 'app' && (
+                                <button type="button" onClick={() => setGerenciar(n)} className="shrink-0 p-1.5 rounded-lg text-stone-400 hover:bg-surface-100 hover:text-stone-700 transition-colors" title="Gerenciar número" aria-label="Gerenciar número">
+                                  <Settings className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                            <div className="mt-1.5">
                               <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
-                            )}
-                            {!bloqueado && !comErro && n.vozAtiva && (
-                              <span className="inline-flex items-center gap-1 rounded-md border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-semibold text-primary-700" title="Também usado na Ligação IA"><Mic className="w-3 h-3" /> Voz</span>
-                            )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                              {[
+                                { key: 'sms', label: 'SMS EUA', on: n.sms },
+                                { key: 'ligacao', label: 'Ligação IA', on: n.ligacao },
+                                { key: 'callcenter', label: 'CallCenter', on: n.callcenter },
+                              ].map((f) => {
+                                const carregando = togglingKey === `${n.id}:${f.key}`
+                                return (
+                                  <button
+                                    key={f.key}
+                                    type="button"
+                                    disabled={carregando}
+                                    onClick={() => toggleFuncao(n, f.key)}
+                                    title={f.on ? `Desativar ${f.label}` : `Ativar ${f.label}`}
+                                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition disabled:opacity-60 ${f.on ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-surface-200 text-stone-400 hover:border-primary-300 hover:text-primary-600'}`}
+                                  >
+                                    {carregando ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className={`w-3 h-3 ${f.on ? '' : 'opacity-30'}`} />}
+                                    {f.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
                           </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          {!isPrincipal && !comErro && !bloqueado && (
-                            <button
-                              type="button"
-                              onClick={() => definirPrincipal('numero', n.id)}
-                              disabled={acaoId === n.id}
-                              className="p-2.5 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-primary-50 transition-colors touch-manipulation disabled:opacity-60"
-                              title="Definir como principal"
-                              aria-label="Definir como principal"
-                            >
-                              {acaoId === n.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Star className="w-4 h-4" />}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setGerenciar(n)}
-                            disabled={acaoId === n.id}
-                            className="p-2.5 rounded-lg text-stone-500 hover:bg-surface-100 hover:text-stone-700 transition-colors touch-manipulation disabled:opacity-60"
-                            title="Gerenciar número"
-                            aria-label="Gerenciar número"
-                          >
-                            <Settings className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
+                        )
+                      })}
                     </div>
-                  )
-                })}
-              </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </Secao>

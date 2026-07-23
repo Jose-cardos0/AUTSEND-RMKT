@@ -28,6 +28,18 @@ export async function listarNumerosVozCall() {
   return r.data // { numeros: [{ id, numero, vozAtiva, fonte:'app'|'byo' }] }
 }
 
+/** Lista TODOS os números EUA com as 3 funções (sms/ligacao/callcenter). Pra Geral → Números. */
+export async function listarNumerosComFuncoes() {
+  const r = await call('numerosListarComFuncoes')()
+  return r.data // { numeros: [{ id, numero, fonte, sms, ligacao, callcenter }] }
+}
+
+/** Liga/desliga uma função (sms|ligacao|callcenter) num número. SMS/ligação são únicos globais. */
+export async function setFuncaoNumero(id, funcao, ativo) {
+  const r = await call('numeroSetFuncao')({ id, funcao, ativo })
+  return r.data
+}
+
 /** Sincroniza o status dos números com a Telnyx (detecta banido/restrito) e devolve a lista atualizada. */
 export async function sincronizarNumerosSMS() {
   const r = await call('smsSincronizarNumeros')()
