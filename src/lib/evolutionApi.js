@@ -1,4 +1,3 @@
-import { WEBHOOK_EVOLUTION } from './constants'
 import { httpsCallable } from 'firebase/functions'
 import { functions } from './firebase'
 
@@ -60,18 +59,9 @@ export async function verificarStatus(nomeInstancia, getParticipants = false, nu
   return r.data
 }
 
+/** Busca grupos via Cloud Function (servidor→n8n com a chave secreta). O browser não fala com o n8n direto. */
 export async function buscarGrupos({ nomeInstancia, hash, instanciaId }) {
-  const res = await fetch(WEBHOOK_EVOLUTION, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tipoAcao: 'buscar_grupo',
-      nomeInstancia: nomeInstancia || '',
-      hash: hash || '',
-      instanciaId: instanciaId || '',
-    }),
-  })
-  const data = await parseJsonResponse(res)
-  if (!res.ok) throw new Error(data?.message || data?.error || 'Falha ao buscar grupos')
-  return data
+  const call = httpsCallable(functions, 'waBuscarGrupos')
+  const r = await call({ nomeInstancia: nomeInstancia || '', hash: hash || '', instanciaId: instanciaId || '' })
+  return r.data
 }

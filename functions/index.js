@@ -8,6 +8,11 @@ const db = admin.firestore()
 
 const N8N_REMARKETING_URL = 'https://n8n.autsend.online/webhook/remarketing'
 
+// Chave do Header Auth dos webhooks do n8n (WF1/WF3/WF4). SÓ server-side — nunca vai pro browser.
+const N8N_WEBHOOK_KEY = process.env.N8N_WEBHOOK_KEY || '3AROGwIPRAXlurqT415UvMoXTmBZNYOv'
+/** Headers pra chamar o n8n: JSON + a chave secreta (x-autsend-key). */
+function n8nHeaders(extra) { return { 'Content-Type': 'application/json', 'x-autsend-key': N8N_WEBHOOK_KEY, ...(extra || {}) } }
+
 // ── Admin (torre de comando) ──
 const ADMIN_EMAIL = 'josedeveloperjs@gmail.com'
 const STATUS_VALIDOS = ['pending', 'approved', 'paused', 'banned']
@@ -1674,7 +1679,7 @@ exports.waCriarInstancia = onCall({ region: 'us-central1', timeoutSeconds: 60 },
   try {
     const res = await fetch(WEBHOOK_EVOLUTION, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: n8nHeaders(),
       body: JSON.stringify(payload),
     })
     data = await res.json().catch(() => ({}))
@@ -1719,11 +1724,37 @@ exports.waInstanciaAcao = onCall({ region: 'us-central1', timeoutSeconds: 60 }, 
   const numero = String(d.numeroWhatsApp || d.numeroWhatsapp || '').replace(/\D/g, '')
   if (numero) payload.numeroWhatsApp = numero
   try {
-    const res = await fetch(WEBHOOK_EVOLUTION, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    const res = await fetch(WEBHOOK_EVOLUTION, { method: 'POST', headers: n8nHeaders(), body: JSON.stringify(payload) })
     return await res.json().catch(() => ({}))
   } catch (e) {
     console.error('waInstanciaAcao', tipoAcao, e?.message || e)
     throw new HttpsError('internal', 'Falha ao falar com o servidor de WhatsApp.')
+  }
+})
+
+/**
+ * Proxy server-side pro WF3 (WAHA) — busca os grupos de uma instância do próprio usuário.
+ * O front NÃO chama o n8n direto (o webhook exige a chave x-autsend-key, que não pode ir pro browser).
+ */
+exports.waBuscarGrupos = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const d = request.data || {}
+  const nomeInstancia = String(d.nomeInstancia || '').trim()
+  if (!nomeInstancia) throw new HttpsError('invalid-argument', 'Sem instância.')
+  // A instância é do usuário?
+  const snap = await db.collection(`users/${uid}/instances`).where('nomeInstancia', '==', nomeInstancia).limit(1).get()
+  if (snap.empty) throw new HttpsError('permission-denied', 'Instância não encontrada.')
+  const payload = { tipoAcao: 'buscar_grupo', nomeInstancia, hash: String(d.hash || ''), instanciaId: String(d.instanciaId || '') }
+  try {
+    const res = await fetch(WEBHOOK_EVOLUTION, { method: 'POST', headers: n8nHeaders(), body: JSON.stringify(payload) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new HttpsError('internal', data?.message || data?.error || 'Falha ao buscar grupos')
+    return data
+  } catch (e) {
+    if (e instanceof HttpsError) throw e
+    console.error('waBuscarGrupos', e?.message || e)
+    throw new HttpsError('internal', 'Falha ao buscar grupos.')
   }
 })
 
@@ -2023,7 +2054,7 @@ async function enviarWAHA({ sessao, contatos, blocos, campanhaId }) {
     blocos: Array.isArray(blocos) ? blocos : [],
     contatos: Array.isArray(contatos) ? contatos : [],
   }
-  return fetch(N8N_REMARKETING_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  return fetch(N8N_REMARKETING_URL, { method: 'POST', headers: n8nHeaders(), body: JSON.stringify(payload) })
 }
 
 /** Envia uma mensagem de WhatsApp por uma instância ESPECÍFICA (via WF1/WAHA). */
@@ -2088,6 +2119,12 @@ function parseMsgRecebida(body) {
  */
 exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' }, async (req, res) => {
   try {
+    // SEGURANÇA: só o WF2 (n8n) pode acionar o vendedor. Exige Authorization: Bearer <API_SAAS_TOKEN>.
+    // Sem isso, qualquer um forjaria inbound (gasta Grok, estoura cota da vítima, trava o bot).
+    if (!callbackAutorizado(req)) {
+      console.warn('[waAtendente] 401 — sem/errado o Bearer (WF2 precisa mandar Authorization: Bearer <API_SAAS_TOKEN>)')
+      res.status(401).json({ responder: false, erro: 'unauthorized' }); return
+    }
     const body = req.body || {}
     console.log('waAtendenteWebhook recebido:', JSON.stringify(body).slice(0, 1500))
     const m = parseMsgRecebida(body)
@@ -2402,7 +2439,7 @@ async function dispararLoteWF4(uid, disparoId, loteIndex, sessao, webhookUrl) {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), 15000)
     const res = await fetch(webhookUrl || WF4_DISPARO_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nHeaders(),
       body: JSON.stringify({ sessao: sessao || '', campanhaId: `${disparoId}_${loteIndex}`, contatos: lote.contatos || [] }),
       signal: ctrl.signal,
     })
