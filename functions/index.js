@@ -17,6 +17,17 @@ function n8nHeaders(extra) { return { 'Content-Type': 'application/json', 'x-aut
 const ADMIN_EMAIL = 'josedeveloperjs@gmail.com'
 const STATUS_VALIDOS = ['pending', 'approved', 'paused', 'banned']
 
+// UID do admin — resolvido 1x do Firebase Auth e cacheado em memória. Usado onde NÃO há token de auth
+// (webhooks WAHA/n8n): isenta o admin de travas sem depender do campo `email` do doc do tenant (que pode estar vazio).
+let _adminUidCache = null
+async function ehAdminUid(uid) {
+  if (!uid) return false
+  if (_adminUidCache === null) {
+    try { const u = await admin.auth().getUserByEmail(ADMIN_EMAIL); _adminUidCache = u.uid || '' } catch { _adminUidCache = '' }
+  }
+  return !!_adminUidCache && uid === _adminUidCache
+}
+
 /** Só o admin (e-mail verificado) passa. */
 function assertAdmin(request) {
   const email = (request.auth?.token?.email || '').toLowerCase()
@@ -2185,7 +2196,7 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     const mesConversa = mesAtualStr()
     let tenantDoc = {}
     try { const ts = await db.doc(`tenants/${uid}`).get(); tenantDoc = ts.exists ? ts.data() : {} } catch (_) {}
-    const ehAdminTenant = String(tenantDoc.email || '').toLowerCase() === ADMIN_EMAIL
+    const ehAdminTenant = String(tenantDoc.email || '').toLowerCase() === ADMIN_EMAIL || await ehAdminUid(uid)
     const novaConversaMes = conv.conversaMes !== mesConversa
     let fonteConsumo = null
     if (!ehAdminTenant) {
@@ -5028,7 +5039,7 @@ async function tryAtendenteEvento(userId, evento, customer, product, produtos, a
     const mesConversa = mesAtualStr()
     let tenantDoc = {}
     try { const ts = await db.doc(`tenants/${userId}`).get(); tenantDoc = ts.exists ? ts.data() : {} } catch (_) {}
-    const ehAdminTenant = String(tenantDoc.email || '').toLowerCase() === ADMIN_EMAIL
+    const ehAdminTenant = String(tenantDoc.email || '').toLowerCase() === ADMIN_EMAIL || await ehAdminUid(userId)
     const novaConversaMes = conv.conversaMes !== mesConversa
     let fonteConsumo = null
     if (!ehAdminTenant && novaConversaMes) {
