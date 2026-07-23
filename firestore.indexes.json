@@ -43,6 +43,14 @@
       ]
     },
     {
+      "collectionGroup": "smsLotes",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "sendAfter", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "waConversas",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -55,6 +63,14 @@
     {
       "collectionGroup": "instances",
       "fieldPath": "nomeInstancia",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
+      "collectionGroup": "pendingRecovery",
+      "fieldPath": "sendAfter",
       "indexes": [
         { "order": "ASCENDING", "queryScope": "COLLECTION" },
         { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
