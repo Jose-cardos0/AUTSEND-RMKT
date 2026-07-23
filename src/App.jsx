@@ -177,7 +177,9 @@ export default function App() {
           <Route path="email/automacoes" element={<EmailAutomacoes />} />
           <Route path="email/disparos" element={<EmailDisparos />} />
           <Route path="email/metricas" element={<EmailMetricas />} />
-          <Route path="sms/integracao" element={<SmsIntegracao />} />
+          {/* Gerenciador único de números (Geral → Números). Reusa a tela de conexões. */}
+          <Route path="numeros" element={<SmsIntegracao />} />
+          <Route path="sms/integracao" element={<Navigate to="/numeros" replace />} />
           {/* Canais de SMS: eua (nossa conta) | api (conta Telnyx do cliente). Param :canal. */}
           <Route path="sms/:canal/disparos" element={<SmsDisparos />} />
           <Route path="sms/:canal/funil" element={<SmsFunil />} />

@@ -32,6 +32,7 @@ const navGroups = [
       { to: '/produtos', label: 'Produtos', icon: Package },
       { to: '/checkouts', label: 'Checkouts', icon: ShoppingBag },
       { to: '/templates', label: 'Templates', icon: MessageSquare },
+      { to: '/numeros', label: 'Números', icon: Phone },
     ],
   },
   {
@@ -75,10 +76,8 @@ const navGroups = [
     key: 'sms',
     label: 'SMS',
     icon: Smartphone,
-    // Integração é GLOBAL (número nosso EUA ou conta Telnyx própria de qualquer país) → fica no nível do SMS.
-    items: [
-      { to: '/sms/integracao', label: 'Integração', icon: Link2 },
-    ],
+    // Integração/números migrou pra Geral → Números (gerenciador único). SMS só tem os subgrupos operacionais.
+    items: [],
     subgroups: [
       {
         key: 'sms-eua',
@@ -125,9 +124,8 @@ const navGroups = [
     key: 'call',
     label: 'Ligação IA',
     icon: Phone,
-    items: [
-      { to: '/call/eua/integracao', label: 'Integração', icon: Link2 },
-    ],
+    // Ativar voz/números migrou pra Geral → Números. Ligação IA só tem os subgrupos operacionais.
+    items: [],
     subgroups: [
       {
         key: 'call-eua',

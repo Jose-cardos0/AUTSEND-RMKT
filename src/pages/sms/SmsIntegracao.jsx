@@ -322,7 +322,7 @@ export default function SmsIntegracao() {
 
   return (
     <PageShell
-      badge="SMS · Conexões"
+      badge="Números"
       title="Integração de SMS"
       right={
         <div className="flex items-center gap-2 flex-wrap justify-end">

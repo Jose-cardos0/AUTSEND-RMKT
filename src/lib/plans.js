@@ -66,6 +66,7 @@ export const LIMITE_LABELS = { trackers: 'Trackers', instancias: 'Instâncias Wh
 // Rota → feature que a libera (usado pra esconder no menu / bloquear página).
 export const ROTA_FEATURE = {
   '/banco-leads': 'bancoLeads', '/produtos': 'produtos', '/checkouts': 'checkouts', '/templates': 'templates',
+  '/numeros': 'smsDisparos',
   '/integracoes': 'waIntegracoes', '/automacoes': 'waAutomacoes', '/remarketing': 'waRemarketing', '/remarketing-grupos': 'waGrupos', '/enviar-mensagem': 'waDisparos', '/funil': 'waFunil', '/metricas': 'waMetricas',
   '/email/integracoes': 'emailIntegracoes', '/email/construtor': 'emailConstrutor', '/email/automacoes': 'emailAutomacoes', '/email/disparos': 'emailDisparos', '/email/funil': 'emailFunil', '/email/metricas': 'emailMetricas',
   '/sms/integracao': 'smsDisparos',
