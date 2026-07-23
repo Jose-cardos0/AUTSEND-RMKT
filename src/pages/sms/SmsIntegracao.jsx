@@ -273,21 +273,6 @@ export default function SmsIntegracao() {
     }
   }
 
-  // Clicar num número: ele vira o PRINCIPAL global (define o número + ativa a conta dele).
-  const escolherFrom = async (p, from) => {
-    setAcaoId(p.id)
-    try {
-      await setFromProviderSMS(p.id, from)
-      await definirPrincipalSMS('provider', p.id)
-      await carregar()
-      toast.success('Número principal atualizado.')
-    } catch (err) {
-      toast.error(err?.message || 'Erro ao escolher número.')
-    } finally {
-      setAcaoId(null)
-    }
-  }
-
   const sincronizarProvider = async (p) => {
     setAcaoId(p.id)
     try {

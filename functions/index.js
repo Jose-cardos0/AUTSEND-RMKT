@@ -905,6 +905,36 @@ async function getTelnyxProviderCliente(uid) {
   } catch (_) { return null }
 }
 
+/** Número (app) que a LIGAÇÃO IA usa como origem: o marcado como voz (vozAtiva); senão o principal; senão o 1º. */
+async function getTelnyxVozNumeroCliente(uid) {
+  try {
+    const snap = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').get()
+    if (snap.empty) return null
+    const nums = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const escolhido = nums.find((n) => n.vozAtiva) || nums.find((n) => n.principal) || nums[0]
+    if (!escolhido?.number) return null
+    return { number: escolhido.number, messagingProfileId: escolhido.messagingProfileId || '' }
+  } catch (_) { return null }
+}
+
+/** Provedor Telnyx BYO pra LIGAÇÃO: o número marcado em vozAtivas (resolve o formato exato); senão o `from`. */
+async function getTelnyxVozProviderCliente(uid) {
+  try {
+    const snap = await db.collection(`users/${uid}/smsProviders`).get()
+    if (snap.empty) return null
+    const provs = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.apiKey)
+    const alvo = provs.find((p) => Array.isArray(p.vozAtivas) && p.vozAtivas.length) || provs.find((p) => p.from) || null
+    if (!alvo) return null
+    let from = alvo.from
+    if (Array.isArray(alvo.vozAtivas) && alvo.vozAtivas.length) {
+      const alvoNorm = _norm(alvo.vozAtivas[0])
+      from = (Array.isArray(alvo.numeros) ? alvo.numeros : []).find((x) => _norm(x) === alvoNorm) || from
+    }
+    if (!from) return null
+    return { apiKey: alvo.apiKey, from, voiceConnectionId: alvo.voiceConnectionId || '', messagingProfileId: alvo.messagingProfileId || '' }
+  } catch (_) { return null }
+}
+
 /** true se o UID é a conta admin (pra background jobs que não têm request.auth). */
 async function ehUidAdmin(uid) {
   try { const u = await admin.auth().getUser(uid); return (u.email || '').toLowerCase() === ADMIN_EMAIL } catch (_) { return false }
@@ -2963,6 +2993,21 @@ exports.numeroSetFuncao = onCall({ region: 'us-central1', timeoutSeconds: 30 }, 
       else batch.set(db.doc(`users/${uid}/smsNumeros/${numeroId}`), { vozAtiva: true }, { merge: true })
     }
     await batch.commit()
+    // App: conecta o número à voz na Telnyx (senão a Ligação IA não consegue originar dele).
+    // BYO (conta própria do cliente) fica pro módulo de call center (usa as credenciais dele).
+    if (ativo && !ehByo) {
+      try {
+        const vc = await getTelnyxVoiceConfig()
+        const s = await db.doc(`users/${uid}/smsNumeros/${numeroId}`).get()
+        const phoneId = s.exists ? s.data().telnyxPhoneId : null
+        if (vc.apiKey && vc.connectionId && phoneId) {
+          await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneId}/voice`, {
+            method: 'PATCH', headers: { Authorization: `Bearer ${vc.apiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connection_id: vc.connectionId }),
+          })
+        }
+      } catch (e) { console.error('numeroSetFuncao voice PATCH', e?.message || e) }
+    }
     return { ok: true }
   }
 
@@ -3649,7 +3694,7 @@ async function getTelnyxVoiceConfig() {
  */
 async function resolverCallEnvio(uid, ehAdmin, forcar) {
   if (forcar !== 'eua') {
-    const prov = await getTelnyxProviderCliente(uid)
+    const prov = await getTelnyxVozProviderCliente(uid)
     if (prov) {
       const vc = await getTelnyxVoiceConfig()
       // BYO usa a key do cliente; a connection precisa existir na conta dele (configurada na integração).
@@ -3659,7 +3704,7 @@ async function resolverCallEnvio(uid, ehAdmin, forcar) {
   }
   const vc = await getTelnyxVoiceConfig()
   if (!vc.apiKey || !vc.connectionId) return { erro: 'A Ligação IA ainda não foi ativada pela plataforma.' }
-  const num = await getTelnyxNumeroCliente(uid)
+  const num = await getTelnyxVozNumeroCliente(uid)
   if (num) return { cfg: { apiKey: vc.apiKey, connectionId: vc.connectionId, from: num.number }, propria: false }
   const base = await getTelnyxConfig()
   if (ehAdmin && base.from) return { cfg: { apiKey: vc.apiKey, connectionId: vc.connectionId, from: base.from }, propria: false }
