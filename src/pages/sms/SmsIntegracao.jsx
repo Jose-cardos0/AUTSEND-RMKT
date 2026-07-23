@@ -27,7 +27,7 @@ import {
 } from '../../lib/smsNumeros'
 import {
   Phone, Star, Trash2, Loader2, X, Plus, Check, ShoppingCart,
-  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban, KeyRound, Globe, MessageSquare,
+  RefreshCw, AlertCircle, Lock, ChevronDown, Settings, CreditCard, Ban, KeyRound, Globe, MessageSquare, Mic,
 } from 'lucide-react'
 import Bandeira, { paisDoNumero, nomePais } from '../../components/Bandeira'
 import brflag from '../../assets/flags/br-flag.png'
@@ -586,10 +586,11 @@ export default function SmsIntegracao() {
                               <span className="inline-flex items-center gap-1 text-xs text-red-600"><Ban className="w-3 h-3" /> {banido ? 'Banido' : 'Restringido'}</span>
                             ) : comErro ? (
                               <span className="inline-flex items-center gap-1 text-xs text-red-600"><AlertCircle className="w-3 h-3" /> Falha na ativação</span>
-                            ) : n.vozAtiva ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium"><Check className="w-3 h-3" /> Ativo · Ligação EUA</span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
+                            )}
+                            {!bloqueado && !comErro && n.vozAtiva && (
+                              <span className="inline-flex items-center gap-1 rounded-md border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-semibold text-primary-700" title="Também usado na Ligação IA"><Mic className="w-3 h-3" /> Voz</span>
                             )}
                           </div>
                         </div>
