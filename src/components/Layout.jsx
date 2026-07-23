@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall, Rocket } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall, Rocket, Headphones } from 'lucide-react'
 import GlobeCheckIcon from './GlobeCheckIcon'
 import { auth } from '../lib/firebase'
 import { isAdmin, adminGetSecurityReport } from '../lib/admin'
@@ -138,6 +138,15 @@ const navGroups = [
           { to: '/call/eua/metricas', label: 'Métricas', icon: BarChart3 },
         ],
       },
+    ],
+  },
+  {
+    key: 'callcenter',
+    label: 'Call Center',
+    icon: Headphones,
+    // Central de atendentes humanos (softphone WebRTC). BYO-only — usa a conta Telnyx do cliente.
+    items: [
+      { to: '/call-center', label: 'Atendentes', icon: Headphones },
     ],
   },
 ]

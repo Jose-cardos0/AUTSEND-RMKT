@@ -11,6 +11,7 @@
   "dependencies": {
     "@stripe/react-stripe-js": "^6.8.0",
     "@stripe/stripe-js": "^9.10.0",
+    "@telnyx/webrtc": "^2.27.8",
     "@xyflow/react": "^12.11.1",
     "clsx": "^2.0.0",
     "country-flag-icons": "^1.6.20",
@@ -24,6 +25,7 @@
     "libphonenumber-js": "^1.13.8",
     "lucide-react": "^0.303.0",
     "prismjs": "^1.30.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-firebase-hooks": "^5.1.1",

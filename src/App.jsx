@@ -39,12 +39,14 @@ import CallCampanha from './pages/call/CallCampanha'
 import CallAutomacoes from './pages/call/CallAutomacoes'
 import CallFunil from './pages/call/CallFunil'
 import CallMetricas from './pages/call/CallMetricas'
+import CallCenter from './pages/call/CallCenter'
 import PageLoader from './components/PageLoader'
 import { ConfirmProvider } from './components/ConfirmDialog'
 import { PlanoProvider, usePlano } from './lib/PlanoContext'
 
 const EmailConstrutor = lazy(() => import('./pages/email/EmailConstrutor'))
 const Docs = lazy(() => import('./pages/Docs'))
+const Atendente = lazy(() => import('./pages/atendente/Atendente'))
 const EmailFunil = lazy(() => import('./pages/email/EmailFunil'))
 const WhatsappFunil = lazy(() => import('./pages/WhatsappFunil'))
 const WhatsappMetricas = lazy(() => import('./pages/WhatsappMetricas'))
@@ -131,6 +133,8 @@ export default function App() {
         <Route path="/auth/action" element={<AuthAction />} />
         {/* Documentação pública (linkada no rodapé da landing) */}
         <Route path="/docs" element={<Suspense fallback={<PageLoader className="min-h-screen" />}><Docs /></Suspense>} />
+        {/* App do atendente (call center) — PWA público, autentica por pairKey, sem login do Autsend */}
+        <Route path="/atendente" element={<Suspense fallback={<PageLoader className="min-h-screen" />}><Atendente /></Suspense>} />
         <Route path="/" element={<RootRoute />}>
           <Route index element={<InicioRedirect />} />
           <Route path="integracoes" element={<Integracoes />} />
@@ -198,6 +202,7 @@ export default function App() {
           <Route path="call/:canal/automacoes" element={<CallAutomacoes />} />
           <Route path="call/:canal/funil" element={<CallFunil />} />
           <Route path="call/:canal/metricas" element={<CallMetricas />} />
+          <Route path="call-center" element={<CallCenter />} />
           <Route path="call/integracao" element={<Navigate to="/call/eua/integracao" replace />} />
           <Route path="call/campanha" element={<Navigate to="/call/eua/campanha" replace />} />
           <Route path="call/metricas" element={<Navigate to="/call/eua/metricas" replace />} />
