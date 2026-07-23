@@ -16,13 +16,15 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 
-// App Check (anti-abuso): só inicializa se a chave reCAPTCHA v3 estiver configurada (VITE_RECAPTCHA_SITE_KEY).
-// Sem a chave → no-op (não quebra nada). Com a chave → o app passa a mandar um token que prova que a
-// requisição veio do site real; depois a gente ENFORCE nas Cloud Functions pra bloquear chamadas de fora.
-if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+// App Check (anti-abuso): o app manda um token reCAPTCHA v3 que prova que a requisição veio do site real.
+// A Site Key é PÚBLICA (fica na página e só vale nos domínios cadastrados) → fixada como fallback; dá pra
+// sobrescrever via env VITE_RECAPTCHA_SITE_KEY. Depois a gente ENFORCE nas Cloud Functions pra bloquear
+// chamadas de fora do app. (A Secret Key correspondente fica só no Firebase App Check, nunca aqui.)
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6Lfyw2AtAAAAAChZdxtjEjMFsF7bc4F3lbS6cZ6c'
+if (RECAPTCHA_SITE_KEY) {
   try {
     initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
+      provider: new ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
     })
   } catch (e) { console.warn('AppCheck init falhou:', e?.message || e) }
