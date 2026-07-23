@@ -1,8 +1,14 @@
 const { onRequest, onCall, HttpsError } = require('firebase-functions/v2/https')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
+const { setGlobalOptions } = require('firebase-functions/v2')
 const crypto = require('crypto')
 const admin = require('firebase-admin')
 admin.initializeApp()
+
+// Anti-DDoS/custo: teto GLOBAL de instâncias por função. O Cloud Functions gen2 escala "sem limite" por
+// padrão — um flood viraria conta gigante. 40 cobre folgado o uso legítimo (crons + disparos sequenciais +
+// bulk). Webhooks públicos SEM auth têm teto menor (maxInstances por função). Não afeta latência normal.
+setGlobalOptions({ maxInstances: 40 })
 
 const db = admin.firestore()
 
@@ -22,8 +28,9 @@ const STATUS_VALIDOS = ['pending', 'approved', 'paused', 'banned']
 let _adminUidCache = null
 async function ehAdminUid(uid) {
   if (!uid) return false
-  if (_adminUidCache === null) {
-    try { const u = await admin.auth().getUserByEmail(ADMIN_EMAIL); _adminUidCache = u.uid || '' } catch { _adminUidCache = '' }
+  // Cacheia só o SUCESSO — falha transitória de Auth não pode "grudar" o admin como não-admin.
+  if (!_adminUidCache) {
+    try { const u = await admin.auth().getUserByEmail(ADMIN_EMAIL); if (u?.uid) _adminUidCache = u.uid } catch (_) { /* tenta de novo na próxima chamada */ }
   }
   return !!_adminUidCache && uid === _adminUidCache
 }
@@ -2223,7 +2230,9 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     let respostaIA = ''
     try { respostaIA = await callGrok(messages, { model: GROK_MODEL_ATENDENTE, uso: { uid, atendenteId: atendente.id } }) } catch (e) { console.error('atendente Grok', e?.message || e) }
     respostaIA = injetarCheckouts(respostaIA, grupo)
-    if (!respostaIA) { await convRef.set({ messages: novoHist, fupStatus: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ responder: false, semResposta: true }); return }
+    // Grok falhou/vazio: libera o claim do messageId (ultimoMsgId=null) pra um retry do WAHA reprocessar
+    // (senão o retry seria deduplicado e o lead ficaria sem resposta).
+    if (!respostaIA) { await convRef.set({ messages: novoHist, fupStatus: null, ultimoMsgId: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }); res.status(200).json({ responder: false, semResposta: true }); return }
 
     // O ENVIO é feito pelo WF2 (n8n/WAHA) com digitação humana. A Cloud Function só devolve o texto pronto.
 
@@ -2231,7 +2240,18 @@ exports.waAtendenteWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 
     try { const mesId = new Date(agora).toISOString().slice(0, 7); await db.doc(`tenants/${uid}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
 
     // Consome 1 conversa (crédito antes da cota) na 1ª msg do lead no mês.
-    try { if (fonteConsumo) await consumirConversa(uid, fonteConsumo) } catch (e) { console.error('consumirConversa', e?.message || e) }
+    // Consumo ATÔMICO: transação "claim" em conversaMes garante que 2 msgs quase juntas (ou reativo+proativo)
+    // do mesmo lead no mês NÃO cobrem 2x. Só quem grava o mês (1ª vez) debita.
+    if (fonteConsumo) {
+      let consumir = false
+      try {
+        await db.runTransaction(async (tx) => {
+          const s = await tx.get(convRef)
+          if (!(s.exists && s.data().conversaMes === mesConversa)) { tx.set(convRef, { conversaMes: mesConversa }, { merge: true }); consumir = true }
+        })
+        if (consumir) await consumirConversa(uid, fonteConsumo)
+      } catch (e) { console.error('consumirConversa (claim)', e?.message || e) }
+    }
 
     // IC (Initiate Checkout): o vendedor mandou um link de checkout nesta resposta?
     const ic = atingiuCheckout(grupo, respostaIA)
@@ -2425,7 +2445,10 @@ async function uidPorSessao(sessao) {
 /** Valida o Bearer token dos callbacks do n8n (API_SAAS_TOKEN). */
 function callbackAutorizado(req) {
   const token = process.env.API_SAAS_TOKEN || ''
-  return !!token && String(req.headers.authorization || '') === `Bearer ${token}`
+  if (!token) return false
+  const got = Buffer.from(String(req.headers.authorization || ''))
+  const exp = Buffer.from(`Bearer ${token}`)
+  return got.length === exp.length && crypto.timingSafeEqual(got, exp)
 }
 
 /** Monta os blocos de um contato: texto personalizado (+ imagem + áudio, nessa ordem). */
@@ -4311,17 +4334,6 @@ async function getKiwifyOnboardConfig() {
 }
 
 
-/** Descobre o plano ('padrao'|'pro') do produto comprado, via config/kiwify.produtos (por id ou nome). */
-function planoDoProdutoKiwify(cfg, product) {
-  const map = cfg.produtos || {}
-  if (product.id && map[String(product.id)]) return map[String(product.id)]
-  if (product.nome && map[product.nome]) return map[product.nome]
-  const nome = (product.nome || '').toLowerCase()
-  if (nome.includes('inici')) return 'inicial'
-  if (nome.includes('pro')) return 'pro'
-  if (nome.includes('padr')) return 'padrao'
-  return null
-}
 
 /** Acha ou cria o usuário pelo e-mail. Retorna { uid, criado }. */
 async function garantirUsuarioKiwify(email, nome) {
@@ -5059,7 +5071,17 @@ async function tryAtendenteEvento(userId, evento, customer, product, produtos, a
 
     await enviarWhatsAppInstancia(inst, telefone, customer.nome, abertura)
     try { const mesId = new Date().toISOString().slice(0, 7); await db.doc(`tenants/${userId}`).set({ iaUso: { [mesId]: admin.firestore.FieldValue.increment(1) } }, { merge: true }) } catch (_) {}
-    try { if (fonteConsumo) await consumirConversa(userId, fonteConsumo) } catch (e) { console.error('consumirConversa', e?.message || e) }
+    // Consumo ATÔMICO (mesmo motivo do reativo): claim em conversaMes evita cobrar 2x.
+    if (fonteConsumo) {
+      let consumir = false
+      try {
+        await db.runTransaction(async (tx) => {
+          const s = await tx.get(convRef)
+          if (!(s.exists && s.data().conversaMes === mesConversa)) { tx.set(convRef, { conversaMes: mesConversa }, { merge: true }); consumir = true }
+        })
+        if (consumir) await consumirConversa(userId, fonteConsumo)
+      } catch (e) { console.error('consumirConversa (claim)', e?.message || e) }
+    }
     await convRef.set({
       messages: [...hist, { role: 'assistant', text: abertura, ts: Date.now() }].slice(-30),
       iaUltimaMsg: abertura,
@@ -5542,7 +5564,7 @@ async function comprouDesde(userId, contato, desde) {
 }
 
 exports.kiwifyAbandonedCheckout = onRequest(
-  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', maxInstances: 8 },
   async (req, res) => {
   const { webhookId, userId } = req.query
   if (!userId || !webhookId) {
@@ -5761,7 +5783,7 @@ exports.processarRecuperacaoAtrasada = onSchedule(
  * - status === 'active': aplica fieldMap (caminhos JSON) + eventRules e cria o lead / dispara a ação.
  */
 exports.customWebhook = onRequest(
-  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB' },
+  { region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', maxInstances: 8 },
   async (req, res) => {
     const { webhookId, userId } = req.query
     if (!userId || !webhookId) {
