@@ -689,7 +689,7 @@ async function enviarLoteEmail(uid, ctx, recipients) {
 }
 
 /** Disparo em massa: 1º lote na hora, o resto enfileirado em lotes com intervalo (throttle anti-ban). */
-exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
+exports.sendBulkEmail = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB', enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
@@ -1263,7 +1263,7 @@ async function enviarLoteSMS(uid, ctx, recipients) {
 }
 
 /** Disparo de SMS em massa: 1º lote na hora, resto enfileirado (throttle por TPS). */
-exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB' }, async (request) => {
+exports.sendBulkSMS = onCall({ region: 'us-central1', timeoutSeconds: 300, memory: '512MiB', enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
@@ -2528,7 +2528,7 @@ async function dispararLoteWF4(uid, disparoId, loteIndex, sessao, webhookUrl) {
  * Os próximos saem sozinhos no /campanhaConcluida. 1 disparo ATIVO por instância.
  * data: { sessao, nomeDisparo, mensagem (template), imagemUrl?, audioUrl?, contatos: [{telefone, nome}] }
  */
-exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '512MiB', enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   await assertTenantAtivo(uid)
@@ -2602,7 +2602,7 @@ exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, 
  * mas apontando pro WF1 (/remarketing) em vez do WF4. O contato carrega produto pra {nome_produto}.
  * data: { sessao, nomeDisparo?, mensagem (template), imagemUrl?, audioUrl?, contatos: [{telefone, nome, produto?, email?}] }
  */
-exports.iniciarRemarketingWA = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' }, async (request) => {
+exports.iniciarRemarketingWA = onCall({ region: 'us-central1', timeoutSeconds: 120, memory: '512MiB', enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   await assertTenantAtivo(uid)
@@ -2784,7 +2784,7 @@ exports.campanhaRejeitada = onRequest({ region: 'us-central1', timeoutSeconds: 3
  * Simulador de conversa: testa o atendente IA sem WhatsApp (usa o MESMO cérebro).
  * Recebe o histórico da conversa e devolve a próxima resposta da IA (com checkout injetado).
  */
-exports.atendenteSimular = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+exports.atendenteSimular = onCall({ region: 'us-central1', timeoutSeconds: 60, enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   await assertRateLimit(request, 'simulador', 30)
@@ -3905,7 +3905,7 @@ exports.callAtivarVozNoChip = onCall({ region: 'us-central1', timeoutSeconds: 30
 })
 
 /** Dispara ligações torpedo pra uma lista de contatos. Retorna { iniciadas, erros, disparoId }. */
-exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300 }, async (request) => {
+exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300, enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
@@ -6290,7 +6290,7 @@ exports.iaGerarEmailHtml = onCall({ region: 'us-central1', timeoutSeconds: 180 }
 })
 
 /** IA: analisa uma amostra de webhook e sugere fieldMap + eventRules. */
-exports.aiMapFields = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
+exports.aiMapFields = onCall({ region: 'us-central1', timeoutSeconds: 120, enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   await assertRateLimit(request, 'ai_map', 30)
@@ -6326,7 +6326,7 @@ Regras:
 })
 
 /** IA: gera uma mensagem de WhatsApp para um evento/produto. */
-exports.aiGenerateMessage = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
+exports.aiGenerateMessage = onCall({ region: 'us-central1', timeoutSeconds: 120, enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   await assertRateLimit(request, 'ai_generate', 30)
@@ -6365,7 +6365,7 @@ function decodeEntities(s) {
 }
 
 // Busca metadados OpenGraph de uma URL (pra prévia estilo WhatsApp de link de checkout).
-exports.linkPreview = onCall({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB' }, async (request) => {
+exports.linkPreview = onCall({ region: 'us-central1', timeoutSeconds: 30, memory: '256MiB', enforceAppCheck: true }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   let url = String(request.data?.url || '').trim()
