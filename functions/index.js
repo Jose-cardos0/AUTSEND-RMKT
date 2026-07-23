@@ -35,6 +35,45 @@ async function ehAdminUid(uid) {
   return !!_adminUidCache && uid === _adminUidCache
 }
 
+/**
+ * Rate limit por tenant+ação (janela deslizante, 1 doc por par em tenants/{uid}/rateLimits/{acao}).
+ * Protege os endpoints que gastam dinheiro (IA/Grok, disparo, ligação) de abuso por conta comprometida.
+ * Admin é isento. Lança resource-exhausted (429-like) ao estourar.
+ */
+async function assertRateLimit(request, acao, maxPorJanela, janelaMs = 60000) {
+  const uid = request.auth?.uid
+  if (!uid) return
+  if ((request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL) return // admin isento
+  const agora = Date.now()
+  const ref = db.doc(`tenants/${uid}/rateLimits/${acao}`)
+  let excedeu = false
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(ref)
+    const d = s.exists ? s.data() : {}
+    if (!d.inicio || agora - Number(d.inicio) >= janelaMs) {
+      tx.set(ref, { inicio: agora, n: 1 }, { merge: true })
+    } else {
+      const n = (Number(d.n) || 0) + 1
+      if (n > maxPorJanela) excedeu = true; else tx.set(ref, { n }, { merge: true })
+    }
+  })
+  if (excedeu) throw new HttpsError('resource-exhausted', 'Muitas requisições em pouco tempo. Aguarde um instante e tente de novo.')
+}
+
+/** Bloqueia URLs internas/privadas (anti-SSRF) — só http(s) público. */
+function urlPublicaSegura(u) {
+  let parsed
+  try { parsed = new URL(u) } catch { return false }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+  const h = parsed.hostname.toLowerCase()
+  if (h === 'localhost' || h === '0.0.0.0' || h.endsWith('.local') || h.endsWith('.internal')) return false
+  // IPs privados / loopback / link-local / metadata
+  if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return false
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return false
+  return true
+}
+
 /** Só o admin (e-mail verificado) passa. */
 function assertAdmin(request) {
   const email = (request.auth?.token?.email || '').toLowerCase()
@@ -2493,6 +2532,7 @@ exports.iniciarDisparoWA = onCall({ region: 'us-central1', timeoutSeconds: 120, 
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   await assertTenantAtivo(uid)
+  await assertRateLimit(request, 'disparo_wa', 10)
   const d = request.data || {}
   const sessao = String(d.sessao || '').trim()
   const nomeDisparo = String(d.nomeDisparo || '').trim() || `Disparo ${new Date().toISOString().slice(0, 10)}`
@@ -2566,6 +2606,7 @@ exports.iniciarRemarketingWA = onCall({ region: 'us-central1', timeoutSeconds: 1
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   await assertTenantAtivo(uid)
+  await assertRateLimit(request, 'remarketing_wa', 10)
   const d = request.data || {}
   const sessao = String(d.sessao || '').trim()
   const nomeDisparo = String(d.nomeDisparo || '').trim() || `Remarketing ${new Date().toISOString().slice(0, 10)}`
@@ -2746,6 +2787,7 @@ exports.campanhaRejeitada = onRequest({ region: 'us-central1', timeoutSeconds: 3
 exports.atendenteSimular = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertRateLimit(request, 'simulador', 30)
   const { grupoId, mensagens } = request.data || {}
   if (!grupoId) throw new HttpsError('invalid-argument', 'Produto não informado.')
   const gSnap = await db.doc(`users/${uid}/productGroups/${grupoId}`).get()
@@ -3868,6 +3910,7 @@ exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300 }, as
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const tenant = await assertTenantAtivo(uid)
   await assertTermosAceito(request, tenant)
+  await assertRateLimit(request, 'call_disparar', 10)
   const ehAdmin = (request.auth?.token?.email || '').toLowerCase() === ADMIN_EMAIL
   const d = request.data || {}
   const canal = d.canal === 'api' ? 'api' : 'eua'
@@ -6250,6 +6293,7 @@ exports.iaGerarEmailHtml = onCall({ region: 'us-central1', timeoutSeconds: 180 }
 exports.aiMapFields = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertRateLimit(request, 'ai_map', 30)
   const { sample, eventos } = request.data || {}
   if (!sample || typeof sample !== 'object') throw new HttpsError('invalid-argument', 'Sem amostra para analisar.')
   const listaEventos = Array.isArray(eventos) ? eventos : []
@@ -6285,6 +6329,7 @@ Regras:
 exports.aiGenerateMessage = onCall({ region: 'us-central1', timeoutSeconds: 120 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  await assertRateLimit(request, 'ai_generate', 30)
   const { evento, produto, tom, idioma, checkouts } = request.data || {}
   const lang = idioma || 'Português do Brasil'
   const lista = Array.isArray(checkouts) ? checkouts.filter((c) => c && c.link) : []
@@ -6325,7 +6370,9 @@ exports.linkPreview = onCall({ region: 'us-central1', timeoutSeconds: 30, memory
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   let url = String(request.data?.url || '').trim()
   if (!url) throw new HttpsError('invalid-argument', 'URL vazia.')
+  await assertRateLimit(request, 'link_preview', 30)
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`
+  if (!urlPublicaSegura(url)) throw new HttpsError('invalid-argument', 'URL não permitida.')
   let domain = ''
   try { domain = new URL(url).hostname.replace(/^www\./, '') } catch { throw new HttpsError('invalid-argument', 'URL inválida.') }
 
