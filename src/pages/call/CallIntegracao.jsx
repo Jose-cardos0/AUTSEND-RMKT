@@ -9,6 +9,8 @@ import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Bandeira from '../../components/Bandeira'
 import { Phone, Check, Loader2, ChevronDown, ShoppingCart } from 'lucide-react'
+import foguete from '../../assets/foguetes/foguete1.png'
+import telnyxLogo from '../../assets/telnyx.png'
 
 function formatarNumero(n) {
   const d = String(n || '').replace(/\D/g, '')
@@ -54,15 +56,16 @@ export default function CallIntegracao() {
   }
   useEffect(() => { carregar() }, [user?.uid])
 
-  const ativarVoz = async (n) => {
+  const toggleVoz = async (n) => {
+    const ativar = !n.vozAtiva
     setAtivandoId(n.id)
     try {
       const fn = httpsCallable(functions, 'callAtivarVozNoChip')
-      await fn({ numeroId: n.id })
-      setNumeros((prev) => prev.map((x) => x.id === n.id ? { ...x, vozAtiva: true } : x))
-      toast.success('Ligação IA ativada neste chip!')
+      await fn({ numeroId: n.id, ativar })
+      setNumeros((prev) => prev.map((x) => x.id === n.id ? { ...x, vozAtiva: ativar } : x))
+      toast.success(ativar ? 'Ligação IA ativada neste número!' : 'Ligação IA desativada neste número.')
     } catch (err) {
-      toast.error(err.message || 'Não consegui ativar a voz.')
+      toast.error(err.message || 'Não consegui alterar a Ligação IA.')
     } finally { setAtivandoId(null) }
   }
 
@@ -83,28 +86,37 @@ export default function CallIntegracao() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {numeros.map((n) => (
                 <div key={n.id} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${n.vozAtiva ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}>
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-semibold text-stone-800 break-all tabular-nums flex items-center gap-1.5">
                         <Bandeira code={n.pais} numero={n.numero} className="w-4 h-auto rounded-sm shrink-0" />
                         {formatarNumero(n.numero)}
+                        <img
+                          src={n.fonte === 'byo' ? telnyxLogo : foguete}
+                          alt={n.fonte === 'byo' ? 'Sua Telnyx' : 'Autsend'}
+                          title={n.fonte === 'byo' ? 'Número da sua conta Telnyx' : 'Comprado no Autsend'}
+                          className="h-4 w-auto object-contain shrink-0"
+                        />
                       </p>
-                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <div className="mt-2">
                         {n.vozAtiva ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium"><Check className="w-3 h-3" /> Ativo · Ligação EUA</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-primary-600 font-semibold"><Phone className="w-3 h-3" /> Ligação IA · ativa</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
+                          <span className="inline-flex items-center gap-1 text-xs text-stone-400"><Phone className="w-3 h-3" /> Ligação IA · desativada</span>
                         )}
-                        <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${n.fonte === 'byo' ? 'bg-primary-50 text-primary-700 border-primary-200' : 'bg-surface-100 text-stone-500 border-surface-200'}`}>
-                          {n.fonte === 'byo' ? 'Sua Telnyx' : 'Autsend'}
-                        </span>
                       </div>
                     </div>
-                    {!n.vozAtiva && (
-                      <button type="button" onClick={() => ativarVoz(n)} disabled={ativandoId === n.id} className="btn-primary shrink-0 min-h-[38px] text-sm px-3 disabled:opacity-60">
-                        {ativandoId === n.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />} Ativar
-                      </button>
-                    )}
+                    {/* Catraquinha: liga/desliga a Ligação IA neste número */}
+                    <button type="button" onClick={() => toggleVoz(n)} disabled={ativandoId === n.id} role="switch" aria-checked={n.vozAtiva}
+                      className="shrink-0 disabled:opacity-60" title={n.vozAtiva ? 'Desativar Ligação IA' : 'Ativar Ligação IA'}>
+                      {ativandoId === n.id ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-primary-500" />
+                      ) : (
+                        <span className={`relative block w-11 h-6 rounded-full transition-colors ${n.vozAtiva ? 'bg-primary-600' : 'bg-stone-300'}`}>
+                          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${n.vozAtiva ? 'translate-x-5' : ''}`} />
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
               ))}

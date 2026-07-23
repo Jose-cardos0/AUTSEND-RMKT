@@ -3918,13 +3918,21 @@ exports.callAtivarVozNoChip = onCall({ region: 'us-central1', timeoutSeconds: 30
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const numeroId = String(request.data?.numeroId || '')
-  // Número da conta Telnyx PRÓPRIA (BYO): por ora, marca como selecionado pra voz (soft).
+  const ativar = request.data?.ativar !== false // default true (compat)
+  // Número da conta Telnyx PRÓPRIA (BYO): marca/desmarca a voz (soft, em smsProviders.vozAtivas).
   // A origem real da chamada pela conta do cliente entra no módulo de call center (a construir).
   if (numeroId.startsWith('byo:')) {
     const parts = numeroId.split(':'); const providerId = parts[1]; const num = parts[2] || ''
     if (!providerId || !num) throw new HttpsError('invalid-argument', 'Número inválido.')
-    await db.doc(`users/${uid}/smsProviders/${providerId}`).set({ vozAtivas: admin.firestore.FieldValue.arrayUnion(num) }, { merge: true })
-    return { ok: true, ativados: 1, byo: true }
+    const op = ativar ? admin.firestore.FieldValue.arrayUnion(num) : admin.firestore.FieldValue.arrayRemove(num)
+    await db.doc(`users/${uid}/smsProviders/${providerId}`).set({ vozAtivas: op }, { merge: true })
+    return { ok: true, byo: true, vozAtiva: ativar }
+  }
+  // Número comprado no app: DESATIVAR = baixa a flag (mantém a config na Telnyx, só não usamos em ligação).
+  if (!ativar) {
+    const s = await db.doc(`users/${uid}/smsNumeros/${numeroId}`).get()
+    if (s.exists) await s.ref.set({ vozAtiva: false }, { merge: true })
+    return { ok: true, vozAtiva: false }
   }
   const vc = await getTelnyxVoiceConfig()
   if (!vc.apiKey || !vc.connectionId) throw new HttpsError('failed-precondition', 'A Ligação IA ainda não foi ativada pela plataforma.')
