@@ -686,7 +686,6 @@ export default function SmsIntegracao() {
                     {/* Números da conta — só INFO. As funções (SMS/Ligação/CallCenter) se definem na aba Números. */}
                     {aberta && (
                       <div className="px-3 sm:px-4 pb-4 pt-1">
-                        <p className="text-sm text-stone-500 mb-2">Números desta conta. Defina as funções (SMS · Ligação IA · CallCenter) na aba <strong>Números</strong>.</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                           {nums.map((num) => (
                             <div key={num} className="p-4 sm:p-5 rounded-xl border-2 border-surface-200 bg-white">
