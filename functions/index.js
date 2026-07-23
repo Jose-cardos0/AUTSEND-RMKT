@@ -3879,10 +3879,53 @@ exports.callGerarRoteiro = onCall({ region: 'us-central1', timeoutSeconds: 60 },
 })
 
 /** Ativa a voz no chip EUA do cliente: associa o número à Voice API application (connection). */
+/**
+ * Lista TODOS os números de voz (EUA) do cliente pra tela "Ativar voz": comprados no Autsend
+ * (users/{uid}/smsNumeros) + os da conta Telnyx própria/BYO (users/{uid}/smsProviders[].numeros),
+ * deduplicados pelo número. Cada item: { id, numero, vozAtiva, fonte:'app'|'byo' }.
+ */
+exports.callListarNumerosVoz = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const norm = (s) => String(s || '').replace(/\D/g, '')
+  const vistos = new Set()
+  const out = []
+  // 1) Comprados no app (conta da plataforma)
+  const numSnap = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').get()
+  for (const d of numSnap.docs) {
+    const x = d.data(); const num = x.number
+    if (!num) continue
+    vistos.add(norm(num))
+    out.push({ id: d.id, numero: num, vozAtiva: !!x.vozAtiva, fonte: 'app' })
+  }
+  // 2) Conta(s) Telnyx própria(s) do cliente (BYO)
+  const provSnap = await db.collection(`users/${uid}/smsProviders`).get()
+  for (const p of provSnap.docs) {
+    const px = p.data()
+    const nums = Array.isArray(px.numeros) ? px.numeros : []
+    const ativas = new Set((Array.isArray(px.vozAtivas) ? px.vozAtivas : []).map(norm))
+    for (const num of nums) {
+      const nn = norm(num)
+      if (!nn || vistos.has(nn)) continue // dedup: já apareceu como comprado no app
+      vistos.add(nn)
+      out.push({ id: `byo:${p.id}:${nn}`, numero: num, vozAtiva: ativas.has(nn), fonte: 'byo' })
+    }
+  }
+  return { numeros: out }
+})
+
 exports.callAtivarVozNoChip = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
   const uid = request.auth?.uid
   if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
   const numeroId = String(request.data?.numeroId || '')
+  // Número da conta Telnyx PRÓPRIA (BYO): por ora, marca como selecionado pra voz (soft).
+  // A origem real da chamada pela conta do cliente entra no módulo de call center (a construir).
+  if (numeroId.startsWith('byo:')) {
+    const parts = numeroId.split(':'); const providerId = parts[1]; const num = parts[2] || ''
+    if (!providerId || !num) throw new HttpsError('invalid-argument', 'Número inválido.')
+    await db.doc(`users/${uid}/smsProviders/${providerId}`).set({ vozAtivas: admin.firestore.FieldValue.arrayUnion(num) }, { merge: true })
+    return { ok: true, ativados: 1, byo: true }
+  }
   const vc = await getTelnyxVoiceConfig()
   if (!vc.apiKey || !vc.connectionId) throw new HttpsError('failed-precondition', 'A Ligação IA ainda não foi ativada pela plataforma.')
   const snap = await db.collection(`users/${uid}/smsNumeros`).where('status', '==', 'active').get()

@@ -22,6 +22,12 @@ export async function listarNumerosSMS() {
   return r.data // { numeros: [{ id, numero, status, principal, erro, valorMensal, criadoEm }] }
 }
 
+/** Lista TODOS os números de voz (EUA) — comprados no app + conta Telnyx própria (BYO). Pra tela "Ativar voz". */
+export async function listarNumerosVozCall() {
+  const r = await call('callListarNumerosVoz')()
+  return r.data // { numeros: [{ id, numero, vozAtiva, fonte:'app'|'byo' }] }
+}
+
 /** Sincroniza o status dos números com a Telnyx (detecta banido/restrito) e devolve a lista atualizada. */
 export async function sincronizarNumerosSMS() {
   const r = await call('smsSincronizarNumeros')()

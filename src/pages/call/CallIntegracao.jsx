@@ -4,7 +4,7 @@ import { useAuthState } from 'react-firebase-hooks/auth'
 import { httpsCallable } from 'firebase/functions'
 import toast from 'react-hot-toast'
 import { auth, functions } from '../../lib/firebase'
-import { listarNumerosSMS } from '../../lib/smsNumeros'
+import { listarNumerosVozCall } from '../../lib/smsNumeros'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import Bandeira from '../../components/Bandeira'
@@ -48,7 +48,7 @@ export default function CallIntegracao() {
 
   const carregar = async () => {
     if (!user?.uid) return
-    try { const r = await listarNumerosSMS(); setNumeros(r?.numeros || []) }
+    try { const r = await listarNumerosVozCall(); setNumeros(r?.numeros || []) }
     catch { setNumeros([]) }
     finally { setLoading(false) }
   }
@@ -95,6 +95,9 @@ export default function CallIntegracao() {
                         ) : (
                           <span className="inline-flex items-center gap-1 text-xs text-green-600"><Check className="w-3 h-3" /> Ativo</span>
                         )}
+                        <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${n.fonte === 'byo' ? 'bg-primary-50 text-primary-700 border-primary-200' : 'bg-surface-100 text-stone-500 border-surface-200'}`}>
+                          {n.fonte === 'byo' ? 'Sua Telnyx' : 'Autsend'}
+                        </span>
                       </div>
                     </div>
                     {!n.vozAtiva && (
