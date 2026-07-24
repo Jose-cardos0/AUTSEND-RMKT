@@ -15,6 +15,39 @@ export function limparSessao() {
   try { localStorage.removeItem(LS_SESSAO); localStorage.removeItem(LS_RAMAL); localStorage.removeItem(LS_HIST) } catch { /* ignore */ }
 }
 
+// ── Web Push (tocar com o app fechado) ──
+export const VAPID_PUBLIC = 'BIxFipiNUnDjoeZ55gWjOzkeBZpFx80GT-79SJUQNXRPeMb6-S98SdOmU1hM4lHw92OX3uFrKqL0A0L4_DkacLo'
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  const arr = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
+  return arr
+}
+export function pushSuportado() {
+  return typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
+}
+export function pushAtivo() {
+  return typeof Notification !== 'undefined' && Notification.permission === 'granted'
+}
+/** Pede permissão, inscreve no push e salva no servidor. Lança Error com mensagem amigável. */
+export async function ativarPush() {
+  if (!pushSuportado()) throw new Error('Este aparelho/navegador não suporta notificações. No iPhone, instale o app na tela inicial primeiro.')
+  const perm = await Notification.requestPermission()
+  if (perm !== 'granted') throw new Error('Permissão de notificação negada. Ative nas configurações do navegador.')
+  const reg = await navigator.serviceWorker.ready
+  let sub = await reg.pushManager.getSubscription()
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) })
+  const sessao = getSessao()
+  const r = await fetch(`${BASE}/ramalSalvarPush`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` },
+    body: JSON.stringify({ subscription: sub, sessao }),
+  })
+  if (!r.ok) throw new Error('Não consegui ativar as notificações no servidor.')
+  return true
+}
+
 /** Reporta uma ligação concluída pro servidor (relatório do dono). Best-effort. */
 export function registrarChamadaServidor(item) {
   const sessao = getSessao()

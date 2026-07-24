@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { TelnyxRTC } from '@telnyx/webrtc'
-import { Phone, PhoneOff, PhoneIncoming, PhoneOutgoing, PhoneMissed, Delete, Mic, MicOff, Loader2, LogOut, Wifi, WifiOff, Grid3x3, Clock, Menu as MenuIcon } from 'lucide-react'
-import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico, enviarPresenca, registrarChamadaServidor } from '../../lib/atendente'
+import { Phone, PhoneOff, PhoneIncoming, PhoneOutgoing, PhoneMissed, Delete, Mic, MicOff, Loader2, LogOut, Wifi, WifiOff, Grid3x3, Clock, Menu as MenuIcon, Bell, Check } from 'lucide-react'
+import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico, enviarPresenca, registrarChamadaServidor, ativarPush, pushAtivo, pushSuportado } from '../../lib/atendente'
 import logo from '../../assets/autsendlogo.png'
+import toast from 'react-hot-toast'
 
 function fmtNum(n) {
   const only = String(n || '').replace(/\D/g, '')
@@ -50,6 +51,8 @@ export default function Atendente() {
 
   const [registrado, setRegistrado] = useState(null) // diagnóstico: registrou pra RECEBER?
   const [ultimoEvento, setUltimoEvento] = useState('') // diagnóstico: último evento do SDK
+  const [pushLigado, setPushLigado] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
 
   const clientRef = useRef(null)
   const callRef = useRef(null)
@@ -200,6 +203,13 @@ export default function Atendente() {
   const tecla = (t) => setDiscar((v) => (v + t).slice(0, 20))
   const apagar = () => setDiscar((v) => v.slice(0, -1))
   const ligarDeVolta = (num) => { setDiscar(num); setAba('teclado') }
+  const ativarNotificacoes = async () => {
+    setPushLoading(true)
+    try { await ativarPush(); setPushLigado(true); toast.success('Notificações ativadas!') }
+    catch (e) { toast.error(e.message || 'Não consegui ativar.') }
+    finally { setPushLoading(false) }
+  }
+  useEffect(() => { setPushLigado(pushAtivo()) }, [fase])
 
   // ═══════════════ RENDER ═══════════════
   const wrap = (children) => (
@@ -343,6 +353,14 @@ export default function Atendente() {
         <p className="text-sm text-stone-500 tabular-nums flex items-center gap-1.5 mt-1"><Wifi className="w-3.5 h-3.5 text-green-500" /> {fmtNum(ramal?.numero)}</p>
         <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700"><span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Conectado</span>
       </div>
+      {/* Chamadas com o app fechado (Web Push) */}
+      {pushSuportado() && (
+        <button onClick={ativarNotificacoes} disabled={pushLoading || pushLigado}
+          className={`mt-8 w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition ${pushLigado ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-primary-600 text-white hover:bg-primary-700'} disabled:opacity-70`}>
+          {pushLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : pushLigado ? <><Check className="w-5 h-5" /> Chamadas com app fechado: ativo</> : <><Bell className="w-5 h-5" /> Ativar chamadas com o app fechado</>}
+        </button>
+      )}
+
       {/* Diagnóstico (temporário) — mostra se o app registrou pra RECEBER chamadas */}
       <div className="mt-8 rounded-xl bg-surface-50 border border-surface-200 p-3 text-left">
         <p className="text-xs font-semibold text-stone-600 mb-1.5">Diagnóstico</p>

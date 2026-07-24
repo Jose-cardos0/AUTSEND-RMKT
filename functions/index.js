@@ -3,7 +3,27 @@ const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { setGlobalOptions } = require('firebase-functions/v2')
 const crypto = require('crypto')
 const admin = require('firebase-admin')
+const webpush = require('web-push')
 admin.initializeApp()
+
+// Web Push (chamadas com o app do atendente fechado). Chaves VAPID = identidade do nosso servidor de push.
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC || 'BIxFipiNUnDjoeZ55gWjOzkeBZpFx80GT-79SJUQNXRPeMb6-S98SdOmU1hM4lHw92OX3uFrKqL0A0L4_DkacLo'
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE || '0IcnN_bSbIJudoVe6sJxmeSegu1QoDPXjG9xXsPEaGs'
+try { webpush.setVapidDetails('mailto:contato@autsend.com.br', VAPID_PUBLIC, VAPID_PRIVATE) } catch (_) {}
+/** Envia um push pra todos os aparelhos inscritos de um ramal. Remove inscrições expiradas. */
+async function enviarPushRamal(uid, ramalId, payload) {
+  const ref = db.doc(`users/${uid}/ramais/${ramalId}`)
+  const subs = (await ref.get()).data()?.pushSubs || []
+  if (!subs.length) return 0
+  const msg = JSON.stringify(payload)
+  const vivos = []
+  await Promise.all(subs.map(async (s) => {
+    try { await webpush.sendNotification(s, msg); vivos.push(s) }
+    catch (e) { if (e?.statusCode !== 404 && e?.statusCode !== 410) vivos.push(s) } // 404/410 = expirada → descarta
+  }))
+  if (vivos.length !== subs.length) await ref.set({ pushSubs: vivos }, { merge: true })
+  return vivos.length
+}
 
 // Anti-DDoS/custo: teto GLOBAL de instâncias por função. O Cloud Functions gen2 escala "sem limite" por
 // padrão — um flood viraria conta gigante. 40 cobre folgado o uso legítimo (crons + disparos sequenciais +
@@ -4332,6 +4352,26 @@ exports.ramalPresenca = onRequest({ region: 'us-central1', timeoutSeconds: 15, m
     await db.doc(`users/${sessao.uid}/ramais/${sessao.ramalId}`).set({ presencaOnline: online, presencaEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ ok: true })
   } catch (err) { res.status(200).json({ ok: false }) }
+})
+
+/** [App atendente] Salva a inscrição de push do aparelho (pra tocar com o app fechado). Público (Bearer sessão). */
+exports.ramalSalvarPush = onRequest({ region: 'us-central1', timeoutSeconds: 15, memory: '256MiB', maxInstances: 20 }, async (req, res) => {
+  _corsRamal(res)
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return }
+  try {
+    const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+    const sessao = ramalVerificarSessao(auth || req.body?.sessao || '')
+    if (!sessao) { res.status(401).json({ erro: 'Sessão expirada.' }); return }
+    const sub = req.body?.subscription
+    if (!sub?.endpoint) { res.status(400).json({ erro: 'Inscrição inválida.' }); return }
+    const ref = db.doc(`users/${sessao.uid}/ramais/${sessao.ramalId}`)
+    const cur = (await ref.get()).data()?.pushSubs || []
+    const nova = [sub, ...cur.filter((s) => s.endpoint !== sub.endpoint)].slice(0, 5) // 1 por aparelho, máx 5
+    await ref.set({ pushSubs: nova }, { merge: true })
+    // Push de confirmação (testa o caminho todo agora).
+    try { await webpush.sendNotification(sub, JSON.stringify({ title: 'Autsend Atendente', body: 'Pronto! Você vai receber chamadas mesmo com o app fechado.' })) } catch (_) {}
+    res.status(200).json({ ok: true })
+  } catch (err) { console.error('ramalSalvarPush', err?.message || err); res.status(500).json({ erro: 'Erro ao ativar notificações.' }) }
 })
 
 /** [App atendente] Registra uma ligação que o softphone conduziu (pro relatório do dono). Público (Bearer sessão). */
