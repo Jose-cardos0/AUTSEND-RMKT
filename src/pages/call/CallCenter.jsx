@@ -173,8 +173,9 @@ export default function CallCenter() {
     setFixandoId(r.id)
     try {
       const res = await reassociarRamal(r.id)
-      if (res.jaEstavaOk) toast.success('Recebimento já estava certo. Peça pro atendente abrir o app e ligue de novo.')
-      else toast.success('Recebimento corrigido! Agora ligue pro número — deve tocar no app do atendente.')
+      const antes = res.connectionAntes ? `…${String(res.connectionAntes).slice(-6)}` : 'nenhuma'
+      const agora = res.connectionAgora ? `…${String(res.connectionAgora).slice(-6)}` : '?'
+      toast.success(`Entrada apontada pro softphone (${agora}). Antes ia pra: ${antes}. Abra o app e ligue de novo.`, { duration: 9000 })
     } catch (err) {
       toast.error(err.message || 'Não consegui corrigir o recebimento.')
     } finally { setFixandoId(null) }
