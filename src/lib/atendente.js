@@ -4,6 +4,7 @@ const BASE = 'https://us-central1-afiliadocdnx.cloudfunctions.net'
 
 const LS_SESSAO = 'atendente:sessao'
 const LS_RAMAL = 'atendente:ramal'
+const LS_HIST = 'atendente:historico'
 
 export function getSessao() { try { return localStorage.getItem(LS_SESSAO) || '' } catch { return '' } }
 export function getRamalSalvo() { try { return JSON.parse(localStorage.getItem(LS_RAMAL) || 'null') } catch { return null } }
@@ -11,8 +12,16 @@ export function salvarSessao(sessao, ramal) {
   try { localStorage.setItem(LS_SESSAO, sessao); if (ramal) localStorage.setItem(LS_RAMAL, JSON.stringify(ramal)) } catch { /* ignore */ }
 }
 export function limparSessao() {
-  try { localStorage.removeItem(LS_SESSAO); localStorage.removeItem(LS_RAMAL) } catch { /* ignore */ }
+  try { localStorage.removeItem(LS_SESSAO); localStorage.removeItem(LS_RAMAL); localStorage.removeItem(LS_HIST) } catch { /* ignore */ }
 }
+
+// ── Histórico de ligações (local, por aparelho) ──
+export function getHistorico() { try { return JSON.parse(localStorage.getItem(LS_HIST) || '[]') } catch { return [] } }
+/** Adiciona uma ligação ao histórico e devolve a lista atualizada (máx 60). item: { id, dir:'in'|'out', num, atendida, dur, ts } */
+export function addHistorico(item) {
+  try { const h = [item, ...getHistorico()].slice(0, 60); localStorage.setItem(LS_HIST, JSON.stringify(h)); return h } catch { return getHistorico() }
+}
+export function limparHistorico() { try { localStorage.removeItem(LS_HIST) } catch { /* ignore */ } }
 
 /** Pareia com a pairKey → devolve { sessao, ramal }. Lança Error com mensagem amigável. */
 export async function parear(pairKey) {

@@ -9,7 +9,7 @@ import { criarRamal, listarRamais, revogarRamal, linkPareamento, PWA_ATENDENTE_U
 import { useConfirm } from '../../components/ConfirmDialog'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, Info } from 'lucide-react'
+import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone } from 'lucide-react'
 import telnyxLogo from '../../assets/telnyx.png'
 
 const _norm = (s) => String(s || '').replace(/\D/g, '')
@@ -157,18 +157,12 @@ export default function CallCenter() {
         <Headphones className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-primary-500 opacity-[0.06]" />
         <div className="relative z-10">
           <h2 className="flex items-center gap-2 text-base font-semibold text-stone-800"><Headphones className="w-5 h-5 text-primary-600" /> Central de atendentes</h2>
-          <p className="mt-1.5 text-sm text-stone-600 leading-relaxed max-w-2xl">
-            Crie um <strong>ramal</strong> pra cada atendente usando seus números da <strong>sua conta Telnyx</strong>. Cada atendente instala o app
-            <strong> Autsend Atendente</strong> no celular, escaneia o QR do ramal e passa a <strong>ligar e receber</strong> pelo número — de qualquer lugar,
-            sem precisar da sua conta do Autsend.
-          </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <a href={PWA_ATENDENTE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-surface-100 px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-surface-200">
               <Smartphone className="w-4 h-4 text-primary-600" /> {PWA_ATENDENTE_URL.replace('https://', '')}
             </a>
             <BotaoCopiar texto={PWA_ATENDENTE_URL} label="Copiar link do app" />
           </div>
-          <p className="mt-2 flex items-start gap-1.5 text-xs text-stone-400"><Info className="w-3.5 h-3.5 mt-px shrink-0" /> A telefonia (ligações) é cobrada na sua própria conta Telnyx. O Autsend organiza a operação.</p>
         </div>
       </div>
 
