@@ -1044,37 +1044,27 @@ export async function addMessageLog(uid, payload) {
 // ── Re-enviar lead individual ──
 
 export async function reenviarLead(uid, lead, mensagemTemplate, evolution) {
-  const { WEBHOOK_REMARKETING } = await import('./constants')
-
   const mensagem = mensagemTemplate
     .replace(/\{nome_cliente\}/gi, lead.nome || '')
     .replace(/\{numero_cliente\}/gi, lead.telefone || '')
     .replace(/\{email_cliente\}/gi, lead.email || '')
     .replace(/\{nome_produto\}/gi, lead.produto || '')
 
-  // Contrato WF1 (WAHA): { sessao, campanhaId, blocos, contatos }.
-  const payload = {
-    sessao: evolution?.nomeInstancia || '',
-    campanhaId: lead.evento || 'reenvio',
-    blocos: [{ tipo: 'texto', conteudo: mensagem }],
-    contatos: [{ telefone: String(lead.telefone || '').replace(/\D/g, ''), nome: lead.nome || '' }],
-  }
-
-  const res = await fetch(WEBHOOK_REMARKETING, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-
-  // Respeita a resposta real do n8n: se ele disser que falhou, é erro (mesmo com HTTP 200)
-  let body = {}
-  try { const t = await res.text(); if (t && t.trim()) body = JSON.parse(t) } catch (_) {}
-  let ok = res.ok
-  if (res.ok && body && typeof body === 'object') {
-    if (body.success === false || body.enviado === false || body.sent === false) ok = false
-    else if (body.success === true || body.enviado === true || body.sent === true || body.ok === true) ok = true
-  }
-  const erroMsg = ok ? null : (body.erro || body.error || body.message || `n8n respondeu ${res.status}`)
+  // Vai por Cloud Function (server tem o x-autsend-key do n8n; o front não pode chamar direto → dava 403).
+  const { httpsCallable } = await import('firebase/functions')
+  const { functions } = await import('./firebase')
+  let ok = false, erroMsg = null
+  try {
+    const r = await httpsCallable(functions, 'reenviarLeadWA')({
+      sessao: evolution?.nomeInstancia || '',
+      campanhaId: lead.evento || 'reenvio',
+      mensagem,
+      telefone: String(lead.telefone || '').replace(/\D/g, ''),
+      nome: lead.nome || '',
+    })
+    ok = !!r.data?.ok
+    erroMsg = r.data?.erroMsg || null
+  } catch (e) { ok = false; erroMsg = e.message || 'Falha ao reenviar.' }
 
   await updateLeadStatus(uid, lead.id, {
     status: ok ? 'enviado' : 'erro',

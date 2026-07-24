@@ -2162,6 +2162,32 @@ async function enviarWAHA({ sessao, contatos, blocos, campanhaId }) {
   return fetch(N8N_REMARKETING_URL, { method: 'POST', headers: n8nHeaders(), body: JSON.stringify(payload) })
 }
 
+/** Reenvia uma mensagem individual (WhatsApp) via WF1/WAHA — server-side (tem o x-autsend-key; o front não pode). */
+exports.reenviarLeadWA = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const d = request.data || {}
+  const sessao = String(d.sessao || '')
+  const mensagem = String(d.mensagem || '')
+  const telefone = String(d.telefone || '').replace(/\D/g, '')
+  const nome = String(d.nome || '')
+  const campanhaId = String(d.campanhaId || 'reenvio')
+  if (!sessao || !telefone || !mensagem) throw new HttpsError('invalid-argument', 'Dados incompletos pro reenvio.')
+  let ok = false, erroMsg = null
+  try {
+    const res = await enviarWAHA({ sessao, campanhaId, blocos: [{ tipo: 'texto', conteudo: mensagem }], contatos: [{ telefone, nome }] })
+    let body = {}
+    try { const t = await res.text(); if (t && t.trim()) body = JSON.parse(t) } catch (_) {}
+    ok = res.ok
+    if (res.ok && body && typeof body === 'object') {
+      if (body.success === false || body.enviado === false || body.sent === false) ok = false
+      else if (body.success === true || body.enviado === true || body.sent === true || body.ok === true) ok = true
+    }
+    erroMsg = ok ? null : (body.erro || body.error || body.message || `n8n respondeu ${res.status}`)
+  } catch (e) { ok = false; erroMsg = e.message || 'Falha ao reenviar.' }
+  return { ok, erroMsg }
+})
+
 /** Envia uma mensagem de WhatsApp por uma instância ESPECÍFICA (via WF1/WAHA). */
 async function enviarWhatsAppInstancia(inst, telefone, nome, mensagem) {
   const res = await enviarWAHA({
