@@ -4120,7 +4120,8 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
   const sipPassword = _senhaAleatoria(20)
   const cc = await fetch('https://api.telnyx.com/v2/credential_connections', {
     method: 'POST', headers: H,
-    body: JSON.stringify({ connection_name: `Autsend Ramal ${ramalId}`, user_name: sipUsername, password: sipPassword }),
+    // sip_uri_calling_preference: 'internal' → deixa o Call Control app (mesma conta) alcançar o softphone via sip:user.
+    body: JSON.stringify({ connection_name: `Autsend Ramal ${ramalId}`, user_name: sipUsername, password: sipPassword, sip_uri_calling_preference: 'internal' }),
   })
   const ccd = await cc.json().catch(() => ({}))
   if (!cc.ok) throw new HttpsError('failed-precondition', ccd?.errors?.[0]?.detail || 'Não consegui criar a central SIP na sua conta Telnyx.')
@@ -4137,13 +4138,14 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
   return { credentialConnectionId, sipUsername, sipPassword, voiceProfileId: profileId }
 }
 const RAMAL_CALL_WEBHOOK = 'https://us-central1-afiliadocdnx.cloudfunctions.net/ramalCallWebhook'
-/** Remove o webhook da credential connection (ela não roteia mais o número; comandos Call Control não valem nela). */
-async function removerWebhookCredCon(apiKey, connectionId) {
+/** Ajusta a central SIP pra ser destino de bridge: tira o webhook (não roteia mais o número) e habilita
+ *  SIP URI calling 'internal' (o Call Control app alcança o softphone via sip:user@sip.telnyx.com). */
+async function configurarCredConBridge(apiKey, connectionId) {
   if (!connectionId) return
   try {
     await fetch(`https://api.telnyx.com/v2/credential_connections/${connectionId}`, {
       method: 'PATCH', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhook_event_url: '' }),
+      body: JSON.stringify({ webhook_event_url: '', sip_uri_calling_preference: 'internal' }),
     })
   } catch (_) { /* best-effort */ }
 }
@@ -4171,7 +4173,7 @@ async function garantirCallControlRamal(apiKey, uid, ramalId, credentialConnecti
   await db.doc(`ccConnMap/${ccAppId}`).set({ uid, ramalId }, { merge: true }) // webhook mapeia connection_id do evento
   const pn = await acharTelnyxPhoneId(H, numeroExato)
   if (pn?.id) await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: ccAppId }) })
-  await removerWebhookCredCon(apiKey, credentialConnectionId) // central SIP só pra registrar
+  await configurarCredConBridge(apiKey, credentialConnectionId) // central SIP: sem webhook + aceita bridge do Call Control
   return ccAppId
 }
 /** Acha o phone number id na conta Telnyx tentando formatos (+E164, sem +, cru). Retorna { id, connectionId, numero } ou null. */
