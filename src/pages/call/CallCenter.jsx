@@ -91,6 +91,15 @@ export default function CallCenter() {
   }
   useEffect(() => { carregar() }, [user?.uid])
 
+  // Atualiza o status dos ramais a cada 6s (pega quando o atendente pareia/fica online).
+  useEffect(() => {
+    if (!user?.uid) return
+    const id = setInterval(async () => {
+      try { const rr = await listarRamais(); setRamais(rr?.ramais || []) } catch { /* silencioso */ }
+    }, 6000)
+    return () => clearInterval(id)
+  }, [user?.uid])
+
   // Números BYO ainda sem ramal (1 número = 1 ramal).
   const usados = new Set(ramais.map((r) => _norm(r.numero)))
   const disponiveis = numsByo.filter((n) => !usados.has(_norm(n.numero)))

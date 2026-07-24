@@ -4197,9 +4197,12 @@ exports.ramalParear = onRequest({ region: 'us-central1', timeoutSeconds: 20, mem
   _corsRamal(res)
   if (req.method === 'OPTIONS') { res.status(204).send(''); return }
   try {
-    const pairKey = String(req.body?.pairKey || '').trim().toUpperCase()
-    if (!pairKey) { res.status(400).json({ erro: 'Informe o código do ramal.' }); return }
-    const mapSnap = await db.doc(`pairKeys/${pairKey}`).get()
+    // Normaliza: só letras/números, maiúsculo (aceita com ou sem o traço do código).
+    const raw = String(req.body?.pairKey || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (raw.length < 6) { res.status(400).json({ erro: 'Informe o código do ramal.' }); return }
+    // Tenta a chave sem traço; se não achar, tenta reinserindo o traço (XXXX-XXXX) — compat com ramais antigos.
+    let mapSnap = await db.doc(`pairKeys/${raw}`).get()
+    if (!mapSnap.exists && raw.length >= 8) mapSnap = await db.doc(`pairKeys/${raw.slice(0, 4)}-${raw.slice(4)}`).get()
     if (!mapSnap.exists) { res.status(404).json({ erro: 'Código inválido ou expirado.' }); return }
     const { uid, ramalId } = mapSnap.data()
     const ref = db.doc(`users/${uid}/ramais/${ramalId}`)

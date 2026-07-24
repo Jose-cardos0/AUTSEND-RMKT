@@ -75,8 +75,10 @@ export default function Atendente() {
       const client = new TelnyxRTC({ login_token: token })
       client.remoteElement = 'atendente-remote-audio'
       client.enableMicrophone = true
-      client.on('telnyx.ready', () => setFase('pronto'))
-      client.on('telnyx.error', () => setErro('Erro na conexão de voz. Tentando de novo…'))
+      // Trava anti-"conectando pra sempre": se não ficar pronto em 15s, mostra erro com retry.
+      const prontoTimer = setTimeout(() => { setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro((e) => e || 'Demorou pra conectar à voz. Toque em tentar de novo.') }, 15000)
+      client.on('telnyx.ready', () => { clearTimeout(prontoTimer); setErro(''); setFase('pronto') })
+      client.on('telnyx.error', () => { clearTimeout(prontoTimer); setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro('Erro na conexão de voz.') })
       client.on('telnyx.socket.close', () => { /* deixa o SDK tentar reconectar */ })
       client.on('telnyx.notification', (n) => {
         if (n.type !== 'callUpdate' || !n.call) return
