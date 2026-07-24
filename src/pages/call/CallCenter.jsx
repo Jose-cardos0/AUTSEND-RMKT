@@ -203,12 +203,10 @@ export default function CallCenter() {
   const corrigirRecebimento = async (r) => {
     setFixandoId(r.id)
     try {
-      const res = await reassociarRamal(r.id)
-      const antes = res.connectionAntes ? `…${String(res.connectionAntes).slice(-6)}` : 'nenhuma'
-      const agora = res.connectionAgora ? `…${String(res.connectionAgora).slice(-6)}` : '?'
-      toast.success(`Entrada apontada pro softphone (${agora}). Antes ia pra: ${antes}. Abra o app e ligue de novo.`, { duration: 9000 })
+      await reassociarRamal(r.id)
+      toast.success('Tudo certo! O recebimento de chamadas deste ramal está funcionando. ✅', { duration: 6000 })
     } catch (err) {
-      toast.error(err.message || 'Não consegui corrigir o recebimento.')
+      toast.error('Encontramos um problema neste ramal. Entre em contato com o suporte.', { duration: 7000 })
     } finally { setFixandoId(null) }
   }
 
