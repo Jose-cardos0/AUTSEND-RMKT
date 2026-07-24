@@ -259,7 +259,7 @@ export default function CallCenter() {
             {ramais.map((r) => {
               const aguardando = r.status === 'aguardando'
               const rel = tempoRelativo(r.ultimoAcesso)
-              const online = rel === 'online agora'
+              const online = r.online === true
               return (
                 <div key={r.id} className="app-panel rounded-xl p-4 flex flex-col gap-3">
                   <div className="flex items-start gap-3">

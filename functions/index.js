@@ -4093,10 +4093,13 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
     if (!cp.ok) throw new HttpsError('failed-precondition', cpd?.errors?.[0]?.detail || 'Sua conta Telnyx não permitiu criar um perfil de voz de saída.')
     profileId = cpd?.data?.id
   }
-  // 2) Credential connection (central SIP isolada do ramal).
+  // 2) Credential connection (central SIP do ramal). O user_name/password DELA é o login do softphone —
+  //    é a credencial PERSISTENTE da connection que RECEBE inbound (telephony credential on-demand é só outbound).
+  const sipUsername = `aut${_senhaAleatoria(12)}`
+  const sipPassword = _senhaAleatoria(20)
   const cc = await fetch('https://api.telnyx.com/v2/credential_connections', {
     method: 'POST', headers: H,
-    body: JSON.stringify({ connection_name: `Autsend Ramal ${ramalId}`, user_name: `aut${_senhaAleatoria(12)}`, password: _senhaAleatoria(20) }),
+    body: JSON.stringify({ connection_name: `Autsend Ramal ${ramalId}`, user_name: sipUsername, password: sipPassword }),
   })
   const ccd = await cc.json().catch(() => ({}))
   if (!cc.ok) throw new HttpsError('failed-precondition', ccd?.errors?.[0]?.detail || 'Não consegui criar a central SIP na sua conta Telnyx.')
@@ -4107,22 +4110,12 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
       method: 'PATCH', headers: H, body: JSON.stringify({ outbound: { outbound_voice_profile_id: profileId } }),
     })
   } catch (_) {}
-  // 3) Telephony credential (login do softphone WebRTC).
-  const tc = await fetch('https://api.telnyx.com/v2/telephony_credentials', {
-    method: 'POST', headers: H, body: JSON.stringify({ connection_id: credentialConnectionId, name: `ramal-${ramalId}` }),
-  })
-  const tcd = await tc.json().catch(() => ({}))
-  if (!tc.ok) throw new HttpsError('failed-precondition', tcd?.errors?.[0]?.detail || 'Não consegui criar a credencial do ramal.')
-  const telephonyCredentialId = tcd?.data?.id
-  // sip_username/sip_password: o softphone registra COM ELES (não com o token JWT, que é só outbound).
-  const sipUsername = tcd?.data?.sip_username || ''
-  const sipPassword = tcd?.data?.sip_password || ''
-  // 4) Liga o número na central do ramal (inbound → toca no atendente).
+  // 3) Liga o número na central do ramal (inbound → toca no atendente).
   const pn = await acharTelnyxPhoneId(H, numeroExato)
   if (pn?.id) {
     await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: credentialConnectionId }) })
   }
-  return { credentialConnectionId, telephonyCredentialId, sipUsername, sipPassword, voiceProfileId: profileId }
+  return { credentialConnectionId, sipUsername, sipPassword, voiceProfileId: profileId }
 }
 /** Acha o phone number id na conta Telnyx tentando formatos (+E164, sem +, cru). Retorna { id, connectionId, numero } ou null. */
 async function acharTelnyxPhoneId(H, numero) {
@@ -4174,8 +4167,8 @@ exports.ramalCriar = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async
   const pairKey = gerarPairKey()
   await ramalRef.set({
     nome, numero: exato, numeroNorm: numNorm, providerId,
-    credentialConnectionId: prv.credentialConnectionId, telephonyCredentialId: prv.telephonyCredentialId,
-    sipUsername: prv.sipUsername, sipPassword: prv.sipPassword,
+    credentialConnectionId: prv.credentialConnectionId,
+    sipUsername: prv.sipUsername, sipPassword: prv.sipPassword, sipFonte: 'conexao',
     pairKey, status: 'aguardando', ultimoAcesso: null,
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
   })
@@ -4193,7 +4186,11 @@ exports.ramalListar = onCall({ region: 'us-central1' }, async (request) => {
   const ramais = snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((r) => r.status !== 'revogado')
-    .map((r) => ({ id: r.id, nome: r.nome, numero: r.numero, status: r.status || 'aguardando', pairKey: r.pairKey || '', fotoUrl: r.fotoUrl || '', ultimoAcesso: r.ultimoAcesso?.toMillis?.() || null }))
+    .map((r) => {
+      const presMs = r.presencaEm?.toMillis?.() || 0
+      const online = r.presencaOnline === true && presMs > 0 && (Date.now() - presMs) < 45000
+      return { id: r.id, nome: r.nome, numero: r.numero, status: r.status || 'aguardando', pairKey: r.pairKey || '', fotoUrl: r.fotoUrl || '', online, ultimoAcesso: r.ultimoAcesso?.toMillis?.() || null }
+    })
   return { ramais }
 })
 
@@ -4301,23 +4298,38 @@ exports.ramalWebrtcToken = onRequest({ region: 'us-central1', timeoutSeconds: 20
     const ramal = snap.data()
     if (ramal.status === 'revogado') { res.status(403).json({ erro: 'Acesso revogado.' }); return }
     let sipUsername = ramal.sipUsername, sipPassword = ramal.sipPassword
-    if (!sipUsername || !sipPassword) {
-      // Auto-heal: cria uma telephony credential nova na central do ramal e guarda as credenciais.
+    // Só a credencial da PRÓPRIA connection recebe inbound. Ramais antigos (telephony credential) são
+    // curados aqui: define user_name/password novos na connection existente — sem recriar o ramal.
+    if (ramal.sipFonte !== 'conexao' || !sipUsername || !sipPassword) {
       if (!ramal.credentialConnectionId) { res.status(412).json({ erro: 'Ramal não provisionado. Recrie o ramal.' }); return }
       const prov = (await db.doc(`users/${sessao.uid}/smsProviders/${ramal.providerId}`).get()).data()
       if (!prov?.apiKey) { res.status(412).json({ erro: 'Conta Telnyx do número não encontrada.' }); return }
-      const tc = await fetch('https://api.telnyx.com/v2/telephony_credentials', {
-        method: 'POST', headers: { Authorization: `Bearer ${prov.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connection_id: ramal.credentialConnectionId, name: `ramal-${sessao.ramalId}` }),
+      const novoUser = `aut${crypto.randomBytes(24).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
+      const novaSenha = crypto.randomBytes(40).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)
+      const p = await fetch(`https://api.telnyx.com/v2/credential_connections/${ramal.credentialConnectionId}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${prov.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_name: novoUser, password: novaSenha }),
       })
-      const tcd = await tc.json().catch(() => ({}))
-      if (!tc.ok || !tcd?.data?.sip_username) { res.status(502).json({ erro: 'Falha ao gerar credencial de voz na Telnyx.' }); return }
-      sipUsername = tcd.data.sip_username; sipPassword = tcd.data.sip_password
-      await ref.set({ sipUsername, sipPassword, telephonyCredentialId: tcd.data.id }, { merge: true })
+      if (!p.ok) { const d = await p.json().catch(() => ({})); res.status(502).json({ erro: d?.errors?.[0]?.detail || 'Falha ao configurar a credencial de voz na Telnyx.' }); return }
+      sipUsername = novoUser; sipPassword = novaSenha
+      await ref.set({ sipUsername, sipPassword, sipFonte: 'conexao' }, { merge: true })
     }
     await ref.set({ ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ login: sipUsername, password: sipPassword, numero: ramal.numero, nome: ramal.nome, fotoUrl: ramal.fotoUrl || '' })
   } catch (err) { console.error('ramalWebrtcToken', err?.message || err); res.status(500).json({ erro: 'Erro ao conectar.' }) }
+})
+
+/** [App atendente] Presença: marca o ramal online/offline (heartbeat enquanto conectado; offline ao sair). */
+exports.ramalPresenca = onRequest({ region: 'us-central1', timeoutSeconds: 15, memory: '256MiB', maxInstances: 20 }, async (req, res) => {
+  _corsRamal(res)
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return }
+  try {
+    const sessao = ramalVerificarSessao(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''))
+    if (!sessao) { res.status(401).json({ erro: 'Sessão expirada.' }); return }
+    const online = req.body?.online !== false
+    await db.doc(`users/${sessao.uid}/ramais/${sessao.ramalId}`).set({ presencaOnline: online, presencaEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    res.status(200).json({ ok: true })
+  } catch (err) { res.status(200).json({ ok: false }) }
 })
 
 /** Pré-escuta: gera o áudio ElevenLabs do roteiro e devolve como data URL (a mesma voz da ligação). */

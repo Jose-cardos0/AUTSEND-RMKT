@@ -44,5 +44,16 @@ export async function obterTokenWebrtc() {
   const data = await r.json().catch(() => ({}))
   if (r.status === 401 || r.status === 403) { limparSessao(); throw new Error(data?.erro || 'Sessão expirada. Pareie de novo.') }
   if (!r.ok) throw new Error(data?.erro || 'Não consegui conectar ao servidor de voz.')
-  return data // { token, numero, nome }
+  return data // { login, password, numero, nome, fotoUrl }
+}
+
+/** Marca o ramal online/offline (heartbeat + offline ao sair). Best-effort. */
+export function enviarPresenca(online) {
+  const sessao = getSessao()
+  if (!sessao) return
+  try {
+    const body = JSON.stringify({ online })
+    // keepalive: garante o "offline" sair mesmo se a aba fechar.
+    fetch(`${BASE}/ramalPresenca`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` }, body, keepalive: true }).catch(() => {})
+  } catch { /* ignore */ }
 }

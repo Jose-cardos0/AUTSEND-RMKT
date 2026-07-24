@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { TelnyxRTC } from '@telnyx/webrtc'
 import { Phone, PhoneOff, PhoneIncoming, PhoneOutgoing, PhoneMissed, Delete, Mic, MicOff, Loader2, LogOut, Wifi, WifiOff, Grid3x3, Clock, Menu as MenuIcon } from 'lucide-react'
-import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico } from '../../lib/atendente'
+import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico, enviarPresenca } from '../../lib/atendente'
 import logo from '../../assets/autsendlogo.png'
 
 function fmtNum(n) {
@@ -56,6 +56,7 @@ export default function Atendente() {
   const timerRef = useRef(null)
   const infoRef = useRef(null) // dados da ligação atual (pro histórico)
   const regTimerRef = useRef(null)
+  const presTimerRef = useRef(null)
 
   // ── PWA: manifest + service worker ──
   useEffect(() => {
@@ -103,7 +104,11 @@ export default function Atendente() {
       client.enableMicrophone = true
       const prontoTimer = setTimeout(() => { setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro((e) => e || 'Demorou pra conectar à voz. Toque em tentar de novo.') }, 15000)
       const checarReg = async () => { try { setRegistrado((await client.getIsRegistered?.()) ?? null) } catch { setRegistrado(null) } }
-      client.on('telnyx.ready', () => { clearTimeout(prontoTimer); setErro(''); setFase('pronto'); checarReg(); if (regTimerRef.current) clearInterval(regTimerRef.current); regTimerRef.current = setInterval(checarReg, 4000) })
+      client.on('telnyx.ready', () => {
+        clearTimeout(prontoTimer); setErro(''); setFase('pronto'); checarReg()
+        if (regTimerRef.current) clearInterval(regTimerRef.current); regTimerRef.current = setInterval(checarReg, 4000)
+        enviarPresenca(true); if (presTimerRef.current) clearInterval(presTimerRef.current); presTimerRef.current = setInterval(() => enviarPresenca(true), 25000)
+      })
       client.on('telnyx.error', () => { clearTimeout(prontoTimer); setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro('Erro na conexão de voz.') })
       client.on('telnyx.socket.close', () => { /* deixa o SDK tentar reconectar */ })
       client.on('telnyx.notification', (n) => {
@@ -154,7 +159,7 @@ export default function Atendente() {
       setFase('login')
     }
     boot()
-    return () => { pararTimer(); if (regTimerRef.current) clearInterval(regTimerRef.current); if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } } }
+    return () => { pararTimer(); if (regTimerRef.current) clearInterval(regTimerRef.current); if (presTimerRef.current) clearInterval(presTimerRef.current); if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } } }
   }, [conectar])
 
   const parearManual = async () => {
@@ -167,7 +172,9 @@ export default function Atendente() {
   }
 
   const desconectar = () => {
+    enviarPresenca(false) // marca offline no site na hora
     if (regTimerRef.current) { clearInterval(regTimerRef.current); regTimerRef.current = null }
+    if (presTimerRef.current) { clearInterval(presTimerRef.current); presTimerRef.current = null }
     if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } clientRef.current = null }
     limparSessao(); setRamal(null); setHistorico([]); setRegistrado(null); setFase('login'); setAba('teclado'); encerrarUI()
   }
