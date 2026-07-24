@@ -9,7 +9,7 @@ import { criarRamal, listarRamais, revogarRamal, setFotoRamal, reassociarRamal, 
 import { useConfirm } from '../../components/ConfirmDialog'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera, PhoneIncoming, PhoneOutgoing, PhoneMissed, BarChart3, Clock } from 'lucide-react'
+import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera, PhoneIncoming, PhoneOutgoing, PhoneMissed, BarChart3, Clock, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import telnyxLogo from '../../assets/telnyx.png'
 
 /** Formata segundos em tempo legível (2h 5min / 3min 20s / 45s). */
@@ -122,14 +122,81 @@ function ModalQR({ ramal, ultimoAcesso, onClose }) {
   )
 }
 
+/** Modal de novo ramal: busca + paginação (5/página) de números BYO + nome do atendente. */
+function ModalNovoRamal({ disponiveis, semNumeros, onClose, onCriar, criando }) {
+  const [busca, setBusca] = useState('')
+  const [page, setPage] = useState(0)
+  const [selId, setSelId] = useState('')
+  const [nome, setNome] = useState('')
+  const PER = 5
+  useEffect(() => { setPage(0) }, [busca])
+  const filtrados = disponiveis.filter((n) => _norm(n.numero).includes(busca.replace(/\D/g, '')) || formatarNumero(n.numero).toLowerCase().includes(busca.toLowerCase()))
+  const totalPages = Math.max(1, Math.ceil(filtrados.length / PER))
+  const pageSafe = Math.min(page, totalPages - 1)
+  const pagina = filtrados.slice(pageSafe * PER, pageSafe * PER + PER)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="app-panel rounded-2xl w-full max-w-md p-5 relative" onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={onClose} className="absolute right-4 top-4 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
+        <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2"><Plus className="w-5 h-5 text-primary-600" /> Novo ramal</h3>
+
+        {semNumeros ? (
+          <div className="mt-4 rounded-xl bg-surface-50 border border-surface-200 p-4 text-center">
+            <p className="text-sm text-stone-600">Você precisa conectar uma <strong>conta Telnyx própria</strong> com número pra criar ramais.</p>
+            <Link to="/numeros" className="btn-primary mt-3 min-h-[40px] px-4 inline-flex text-sm"><Phone className="w-4 h-4" /> Ir para Números</Link>
+          </div>
+        ) : disponiveis.length === 0 ? (
+          <p className="mt-4 text-sm text-stone-500">Todos os seus números já têm ramal. Conecte mais números na aba <Link to="/numeros" className="text-primary-600 font-semibold">Números</Link>.</p>
+        ) : (
+          <>
+            <div className="mt-4 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar número…"
+                className="w-full rounded-lg border border-surface-300 bg-white pl-9 pr-3 py-2.5 text-sm text-stone-800 focus:border-primary-500 focus:outline-none" />
+            </div>
+            <p className="mt-3 text-xs font-medium text-stone-500">Selecione o número (sua Telnyx)</p>
+            <div className="mt-1.5 space-y-1.5 min-h-[236px]">
+              {pagina.length === 0 ? (
+                <p className="text-sm text-stone-400 text-center py-10">Nenhum número encontrado.</p>
+              ) : pagina.map((n) => (
+                <button key={n.id} type="button" onClick={() => setSelId(n.id)}
+                  className={`w-full flex items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition ${selId === n.id ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 hover:bg-surface-50'}`}>
+                  <span className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${selId === n.id ? 'border-primary-600 bg-primary-600' : 'border-stone-300'}`}>{selId === n.id && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                  <span className="font-semibold text-stone-800 tabular-nums flex-1">{formatarNumero(n.numero)}</span>
+                  <img src={telnyxLogo} alt="Telnyx" className="h-3.5 w-auto object-contain" />
+                </button>
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-2">
+                <button type="button" disabled={pageSafe === 0} onClick={() => setPage(pageSafe - 1)} className="p-2 rounded-lg text-stone-500 hover:bg-surface-100 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                <span className="text-xs text-stone-400">Página {pageSafe + 1} de {totalPages}</span>
+                <button type="button" disabled={pageSafe >= totalPages - 1} onClick={() => setPage(pageSafe + 1)} className="p-2 rounded-lg text-stone-500 hover:bg-surface-100 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            )}
+            <div className="mt-4">
+              <label className="block text-xs font-medium text-stone-500 mb-1">Nome do atendente</label>
+              <input value={nome} onChange={(e) => setNome(e.target.value)} maxLength={60} placeholder="Ex.: João · Vendas"
+                className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-primary-500 focus:outline-none" />
+            </div>
+            <button type="button" disabled={!selId || !nome.trim() || criando} onClick={() => onCriar(selId, nome)} className="btn-primary w-full min-h-[44px] mt-4">
+              {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar ramal
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function CallCenter() {
   const [user] = useAuthState(auth)
   const confirm = useConfirm()
   const [loading, setLoading] = useState(true)
   const [ramais, setRamais] = useState([])
   const [numsByo, setNumsByo] = useState([])
-  const [novoNum, setNovoNum] = useState('')
-  const [novoNome, setNovoNome] = useState('')
+  const [showNovo, setShowNovo] = useState(false)
   const [criando, setCriando] = useState(false)
   const [revogandoId, setRevogandoId] = useState(null)
   const [fotoLoadingId, setFotoLoadingId] = useState(null)
@@ -172,16 +239,14 @@ export default function CallCenter() {
   const usados = new Set(ramais.map((r) => _norm(r.numero)))
   const disponiveis = numsByo.filter((n) => !usados.has(_norm(n.numero)))
 
-  const criar = async () => {
-    if (!novoNum) { toast.error('Escolha um número.'); return }
-    if (!novoNome.trim()) { toast.error('Dê um nome ao ramal.'); return }
+  const criarRamalNovo = async (id, nome) => {
     setCriando(true)
     try {
-      const r = await criarRamal(novoNum, novoNome.trim())
+      const r = await criarRamal(id, nome.trim())
       toast.success('Ramal criado! Compartilhe o QR com o atendente.')
-      setNovoNum(''); setNovoNome('')
+      setShowNovo(false)
       await carregar()
-      if (r?.ramalId) setQrRamal({ id: r.ramalId, nome: novoNome.trim(), numero: r.numero, pairKey: r.pairKey })
+      if (r?.ramalId) setQrRamal({ id: r.ramalId, nome: nome.trim(), numero: r.numero, pairKey: r.pairKey })
     } catch (err) {
       toast.error(err.message || 'Não consegui criar o ramal.')
     } finally { setCriando(false) }
@@ -240,51 +305,22 @@ export default function CallCenter() {
         </div>
       </div>
 
-      {/* Toggle Ramais / Relatório */}
-      <div className="mt-4 inline-flex rounded-xl bg-surface-100 p-1">
-        {[{ k: 'ramais', label: 'Ramais', icon: Headphones }, { k: 'relatorio', label: 'Relatório', icon: BarChart3 }].map((t) => (
-          <button key={t.k} type="button" onClick={() => setView(t.k)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition ${view === t.k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
-            <t.icon className="w-4 h-4" /> {t.label}
-          </button>
-        ))}
+      {/* Toggle Ramais / Relatório + botão criar ramal (canto oposto) */}
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="inline-flex rounded-xl bg-surface-100 p-1">
+          {[{ k: 'ramais', label: 'Ramais', icon: Headphones }, { k: 'relatorio', label: 'Relatório', icon: BarChart3 }].map((t) => (
+            <button key={t.k} type="button" onClick={() => setView(t.k)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition ${view === t.k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+              <t.icon className="w-4 h-4" /> {t.label}
+            </button>
+          ))}
+        </div>
+        <button type="button" onClick={() => setShowNovo(true)} className="btn-primary min-h-[40px] px-4 shrink-0">
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Criar ramal</span><span className="sm:hidden">Novo</span>
+        </button>
       </div>
 
       {view === 'ramais' && (<>
-      {/* Criar ramal */}
-      <div className="app-panel rounded-2xl p-4 sm:p-5 mt-4">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-stone-800"><Plus className="w-4 h-4 text-primary-600" /> Novo ramal</h3>
-        {numsByo.length === 0 ? (
-          <div className="mt-3 rounded-xl bg-surface-50 border border-surface-200 p-4 text-center">
-            <p className="text-sm text-stone-600">Você precisa conectar uma <strong>conta Telnyx própria</strong> com número pra criar ramais.</p>
-            <Link to="/numeros" className="btn-primary mt-3 min-h-[40px] px-4 inline-flex text-sm"><Phone className="w-4 h-4" /> Ir para Números</Link>
-          </div>
-        ) : disponiveis.length === 0 ? (
-          <p className="mt-3 text-sm text-stone-500">Todos os seus números BYO já têm ramal. Conecte mais números na aba <Link to="/numeros" className="text-primary-600 font-semibold">Números</Link> pra criar novos.</p>
-        ) : (
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3">
-            <div>
-              <label className="block text-xs font-medium text-stone-500 mb-1">Número (sua Telnyx)</label>
-              <select value={novoNum} onChange={(e) => setNovoNum(e.target.value)}
-                className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-primary-500 focus:outline-none">
-                <option value="">Selecione…</option>
-                {disponiveis.map((n) => <option key={n.id} value={n.id}>{formatarNumero(n.numero)}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-stone-500 mb-1">Nome do atendente</label>
-              <input value={novoNome} onChange={(e) => setNovoNome(e.target.value)} maxLength={60} placeholder="Ex.: João · Vendas"
-                className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2.5 text-sm text-stone-800 focus:border-primary-500 focus:outline-none" />
-            </div>
-            <div className="flex items-end">
-              <button type="button" onClick={criar} disabled={criando} className="btn-primary min-h-[42px] px-5 w-full sm:w-auto">
-                {criando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar ramal
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Lista de ramais */}
       <div className="mt-4">
         <h3 className="text-sm font-semibold text-stone-700 mb-2 px-1">Ramais ({ramais.length})</h3>
@@ -292,7 +328,7 @@ export default function CallCenter() {
           <div className="app-panel rounded-2xl py-10 text-center">
             <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-3"><Headphones className="w-6 h-6" /></span>
             <p className="text-sm text-stone-600 font-medium">Nenhum ramal ainda.</p>
-            <p className="text-xs text-stone-400 mt-1">Crie o primeiro ramal acima pra montar sua central.</p>
+            <p className="text-xs text-stone-400 mt-1">Clique em <strong>Criar ramal</strong> pra montar sua central.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -433,6 +469,7 @@ export default function CallCenter() {
         </div>
       )}
 
+      {showNovo && <ModalNovoRamal disponiveis={disponiveis} semNumeros={numsByo.length === 0} onClose={() => setShowNovo(false)} onCriar={criarRamalNovo} criando={criando} />}
       {qrRamal && <ModalQR ramal={qrRamal} ultimoAcesso={(ramais.find((r) => r.id === qrRamal.id) || {}).ultimoAcesso} onClose={() => setQrRamal(null)} />}
     </PageShell>
   )
