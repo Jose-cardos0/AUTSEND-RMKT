@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { TelnyxRTC } from '@telnyx/webrtc'
 import { Phone, PhoneOff, PhoneIncoming, PhoneOutgoing, PhoneMissed, Delete, Mic, MicOff, Loader2, LogOut, Wifi, WifiOff, Grid3x3, Clock, Menu as MenuIcon, Bell, Check } from 'lucide-react'
-import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico, enviarPresenca, registrarChamadaServidor, ativarPush, pushAtivo, pushSuportado } from '../../lib/atendente'
+import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico, enviarPresenca, registrarChamadaServidor, ativarPush, pushAtivo, pushSuportado, avisarPronto } from '../../lib/atendente'
 import logo from '../../assets/autsendlogo.png'
 import toast from 'react-hot-toast'
 
@@ -121,6 +121,7 @@ export default function Atendente() {
         clearTimeout(prontoTimer); setErro(''); setFase('pronto'); checarReg()
         if (regTimerRef.current) clearInterval(regTimerRef.current); regTimerRef.current = setInterval(checarReg, 4000)
         enviarPresenca(true); if (presTimerRef.current) clearInterval(presTimerRef.current); presTimerRef.current = setInterval(() => enviarPresenca(true), 25000)
+        avisarPronto() // registrado → o servidor transfere qualquer chamada pendente pra este softphone
       })
       client.on('telnyx.error', () => { clearTimeout(prontoTimer); setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro('Erro na conexão de voz.') })
       client.on('telnyx.socket.close', () => { /* deixa o SDK tentar reconectar */ })

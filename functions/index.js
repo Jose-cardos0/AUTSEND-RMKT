@@ -4407,37 +4407,81 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
     const tipo = evt.event_type || ''
     const p = evt.payload || {}
     const connId = p.connection_id
-    console.log('CCWH', JSON.stringify({ tipo, dir: p.direction, connId, from: p.from, to: p.to }))
-    if (!connId) { res.status(200).json({ ok: true }); return }
+    const ccid = p.call_control_id
+    console.log('CCWH', JSON.stringify({ tipo, dir: p.direction, connId, from: p.from }))
+    if (!connId || !ccid) { res.status(200).json({ ok: true }); return }
     const mapSnap = await db.doc(`ccConnMap/${connId}`).get()
-    console.log('CCWH map', mapSnap.exists, mapSnap.exists ? JSON.stringify(mapSnap.data()) : '-')
     if (!mapSnap.exists) { res.status(200).json({ ok: true, ignored: 'sem ramal' }); return }
     const { uid, ramalId } = mapSnap.data()
     const entrada = (p.direction === 'incoming' || p.direction === 'inbound')
 
     if (tipo === 'call.initiated' && entrada) {
-      const de = p.from || ''
-      const enviados = await enviarPushRamal(uid, ramalId, { title: 'Chamada recebida', body: de ? `Ligação de ${de}` : 'Alguém está te ligando', tag: 'chamada' })
-      console.log('CCWH push enviados:', enviados)
-      // guarda pra logar duração ao desligar (relatório server-side, inclusive app fechado)
-      await db.doc(`callPendingCC/${p.call_control_id}`).set({ uid, ramalId, from: p.from || '', iniMs: Date.now(), atendida: false }, { merge: true }).catch(() => {})
-    } else if (tipo === 'call.answered' && entrada) {
-      await db.doc(`callPendingCC/${p.call_control_id}`).set({ atendida: true, answeredMs: Date.now() }, { merge: true }).catch(() => {})
-    } else if (tipo === 'call.hangup' && entrada) {
-      const pend = (await db.doc(`callPendingCC/${p.call_control_id}`).get()).data()
-      if (pend && pend.ramalId === ramalId) {
-        const seg = pend.atendida && pend.answeredMs ? Math.max(1, Math.round((Date.now() - pend.answeredMs) / 1000)) : 0
+      const ramal = (await db.doc(`users/${uid}/ramais/${ramalId}`).get()).data() || {}
+      const prov = (await db.doc(`users/${uid}/smsProviders/${ramal.providerId}`).get()).data()
+      const apiKey = prov?.apiKey, sipUsername = ramal.sipUsername
+      // Acorda o app (push) — mesmo com o app fechado.
+      await enviarPushRamal(uid, ramalId, { title: 'Chamada recebida', body: p.from ? `Ligação de ${p.from}` : 'Alguém está te ligando', tag: 'chamada' })
+      if (apiKey && sipUsername) {
+        const pend = { uid, ramalId, ccid, apiKey, sipUsername, from: p.from || '', iniMs: Date.now() }
+        await db.doc(`callPendingCC/${ccid}`).set(pend, { merge: true }).catch(() => {})
+        await db.doc(`ramalPendingCall/${ramalId}`).set(pend, { merge: true }).catch(() => {})
+        // App aberto? transfere já pro softphone. Senão, espera o app acordar (ramalPronto) — o caller ouve o toque.
+        const presMs = ramal.presencaEm?.toMillis?.() || 0
+        const online = ramal.presencaOnline === true && (Date.now() - presMs) < 45000
+        console.log('CCWH online?', online)
+        if (online) await transferirParaSoftphone(apiKey, ccid, sipUsername, p.from)
+      } else { console.log('CCWH sem apiKey/sipUsername') }
+      res.status(200).json({ ok: true }); return
+    }
+    if ((tipo === 'call.answered' || tipo === 'call.bridged') && entrada) {
+      await db.doc(`callPendingCC/${ccid}`).set({ answeredMs: Date.now() }, { merge: true }).catch(() => {})
+      res.status(200).json({ ok: true }); return
+    }
+    if (tipo === 'call.hangup' && entrada) {
+      const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
+      if (pend) {
+        const seg = pend.answeredMs ? Math.max(1, Math.round((Date.now() - pend.answeredMs) / 1000)) : 0
         const nome = (await db.doc(`users/${uid}/ramais/${ramalId}`).get()).data()?.nome || ''
         await db.collection(`users/${uid}/callcenterLogs`).add({
           ramalId, ramalNome: nome, dir: 'in', numero: String(pend.from || '').slice(0, 24),
-          atendida: !!pend.atendida, segundos: seg, ts: Date.now(), origem: 'servidor',
+          atendida: !!pend.answeredMs, segundos: seg, ts: Date.now(), origem: 'servidor',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         }).catch(() => {})
-        await db.doc(`callPendingCC/${p.call_control_id}`).delete().catch(() => {})
+        await db.doc(`callPendingCC/${ccid}`).delete().catch(() => {})
+        await db.doc(`ramalPendingCall/${ramalId}`).delete().catch(() => {})
       }
+      res.status(200).json({ ok: true }); return
     }
     res.status(200).json({ ok: true })
   } catch (err) { console.error('ramalCallWebhook', err?.message || err); try { res.status(200).json({ ok: false }) } catch (_) {} }
+})
+
+/** Transfere a chamada de entrada (Call Control) pro softphone registrado (SIP URI da credential connection). */
+async function transferirParaSoftphone(apiKey, ccid, sipUsername, from) {
+  try {
+    const r = await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/transfer`, {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: `sip:${sipUsername}@sip.telnyx.com`, from: from || undefined, timeout_secs: 30 }),
+    })
+    if (!r.ok) console.error('transfer falhou', r.status, await r.text().catch(() => ''))
+    else console.log('transfer OK', ccid, '->', sipUsername)
+  } catch (e) { console.error('transfer erro', e?.message || e) }
+}
+
+/** [App atendente] O softphone ficou pronto (registrado) → transfere a chamada pendente pra ele. Público. */
+exports.ramalPronto = onRequest({ region: 'us-central1', timeoutSeconds: 15, memory: '256MiB', maxInstances: 20 }, async (req, res) => {
+  _corsRamal(res)
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return }
+  try {
+    const sessao = ramalVerificarSessao(String(req.headers.authorization || '').replace(/^Bearer\s+/i, '') || req.body?.sessao || '')
+    if (!sessao) { res.status(401).json({ erro: 'Sessão expirada.' }); return }
+    const pend = (await db.doc(`ramalPendingCall/${sessao.ramalId}`).get()).data()
+    if (pend && pend.ccid && pend.apiKey && pend.sipUsername) {
+      await transferirParaSoftphone(pend.apiKey, pend.ccid, pend.sipUsername, pend.from)
+      await db.doc(`ramalPendingCall/${sessao.ramalId}`).delete().catch(() => {})
+    }
+    res.status(200).json({ ok: true })
+  } catch (err) { console.error('ramalPronto', err?.message || err); res.status(200).json({ ok: false }) }
 })
 
 /** [App atendente] Registra uma ligação que o softphone conduziu (pro relatório do dono). Público (Bearer sessão). */

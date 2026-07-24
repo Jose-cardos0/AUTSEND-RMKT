@@ -92,6 +92,15 @@ export async function obterTokenWebrtc() {
   return data // { login, password, numero, nome, fotoUrl }
 }
 
+/** Avisa o servidor que o softphone ficou pronto (registrado) → ele transfere a chamada pendente. */
+export function avisarPronto() {
+  const sessao = getSessao()
+  if (!sessao) return
+  try {
+    fetch(`${BASE}/ramalPronto`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` }, body: JSON.stringify({ sessao }), keepalive: true }).catch(() => {})
+  } catch { /* ignore */ }
+}
+
 /** Marca o ramal online/offline (heartbeat + offline ao sair). Best-effort. */
 export function enviarPresenca(online) {
   const sessao = getSessao()
