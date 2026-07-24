@@ -51,9 +51,13 @@ export async function obterTokenWebrtc() {
 export function enviarPresenca(online) {
   const sessao = getSessao()
   if (!sessao) return
+  const body = JSON.stringify({ online, sessao })
   try {
-    const body = JSON.stringify({ online })
-    // keepalive: garante o "offline" sair mesmo se a aba fechar.
+    // Offline: sendBeacon é o jeito confiável de enviar na saída (não é bloqueado por navegação/fechar app).
+    if (!online && typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon(`${BASE}/ramalPresenca`, new Blob([body], { type: 'application/json' }))
+      return
+    }
     fetch(`${BASE}/ramalPresenca`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` }, body, keepalive: true }).catch(() => {})
   } catch { /* ignore */ }
 }

@@ -4324,7 +4324,9 @@ exports.ramalPresenca = onRequest({ region: 'us-central1', timeoutSeconds: 15, m
   _corsRamal(res)
   if (req.method === 'OPTIONS') { res.status(204).send(''); return }
   try {
-    const sessao = ramalVerificarSessao(String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''))
+    // Aceita a sessão no header (fetch) OU no corpo (sendBeacon, que não manda headers custom).
+    const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+    const sessao = ramalVerificarSessao(auth || req.body?.sessao || '')
     if (!sessao) { res.status(401).json({ erro: 'Sessão expirada.' }); return }
     const online = req.body?.online !== false
     await db.doc(`users/${sessao.uid}/ramais/${sessao.ramalId}`).set({ presencaOnline: online, presencaEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })

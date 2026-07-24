@@ -72,7 +72,10 @@ export default function Atendente() {
     const metaAntigo = meta.getAttribute('content')
     meta.setAttribute('content', '#4a46de')
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw-atendente.js', { scope: '/atendente' }).catch(() => {})
+    const onHide = () => enviarPresenca(false) // fechou/saiu do app → marca offline (sendBeacon)
+    window.addEventListener('pagehide', onHide)
     return () => {
+      window.removeEventListener('pagehide', onHide)
       if (criado) link.remove(); else if (antigo) link.setAttribute('href', antigo)
       if (metaCriado) meta.remove(); else if (metaAntigo) meta.setAttribute('content', metaAntigo)
     }
@@ -172,9 +175,9 @@ export default function Atendente() {
   }
 
   const desconectar = () => {
-    enviarPresenca(false) // marca offline no site na hora
     if (regTimerRef.current) { clearInterval(regTimerRef.current); regTimerRef.current = null }
     if (presTimerRef.current) { clearInterval(presTimerRef.current); presTimerRef.current = null }
+    enviarPresenca(false) // marca offline no site na hora (sendBeacon) — ANTES de limpar a sessão
     if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } clientRef.current = null }
     limparSessao(); setRamal(null); setHistorico([]); setRegistrado(null); setFase('login'); setAba('teclado'); encerrarUI()
   }
