@@ -4136,16 +4136,20 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
   if (pn?.id) {
     await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: credentialConnectionId }) })
   }
+  // 4) Webhook de chamadas na central → nos avisa quando entra ligação (pra push com o app fechado).
+  await garantirWebhookCallRamal(apiKey, credentialConnectionId, uid, ramalId)
   return { credentialConnectionId, sipUsername, sipPassword, voiceProfileId: profileId }
 }
-/** REMOVE o webhook da central SIP (ele quebrava o inbound direto: o Telnyx passava a esperar Call Control). */
-async function removerWebhookCallRamal(apiKey, connectionId) {
+const RAMAL_CALL_WEBHOOK = 'https://us-central1-afiliadocdnx.cloudfunctions.net/ramalCallWebhook'
+/** Amarra o webhook de chamadas na central do ramal + mapeia a connection → ramal (pro push na entrada). */
+async function garantirWebhookCallRamal(apiKey, connectionId, uid, ramalId) {
   if (!connectionId) return
   try {
     await fetch(`https://api.telnyx.com/v2/credential_connections/${connectionId}`, {
       method: 'PATCH', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhook_event_url: '' }),
+      body: JSON.stringify({ webhook_event_url: RAMAL_CALL_WEBHOOK, webhook_api_version: '2' }),
     })
+    await db.doc(`ccConnMap/${connectionId}`).set({ uid, ramalId }, { merge: true })
   } catch (_) { /* best-effort */ }
 }
 /** Acha o phone number id na conta Telnyx tentando formatos (+E164, sem +, cru). Retorna { id, connectionId, numero } ou null. */
@@ -4285,9 +4289,9 @@ exports.ramalReassociar = onCall({ region: 'us-central1', timeoutSeconds: 30 }, 
     const d = await patch.json().catch(() => ({}))
     throw new HttpsError('internal', d?.errors?.[0]?.detail || 'Não consegui reapontar o número na Telnyx.')
   }
-  // Remove qualquer webhook da central (ele quebrava o inbound) e reafirma o outbound voice profile.
-  await removerWebhookCallRamal(prov.apiKey, ramal.credentialConnectionId)
-  await db.doc(`users/${uid}/ramais/${ramalId}`).set({ webhookCallSet: false }, { merge: true })
+  // Garante o webhook de chamadas na central (pro push na entrada).
+  await garantirWebhookCallRamal(prov.apiKey, ramal.credentialConnectionId, uid, ramalId)
+  await db.doc(`users/${uid}/ramais/${ramalId}`).set({ webhookCallSet: true }, { merge: true })
   return { ok: true, jaEstavaOk: jaOk, connectionAntes: pn.connectionId || null, connectionAgora: ramal.credentialConnectionId }
 })
 
@@ -4348,10 +4352,10 @@ exports.ramalWebrtcToken = onRequest({ region: 'us-central1', timeoutSeconds: 20
       sipUsername = novoUser; sipPassword = novaSenha
       await ref.set({ sipUsername, sipPassword, sipFonte: 'conexao' }, { merge: true })
     }
-    // Reverte: REMOVE o webhook da central (ele quebrava o inbound). Roda uma vez por ramal.
-    if (ramal.webhookCallSet && ramal.credentialConnectionId) {
+    // Garante o webhook de chamadas na central (pra push na entrada) — nos ramais antigos também.
+    if (!ramal.webhookCallSet && ramal.credentialConnectionId) {
       const prov = (await db.doc(`users/${sessao.uid}/smsProviders/${ramal.providerId}`).get()).data()
-      if (prov?.apiKey) { await removerWebhookCallRamal(prov.apiKey, ramal.credentialConnectionId); await ref.set({ webhookCallSet: false }, { merge: true }) }
+      if (prov?.apiKey) { await garantirWebhookCallRamal(prov.apiKey, ramal.credentialConnectionId, sessao.uid, sessao.ramalId); await ref.set({ webhookCallSet: true }, { merge: true }) }
     }
     await ref.set({ ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ login: sipUsername, password: sipPassword, numero: ramal.numero, nome: ramal.nome, fotoUrl: ramal.fotoUrl || '' })
