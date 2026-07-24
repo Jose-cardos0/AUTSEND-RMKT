@@ -2,7 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation, useOutlet } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall, Rocket, Headphones } from 'lucide-react'
+import { LogOut, Link2, MessageCircle, MessageSquare, Send, Zap, Users, Menu, X, Mail, Radar, LayoutTemplate, ChevronDown, ChevronLeft, ChevronRight, BarChart3, GitBranch, Package, Settings, ShoppingBag, Database, ShieldCheck, Smartphone, Clock, Lock, User, Globe, Phone, PhoneCall, Rocket, Headphones, Check } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { PWA_ATENDENTE_URL } from '../lib/callcenter'
 import GlobeCheckIcon from './GlobeCheckIcon'
 import { auth } from '../lib/firebase'
 import { isAdmin, adminGetSecurityReport } from '../lib/admin'
@@ -378,6 +380,13 @@ export default function Layout() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const abrirUpgrade = () => setUpgradeOpen(true)
   const [fireonOpen, setFireonOpen] = useState(false) // popup da oferta Fireon (disparado pelo gift ou por qualquer página)
+  const [linkCopiado, setLinkCopiado] = useState(false)
+  const copiarLinkAtendente = () => {
+    navigator.clipboard?.writeText(PWA_ATENDENTE_URL)
+    setLinkCopiado(true)
+    toast.success('Link da central de atendimento copiado!')
+    setTimeout(() => setLinkCopiado(false), 2000)
+  }
   useEffect(() => {
     const abrir = () => setFireonOpen(true)
     window.addEventListener('open-fireon', abrir)
@@ -626,6 +635,22 @@ export default function Layout() {
           className="w-full h-full object-contain select-none pointer-events-none"
         />
       </motion.button>
+
+      {/* Fones flutuante (só em /call-center) → copia o link do app do atendente */}
+      {location.pathname === '/call-center' && (
+        <motion.button
+          type="button"
+          onClick={copiarLinkAtendente}
+          whileHover={{ scale: 1.12 }}
+          whileTap={{ scale: 0.9 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 16 }}
+          className="fixed z-50 flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white border border-surface-200 shadow-lg text-primary-600 hover:bg-surface-50 touch-manipulation bottom-[7.75rem] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-[10.5rem] sm:right-6"
+          title="Copiar link do app do atendente"
+          aria-label="Copiar link da central de atendimento"
+        >
+          {linkCopiado ? <Check className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" /> : <Headphones className="w-5 h-5 sm:w-6 sm:h-6" />}
+        </motion.button>
+      )}
 
       {/* Popup da oferta Fireon */}
       <AnimatePresence>

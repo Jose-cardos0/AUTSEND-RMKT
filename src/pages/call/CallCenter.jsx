@@ -5,11 +5,11 @@ import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { auth } from '../../lib/firebase'
 import { listarNumerosComFuncoes } from '../../lib/smsNumeros'
-import { criarRamal, listarRamais, revogarRamal, setFotoRamal, reassociarRamal, getRelatorioCallCenter, linkPareamento, PWA_ATENDENTE_URL } from '../../lib/callcenter'
+import { criarRamal, listarRamais, revogarRamal, setFotoRamal, reassociarRamal, getRelatorioCallCenter, linkPareamento } from '../../lib/callcenter'
 import { useConfirm } from '../../components/ConfirmDialog'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera, PhoneIncoming, PhoneOutgoing, PhoneMissed, BarChart3, Clock, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Phone, User, Camera, PhoneIncoming, PhoneOutgoing, PhoneMissed, BarChart3, Clock, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import telnyxLogo from '../../assets/telnyx.png'
 import foguete from '../../assets/foguetes/foguete1.png'
 
@@ -292,22 +292,8 @@ export default function CallCenter() {
 
   return (
     <PageShell badge="Call Center · Atendentes">
-      {/* Como funciona + link do app */}
-      <div className="app-panel rounded-2xl p-4 sm:p-5 relative overflow-hidden">
-        <Headphones className="pointer-events-none absolute right-0 top-0 -mr-6 -mt-8 w-36 h-36 text-primary-500 opacity-[0.06]" />
-        <div className="relative z-10">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-stone-800"><Headphones className="w-5 h-5 text-primary-600" /> Central de atendentes</h2>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <a href={PWA_ATENDENTE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-surface-100 px-3 py-2 text-sm font-semibold text-stone-700 hover:bg-surface-200">
-              <Smartphone className="w-4 h-4 text-primary-600" /> {PWA_ATENDENTE_URL.replace('https://', '')}
-            </a>
-            <BotaoCopiar texto={PWA_ATENDENTE_URL} label="Copiar link do app" />
-          </div>
-        </div>
-      </div>
-
       {/* Toggle Ramais / Relatório + botão criar ramal (canto oposto) */}
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div className="inline-flex rounded-xl bg-surface-100 p-1">
           {[{ k: 'ramais', label: 'Ramais', icon: Headphones }, { k: 'relatorio', label: 'Relatório', icon: BarChart3 }].map((t) => (
             <button key={t.k} type="button" onClick={() => setView(t.k)}
