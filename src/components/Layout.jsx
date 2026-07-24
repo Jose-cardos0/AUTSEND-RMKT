@@ -21,6 +21,7 @@ import { SUPPORT_WHATSAPP } from '../lib/constants'
 import MelhorarPlano from './MelhorarPlano'
 import FireonPromoCard from './FireonPromoCard'
 import gifteImg from '../assets/gifte.webp'
+import callIcon from '../assets/callicon.png'
 
 // Navegação por canal. Cada grupo vira uma seção colapsável na sidebar (desktop) e no menu mobile.
 const navGroups = [
@@ -617,26 +618,28 @@ export default function Layout() {
         <WhatsAppIcon className="w-6 h-6 sm:w-7 sm:h-7" white />
       </a>
 
-      {/* Gift flutuante (acima do WhatsApp) → abre a oferta do Fireon */}
-      <motion.button
-        type="button"
-        onClick={() => setFireonOpen(true)}
-        whileHover={{ scale: 1.28 }}
-        whileTap={{ scale: 0.92 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 16 }}
-        className="fixed z-50 w-14 h-14 sm:w-16 sm:h-16 bottom-[4.5rem] right-[max(0.9rem,env(safe-area-inset-right))] sm:bottom-24 sm:right-[1.9rem] touch-manipulation"
-        title="Oferta exclusiva pra você"
-        aria-label="Ver oferta exclusiva do Fireon"
-      >
-        <motion.img
-          src={gifteImg} alt="Presente" draggable="false"
-          animate={{ y: [0, -7, 0] }}
-          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-          className="w-full h-full object-contain select-none pointer-events-none"
-        />
-      </motion.button>
+      {/* Gift flutuante (acima do WhatsApp) → abre a oferta do Fireon. Escondido em /call-center. */}
+      {location.pathname !== '/call-center' && (
+        <motion.button
+          type="button"
+          onClick={() => setFireonOpen(true)}
+          whileHover={{ scale: 1.28 }}
+          whileTap={{ scale: 0.92 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 16 }}
+          className="fixed z-50 w-14 h-14 sm:w-16 sm:h-16 bottom-[4.5rem] right-[max(0.9rem,env(safe-area-inset-right))] sm:bottom-24 sm:right-[1.9rem] touch-manipulation"
+          title="Oferta exclusiva pra você"
+          aria-label="Ver oferta exclusiva do Fireon"
+        >
+          <motion.img
+            src={gifteImg} alt="Presente" draggable="false"
+            animate={{ y: [0, -7, 0] }}
+            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+            className="w-full h-full object-contain select-none pointer-events-none"
+          />
+        </motion.button>
+      )}
 
-      {/* Fones flutuante (só em /call-center) → copia o link do app do atendente */}
+      {/* Central de atendimento flutuante (só em /call-center, acima do WhatsApp) → copia o link do app */}
       {location.pathname === '/call-center' && (
         <motion.button
           type="button"
@@ -644,11 +647,22 @@ export default function Layout() {
           whileHover={{ scale: 1.12 }}
           whileTap={{ scale: 0.9 }}
           transition={{ type: 'spring', stiffness: 300, damping: 16 }}
-          className="fixed z-50 flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white border border-surface-200 shadow-lg text-primary-600 hover:bg-surface-50 touch-manipulation bottom-[7.75rem] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-[10.5rem] sm:right-6"
+          className="fixed z-50 w-12 h-12 sm:w-14 sm:h-14 touch-manipulation bottom-[4.75rem] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-[5.75rem] sm:right-6"
           title="Copiar link do app do atendente"
           aria-label="Copiar link da central de atendimento"
         >
-          {linkCopiado ? <Check className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" /> : <Headphones className="w-5 h-5 sm:w-6 sm:h-6" />}
+          <img src={callIcon} alt="Central de atendimento" draggable="false" className="w-full h-full object-contain select-none pointer-events-none" />
+          <AnimatePresence>
+            {linkCopiado && (
+              <motion.span
+                initial={{ scale: 0, opacity: 0, y: 4 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+                className="absolute -top-1.5 left-1/2 -translate-x-1/2 flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white shadow ring-2 ring-white"
+              >
+                <Check className="w-3 h-3" strokeWidth={3} />
+              </motion.span>
+            )}
+          </AnimatePresence>
         </motion.button>
       )}
 
