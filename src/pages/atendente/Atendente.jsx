@@ -33,6 +33,8 @@ function normDestino(v) {
 }
 
 const TECLAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '0', '#']
+// iPhone/iPad: push só funciona com o app instalado na tela inicial (iOS 16.4+).
+const ehIOS = () => typeof navigator !== 'undefined' && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
 
 export default function Atendente() {
   const [fase, setFase] = useState('carregando') // carregando | login | conectando | pronto | erro
@@ -353,12 +355,19 @@ export default function Atendente() {
         <p className="text-sm text-stone-500 tabular-nums flex items-center gap-1.5 mt-1"><Wifi className="w-3.5 h-3.5 text-green-500" /> {fmtNum(ramal?.numero)}</p>
         <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700"><span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Conectado</span>
       </div>
-      {/* Chamadas com o app fechado (Web Push) */}
-      {pushSuportado() && (
-        <button onClick={ativarNotificacoes} disabled={pushLoading || pushLigado}
-          className={`mt-8 w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition ${pushLigado ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-primary-600 text-white hover:bg-primary-700'} disabled:opacity-70`}>
-          {pushLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : pushLigado ? <><Check className="w-5 h-5" /> Chamadas com app fechado: ativo</> : <><Bell className="w-5 h-5" /> Ativar chamadas com o app fechado</>}
-        </button>
+      {/* Notificações — tocar com o app fechado (Web Push) */}
+      {(pushSuportado() || ehIOS()) && (
+        <div className="mt-8">
+          <button onClick={ativarNotificacoes} disabled={pushLoading || pushLigado}
+            className={`w-full rounded-xl py-3.5 flex items-center justify-center gap-2 font-semibold transition ${pushLigado ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-primary-600 text-white hover:bg-primary-700'} disabled:opacity-70`}>
+            {pushLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : pushLigado ? <><Check className="w-5 h-5" /> Notificações ativas</> : <><Bell className="w-5 h-5" /> Ativar Notificações</>}
+          </button>
+          {ehIOS() && (
+            <p className="mt-2 text-xs text-stone-500 leading-relaxed">
+              📱 <strong>No iPhone</strong>, instale o app na tela inicial primeiro (toque em <strong>Compartilhar</strong> → <strong>Adicionar à Tela de Início</strong>) e abra por lá — só assim as notificações funcionam.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Diagnóstico (temporário) — mostra se o app registrou pra RECEBER chamadas */}
