@@ -34,7 +34,7 @@ export async function parear(pairKey) {
   return data // { sessao, ramal: { nome, numero } }
 }
 
-/** Gera o token efêmero WebRTC pra sessão atual. Lança Error (401 = sessão expirada). */
+/** Pega as credenciais SIP (login/senha) do softphone pra sessão atual. Lança Error (401 = sessão expirada). */
 export async function obterTokenWebrtc() {
   const sessao = getSessao()
   if (!sessao) throw new Error('SEM_SESSAO')

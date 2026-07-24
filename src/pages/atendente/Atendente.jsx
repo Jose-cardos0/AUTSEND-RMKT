@@ -90,10 +90,11 @@ export default function Atendente() {
   const conectar = useCallback(async () => {
     setFase('conectando'); setErro('')
     try {
-      const { token, numero, nome, fotoUrl } = await obterTokenWebrtc()
+      const { login, password, numero, nome, fotoUrl } = await obterTokenWebrtc()
       if (numero || nome) { const r = { numero, nome, fotoUrl: fotoUrl || '' }; setRamal(r); salvarSessao(getSessao(), r) }
       if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } clientRef.current = null }
-      const client = new TelnyxRTC({ login_token: token })
+      // Registra com login/senha SIP (não com token JWT) — só assim o softphone RECEBE chamadas.
+      const client = new TelnyxRTC({ login, password })
       client.remoteElement = 'atendente-remote-audio'
       client.enableMicrophone = true
       const prontoTimer = setTimeout(() => { setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro((e) => e || 'Demorou pra conectar à voz. Toque em tentar de novo.') }, 15000)

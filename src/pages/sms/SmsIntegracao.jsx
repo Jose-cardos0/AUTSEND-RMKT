@@ -560,20 +560,20 @@ export default function SmsIntegracao() {
           ) : (
             <div className="space-y-5">
               <p className="text-sm text-stone-600">
-                Clique nos selos pra definir pra que serve cada número. <strong>SMS EUA</strong> e <strong>Ligação IA</strong> só podem estar em <strong>1 número</strong> cada; <strong>CallCenter</strong> aceita vários.
+                Clique nos selos pra definir pra que serve cada número. <strong>SMS EUA</strong> e <strong>Ligação IA</strong> só podem estar em <strong>1 número</strong> cada. Pra <strong>Call Center</strong>, crie um ramal na aba <strong>Call Center</strong>.
               </p>
               {[
                 { titulo: 'Ativos — em uso', emUso: true },
                 { titulo: 'Ativos — sem uso', emUso: false },
               ].map((grupo) => {
-                const lista = numsFuncoes.filter((n) => (!!(n.sms || n.ligacao || n.callcenter)) === grupo.emUso)
+                const lista = numsFuncoes.filter((n) => (!!(n.sms || n.ligacao)) === grupo.emUso)
                 if (!lista.length) return null
                 return (
                   <div key={grupo.titulo}>
                     <p className="text-[11px] font-bold uppercase tracking-wider text-stone-400 mb-2">{grupo.titulo} · {lista.length}</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                       {lista.map((n) => {
-                        const emUso = n.sms || n.ligacao || n.callcenter
+                        const emUso = n.sms || n.ligacao
                         return (
                           <div key={n.id} className={`relative p-4 sm:p-5 rounded-xl border-2 transition ${emUso ? 'border-primary-500 bg-primary-50/50' : 'border-surface-200 bg-surface-50'}`}>
                             <div className="flex items-start justify-between gap-2">
@@ -595,7 +595,6 @@ export default function SmsIntegracao() {
                               {[
                                 { key: 'sms', label: 'SMS EUA', on: n.sms },
                                 { key: 'ligacao', label: 'Ligação IA', on: n.ligacao },
-                                { key: 'callcenter', label: 'CallCenter', on: n.callcenter },
                               ].map((f) => {
                                 const carregando = togglingKey === `${n.id}:${f.key}`
                                 return (
