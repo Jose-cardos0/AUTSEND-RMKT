@@ -341,7 +341,7 @@ export default function CallCenter() {
                   <button type="button" onClick={() => corrigirRecebimento(r)} disabled={fixandoId === r.id}
                     className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-stone-400 hover:text-primary-600 disabled:opacity-60 -mt-1">
                     {fixandoId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PhoneIncoming className="w-3.5 h-3.5" />}
-                    Não recebe chamadas? Corrigir
+                    Checar Integridade
                   </button>
                 </div>
               )
