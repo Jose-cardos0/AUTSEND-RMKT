@@ -48,17 +48,15 @@ export async function ativarPush() {
   return true
 }
 
-/** Reporta uma ligação concluída pro servidor (relatório do dono). Best-effort. */
+/** Reporta uma ligação concluída pro servidor (relatório do dono). App está aberto → fetch normal (CORS ok). */
 export function registrarChamadaServidor(item) {
   const sessao = getSessao()
   if (!sessao) return
-  const body = JSON.stringify({ ...item, sessao })
   try {
-    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      navigator.sendBeacon(`${BASE}/ramalRegistrarChamada`, new Blob([body], { type: 'application/json' }))
-      return
-    }
-    fetch(`${BASE}/ramalRegistrarChamada`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` }, body, keepalive: true }).catch(() => {})
+    fetch(`${BASE}/ramalRegistrarChamada`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` },
+      body: JSON.stringify({ ...item, sessao }), keepalive: true,
+    }).catch(() => {})
   } catch { /* ignore */ }
 }
 

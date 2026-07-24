@@ -11,6 +11,7 @@ import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
 import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera, PhoneIncoming, PhoneOutgoing, PhoneMissed, BarChart3, Clock, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import telnyxLogo from '../../assets/telnyx.png'
+import foguete from '../../assets/foguetes/foguete1.png'
 
 /** Formata segundos em tempo legível (2h 5min / 3min 20s / 45s). */
 function fmtTempo(seg) {
@@ -341,8 +342,8 @@ export default function CallCenter() {
                   <div className="flex items-start gap-3">
                     {/* Foto do atendente — só o cliente define aqui pelo web */}
                     <label className="relative shrink-0 cursor-pointer" title="Trocar foto do atendente">
-                      <span className="block w-11 h-11 rounded-full bg-surface-100 overflow-hidden flex items-center justify-center ring-1 ring-surface-200">
-                        {r.fotoUrl ? <img src={r.fotoUrl} alt={r.nome} className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-stone-400" />}
+                      <span className="block w-11 h-11 rounded-full bg-white overflow-hidden flex items-center justify-center ring-1 ring-surface-200">
+                        {r.fotoUrl ? <img src={r.fotoUrl} alt={r.nome} className="w-full h-full object-cover" /> : <img src={foguete} alt="" className="w-7 h-7 object-contain" />}
                       </span>
                       <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-primary-600 text-white flex items-center justify-center ring-2 ring-white">
                         {fotoLoadingId === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
