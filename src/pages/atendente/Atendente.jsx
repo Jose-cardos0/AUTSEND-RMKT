@@ -90,8 +90,8 @@ export default function Atendente() {
   const conectar = useCallback(async () => {
     setFase('conectando'); setErro('')
     try {
-      const { token, numero, nome } = await obterTokenWebrtc()
-      if (numero || nome) { const r = { numero, nome }; setRamal(r); salvarSessao(getSessao(), r) }
+      const { token, numero, nome, fotoUrl } = await obterTokenWebrtc()
+      if (numero || nome) { const r = { numero, nome, fotoUrl: fotoUrl || '' }; setRamal(r); salvarSessao(getSessao(), r) }
       if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } clientRef.current = null }
       const client = new TelnyxRTC({ login_token: token })
       client.remoteElement = 'atendente-remote-audio'
@@ -261,8 +261,8 @@ export default function Atendente() {
   )
 
   const teclado = (
-    <div className="flex-1 flex flex-col justify-center px-6 py-4">
-      <div className="text-center py-4 min-h-[64px]">
+    <div className="flex-1 flex flex-col justify-end px-6 pb-4">
+      <div className="text-center py-6 min-h-[72px]">
         <p className="text-3xl font-bold tabular-nums break-all text-stone-800">{discar || <span className="text-stone-300">Digite um número</span>}</p>
       </div>
       <div className="grid grid-cols-3 gap-4 mb-5 max-w-[300px] mx-auto w-full">
@@ -314,7 +314,9 @@ export default function Atendente() {
     <div className="flex-1 overflow-y-auto px-6 py-6">
       <div className="flex flex-col items-center text-center">
         <img src={logo} alt="Autsend" className="h-7 w-auto object-contain mb-6" />
-        <div className="w-20 h-20 rounded-full bg-primary-50 flex items-center justify-center mb-3"><Phone className="w-9 h-9 text-primary-600" /></div>
+        <div className="w-24 h-24 rounded-full bg-primary-50 flex items-center justify-center mb-3 overflow-hidden ring-2 ring-primary-100">
+          {ramal?.fotoUrl ? <img src={ramal.fotoUrl} alt={ramal?.nome || ''} className="w-full h-full object-cover" /> : <Phone className="w-9 h-9 text-primary-600" />}
+        </div>
         <p className="text-xl font-bold text-stone-800">{ramal?.nome || 'Ramal'}</p>
         <p className="text-sm text-stone-500 tabular-nums flex items-center gap-1.5 mt-1"><Wifi className="w-3.5 h-3.5 text-green-500" /> {fmtNum(ramal?.numero)}</p>
         <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700"><span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Conectado</span>
@@ -328,10 +330,18 @@ export default function Atendente() {
 
   return wrap(
     <div className="flex-1 flex flex-col min-h-0">
+      {/* Header: logo + nome + número do ramal */}
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-surface-200 shrink-0">
+        <img src={logo} alt="Autsend" className="h-6 w-auto object-contain shrink-0" />
+        <div className="border-l border-surface-200 pl-3 min-w-0">
+          <p className="font-semibold text-stone-800 truncate leading-tight">{ramal?.nome || 'Ramal'}</p>
+          <p className="text-xs text-stone-500 tabular-nums flex items-center gap-1.5"><Wifi className="w-3 h-3 text-green-500" /> {fmtNum(ramal?.numero)}</p>
+        </div>
+      </div>
       <div className="flex-1 flex flex-col min-h-0">
         {aba === 'teclado' ? teclado : aba === 'recentes' ? recentes : menu}
       </div>
-      <nav className="flex items-stretch border-t border-surface-200 bg-white">
+      <nav className="flex items-stretch border-t border-surface-200 bg-white shrink-0">
         <NavBtn id="teclado" icon={Grid3x3} label="Teclado" />
         <NavBtn id="recentes" icon={Clock} label="Recentes" />
         <NavBtn id="menu" icon={MenuIcon} label="Menu" />

@@ -5,14 +5,32 @@ import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { auth } from '../../lib/firebase'
 import { listarNumerosComFuncoes } from '../../lib/smsNumeros'
-import { criarRamal, listarRamais, revogarRamal, linkPareamento, PWA_ATENDENTE_URL } from '../../lib/callcenter'
+import { criarRamal, listarRamais, revogarRamal, setFotoRamal, linkPareamento, PWA_ATENDENTE_URL } from '../../lib/callcenter'
 import { useConfirm } from '../../components/ConfirmDialog'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone } from 'lucide-react'
+import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera } from 'lucide-react'
 import telnyxLogo from '../../assets/telnyx.png'
 
 const _norm = (s) => String(s || '').replace(/\D/g, '')
+/** Reduz a imagem escolhida pra ~256px e devolve um dataUrl JPEG (leve pra guardar no Firestore). */
+function lerFotoResize(file, max = 256) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, max / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Imagem inválida.')) }
+    img.src = url
+  })
+}
 function formatarNumero(n) {
   const d = _norm(n)
   if (d.length === 11 && d.startsWith('1')) return `+1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`
@@ -95,6 +113,7 @@ export default function CallCenter() {
   const [novoNome, setNovoNome] = useState('')
   const [criando, setCriando] = useState(false)
   const [revogandoId, setRevogandoId] = useState(null)
+  const [fotoLoadingId, setFotoLoadingId] = useState(null)
   const [qrRamal, setQrRamal] = useState(null)
 
   const carregar = async () => {
@@ -134,6 +153,19 @@ export default function CallCenter() {
     } catch (err) {
       toast.error(err.message || 'Não consegui criar o ramal.')
     } finally { setCriando(false) }
+  }
+
+  const handleFoto = async (ramalId, file) => {
+    if (!file) return
+    setFotoLoadingId(ramalId)
+    try {
+      const dataUrl = await lerFotoResize(file)
+      await setFotoRamal(ramalId, dataUrl)
+      setRamais((prev) => prev.map((x) => (x.id === ramalId ? { ...x, fotoUrl: dataUrl } : x)))
+      toast.success('Foto do atendente atualizada!')
+    } catch (err) {
+      toast.error(err.message || 'Não consegui salvar a foto.')
+    } finally { setFotoLoadingId(null) }
   }
 
   const revogar = async (r) => {
@@ -217,8 +249,19 @@ export default function CallCenter() {
               const online = rel === 'online agora'
               return (
                 <div key={r.id} className="app-panel rounded-xl p-4 flex flex-col gap-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                  <div className="flex items-start gap-3">
+                    {/* Foto do atendente — só o cliente define aqui pelo web */}
+                    <label className="relative shrink-0 cursor-pointer" title="Trocar foto do atendente">
+                      <span className="block w-11 h-11 rounded-full bg-surface-100 overflow-hidden flex items-center justify-center ring-1 ring-surface-200">
+                        {r.fotoUrl ? <img src={r.fotoUrl} alt={r.nome} className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-stone-400" />}
+                      </span>
+                      <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-primary-600 text-white flex items-center justify-center ring-2 ring-white">
+                        {fotoLoadingId === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+                      </span>
+                      <input type="file" accept="image/*" className="hidden" disabled={fotoLoadingId === r.id}
+                        onChange={(e) => { handleFoto(r.id, e.target.files?.[0]); e.target.value = '' }} />
+                    </label>
+                    <div className="min-w-0 flex-1">
                       <p className="font-semibold text-stone-800 truncate">{r.nome}</p>
                       <p className="text-sm text-stone-500 tabular-nums flex items-center gap-1.5">
                         {formatarNumero(r.numero)}

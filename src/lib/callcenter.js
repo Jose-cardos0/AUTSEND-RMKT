@@ -24,6 +24,12 @@ export async function revogarRamal(ramalId) {
   return r.data
 }
 
+/** Define/remove a foto do ramal (só o cliente, pelo web). dataUrl vazio remove. */
+export async function setFotoRamal(ramalId, dataUrl) {
+  const r = await call('ramalSetFoto')({ ramalId, dataUrl })
+  return r.data // { ok, fotoUrl }
+}
+
 /** Link de pareamento (o QR aponta pra cá; abre o PWA já com o código). */
 export function linkPareamento(pairKey) {
   return `${PWA_ATENDENTE_URL}?k=${encodeURIComponent(pairKey)}`

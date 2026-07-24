@@ -4169,8 +4169,24 @@ exports.ramalListar = onCall({ region: 'us-central1' }, async (request) => {
   const ramais = snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((r) => r.status !== 'revogado')
-    .map((r) => ({ id: r.id, nome: r.nome, numero: r.numero, status: r.status || 'aguardando', pairKey: r.pairKey || '', ultimoAcesso: r.ultimoAcesso?.toMillis?.() || null }))
+    .map((r) => ({ id: r.id, nome: r.nome, numero: r.numero, status: r.status || 'aguardando', pairKey: r.pairKey || '', fotoUrl: r.fotoUrl || '', ultimoAcesso: r.ultimoAcesso?.toMillis?.() || null }))
   return { ramais }
+})
+
+/** Define/remove a foto de um ramal (só o CLIENTE dono, pelo web). dataUrl vazio remove. */
+exports.ramalSetFoto = onCall({ region: 'us-central1' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const ramalId = String(request.data?.ramalId || '')
+  const dataUrl = String(request.data?.dataUrl || '')
+  const ref = db.doc(`users/${uid}/ramais/${ramalId}`)
+  if (!(await ref.get()).exists) throw new HttpsError('not-found', 'Ramal não encontrado.')
+  if (dataUrl) {
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) throw new HttpsError('invalid-argument', 'Imagem inválida.')
+    if (dataUrl.length > 900000) throw new HttpsError('invalid-argument', 'Imagem muito grande. Escolha uma menor.')
+  }
+  await ref.set({ fotoUrl: dataUrl }, { merge: true })
+  return { ok: true, fotoUrl: dataUrl }
 })
 
 /** Revoga um ramal: apaga na Telnyx, invalida o acesso do atendente e some do painel. */
@@ -4212,7 +4228,7 @@ exports.ramalParear = onRequest({ region: 'us-central1', timeoutSeconds: 20, mem
     if (ramal.status === 'revogado') { res.status(403).json({ erro: 'Acesso revogado.' }); return }
     const sessao = ramalAssinarSessao({ uid, ramalId, dev: _b64url(crypto.randomBytes(9)) })
     await ref.set({ status: 'ativo', ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-    res.status(200).json({ sessao, ramal: { nome: ramal.nome, numero: ramal.numero } })
+    res.status(200).json({ sessao, ramal: { nome: ramal.nome, numero: ramal.numero, fotoUrl: ramal.fotoUrl || '' } })
   } catch (err) { console.error('ramalParear', err?.message || err); res.status(500).json({ erro: 'Erro ao parear.' }) }
 })
 
@@ -4236,7 +4252,7 @@ exports.ramalWebrtcToken = onRequest({ region: 'us-central1', timeoutSeconds: 20
     const token = await tr.text()
     if (!tr.ok) { res.status(502).json({ erro: 'Falha ao autenticar na Telnyx.' }); return }
     await ref.set({ ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
-    res.status(200).json({ token: token.trim(), numero: ramal.numero, nome: ramal.nome })
+    res.status(200).json({ token: token.trim(), numero: ramal.numero, nome: ramal.nome, fotoUrl: ramal.fotoUrl || '' })
   } catch (err) { console.error('ramalWebrtcToken', err?.message || err); res.status(500).json({ erro: 'Erro ao gerar token.' }) }
 })
 
