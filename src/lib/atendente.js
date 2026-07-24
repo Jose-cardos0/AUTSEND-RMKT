@@ -107,9 +107,9 @@ export function enviarPresenca(online) {
   if (!sessao) return
   const body = JSON.stringify({ online, sessao })
   try {
-    // Offline: sendBeacon é o jeito confiável de enviar na saída (não é bloqueado por navegação/fechar app).
+    // Offline: sendBeacon envia mesmo ao fechar a aba. Blob text/plain = CORS-safe (application/json seria bloqueado).
     if (!online && typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      navigator.sendBeacon(`${BASE}/ramalPresenca`, new Blob([body], { type: 'application/json' }))
+      navigator.sendBeacon(`${BASE}/ramalPresenca`, new Blob([body], { type: 'text/plain' }))
       return
     }
     fetch(`${BASE}/ramalPresenca`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` }, body, keepalive: true }).catch(() => {})

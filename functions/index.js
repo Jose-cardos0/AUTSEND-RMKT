@@ -4181,6 +4181,13 @@ async function desprovisionarRamalBYO(apiKey, ramal) {
   if (ramal?.credentialConnectionId) { try { await fetch(`https://api.telnyx.com/v2/credential_connections/${ramal.credentialConnectionId}`, { method: 'DELETE', headers: H }) } catch (_) {} }
 }
 const _corsRamal = (res) => { res.set('Access-Control-Allow-Origin', '*'); res.set('Access-Control-Allow-Methods', 'POST, OPTIONS'); res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization') }
+/** Corpo do request, seja objeto (JSON) ou string (sendBeacon text/plain). */
+function corpoRamal(req) {
+  const b = req.body
+  if (b && typeof b === 'object') return b
+  if (typeof b === 'string' && b) { try { return JSON.parse(b) } catch { return {} } }
+  return {}
+}
 
 /** Cria um ramal de call center num número BYO. Provisiona na Telnyx e gera a pairKey/QR. */
 exports.ramalCriar = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async (request) => {
@@ -4367,11 +4374,12 @@ exports.ramalPresenca = onRequest({ region: 'us-central1', timeoutSeconds: 15, m
   _corsRamal(res)
   if (req.method === 'OPTIONS') { res.status(204).send(''); return }
   try {
-    // Aceita a sessão no header (fetch) OU no corpo (sendBeacon, que não manda headers custom).
+    // Aceita a sessão no header (fetch) OU no corpo (sendBeacon text/plain, que não manda headers custom).
+    const c = corpoRamal(req)
     const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-    const sessao = ramalVerificarSessao(auth || req.body?.sessao || '')
+    const sessao = ramalVerificarSessao(auth || c.sessao || '')
     if (!sessao) { res.status(401).json({ erro: 'Sessão expirada.' }); return }
-    const online = req.body?.online !== false
+    const online = c.online !== false
     await db.doc(`users/${sessao.uid}/ramais/${sessao.ramalId}`).set({ presencaOnline: online, presencaEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ ok: true })
   } catch (err) { res.status(200).json({ ok: false }) }
@@ -4430,12 +4438,19 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
         const presMs = ramal.presencaEm?.toMillis?.() || 0
         const online = ramal.presencaOnline === true && (Date.now() - presMs) < 45000
         console.log('CCWH online?', online)
-        if (!online) await atenderChamadaCC(apiKey, ccid)
+        if (!online) { await atenderChamadaCC(apiKey, ccid); await db.doc(`callPendingCC/${ccid}`).set({ autoAtendida: true }, { merge: true }).catch(() => {}) }
       } else { console.log('CCWH sem apiKey/sipUsername') }
       res.status(200).json({ ok: true }); return
     }
     if ((tipo === 'call.answered' || tipo === 'call.bridged') && entrada) {
+      const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
+      if (pend?.autoAtendida && !pend.transferido && pend.apiKey) await falarEsperaCC(pend.apiKey, ccid) // toque de espera
       await db.doc(`callPendingCC/${ccid}`).set({ answeredMs: Date.now() }, { merge: true }).catch(() => {})
+      res.status(200).json({ ok: true }); return
+    }
+    if (tipo === 'call.speak.ended' && entrada) {
+      const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
+      if (pend?.autoAtendida && !pend.transferido && pend.apiKey) await falarEsperaCC(pend.apiKey, ccid) // repete o toque até transferir
       res.status(200).json({ ok: true }); return
     }
     if (tipo === 'call.hangup' && entrada) {
@@ -4457,6 +4472,15 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
   } catch (err) { console.error('ramalCallWebhook', err?.message || err); try { res.status(200).json({ ok: false }) } catch (_) {} }
 })
 
+/** Toque de espera (TTS) enquanto o app do atendente acorda. */
+async function falarEsperaCC(apiKey, ccid) {
+  try {
+    await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/speak`, {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload: 'Só um momento. Estamos conectando você a um atendente.', voice: CALL_VOZ_PADRAO, language: 'pt-BR' }),
+    })
+  } catch (_) { /* best-effort */ }
+}
 /** Atende a chamada de entrada (Call Control) pra segurá-la enquanto o app acorda (app fechado). */
 async function atenderChamadaCC(apiKey, ccid) {
   try {
@@ -4470,6 +4494,7 @@ async function atenderChamadaCC(apiKey, ccid) {
 /** Transfere a chamada de entrada (Call Control) pro softphone registrado (SIP URI da credential connection). */
 async function transferirParaSoftphone(apiKey, ccid, sipUsername, from) {
   try {
+    await db.doc(`callPendingCC/${ccid}`).set({ transferido: true }, { merge: true }).catch(() => {}) // para o loop do toque de espera
     const r = await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/transfer`, {
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ to: `sip:${sipUsername}@sip.telnyx.com`, from: from || undefined, timeout_secs: 30 }),
