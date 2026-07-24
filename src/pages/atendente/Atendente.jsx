@@ -48,10 +48,14 @@ export default function Atendente() {
   const [duracao, setDuracao] = useState(0)
   const [mudo, setMudo] = useState(false)
 
+  const [registrado, setRegistrado] = useState(null) // diagnóstico: registrou pra RECEBER?
+  const [ultimoEvento, setUltimoEvento] = useState('') // diagnóstico: último evento do SDK
+
   const clientRef = useRef(null)
   const callRef = useRef(null)
   const timerRef = useRef(null)
   const infoRef = useRef(null) // dados da ligação atual (pro histórico)
+  const regTimerRef = useRef(null)
 
   // ── PWA: manifest + service worker ──
   useEffect(() => {
@@ -98,10 +102,14 @@ export default function Atendente() {
       client.remoteElement = 'atendente-remote-audio'
       client.enableMicrophone = true
       const prontoTimer = setTimeout(() => { setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro((e) => e || 'Demorou pra conectar à voz. Toque em tentar de novo.') }, 15000)
-      client.on('telnyx.ready', () => { clearTimeout(prontoTimer); setErro(''); setFase('pronto') })
+      const checarReg = async () => { try { setRegistrado((await client.getIsRegistered?.()) ?? null) } catch { setRegistrado(null) } }
+      client.on('telnyx.ready', () => { clearTimeout(prontoTimer); setErro(''); setFase('pronto'); checarReg(); if (regTimerRef.current) clearInterval(regTimerRef.current); regTimerRef.current = setInterval(checarReg, 4000) })
       client.on('telnyx.error', () => { clearTimeout(prontoTimer); setFase((f) => (f === 'conectando' ? 'erro' : f)); setErro('Erro na conexão de voz.') })
       client.on('telnyx.socket.close', () => { /* deixa o SDK tentar reconectar */ })
       client.on('telnyx.notification', (n) => {
+        try { setUltimoEvento(`${n?.type || '?'}${n?.call?.state ? ':' + n.call.state : ''}${n?.call?.direction ? '/' + n.call.direction : ''}`) } catch { /* ignore */ }
+        // eslint-disable-next-line no-console
+        console.log('[telnyx.notification]', n?.type, n?.call?.state, n?.call?.direction)
         if (n.type !== 'callUpdate' || !n.call) return
         const call = n.call
         const st = call.state
@@ -146,7 +154,7 @@ export default function Atendente() {
       setFase('login')
     }
     boot()
-    return () => { pararTimer(); if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } } }
+    return () => { pararTimer(); if (regTimerRef.current) clearInterval(regTimerRef.current); if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } } }
   }, [conectar])
 
   const parearManual = async () => {
@@ -159,8 +167,9 @@ export default function Atendente() {
   }
 
   const desconectar = () => {
+    if (regTimerRef.current) { clearInterval(regTimerRef.current); regTimerRef.current = null }
     if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } clientRef.current = null }
-    limparSessao(); setRamal(null); setHistorico([]); setFase('login'); setAba('teclado'); encerrarUI()
+    limparSessao(); setRamal(null); setHistorico([]); setRegistrado(null); setFase('login'); setAba('teclado'); encerrarUI()
   }
 
   const ligar = (destino) => {
@@ -322,7 +331,18 @@ export default function Atendente() {
         <p className="text-sm text-stone-500 tabular-nums flex items-center gap-1.5 mt-1"><Wifi className="w-3.5 h-3.5 text-green-500" /> {fmtNum(ramal?.numero)}</p>
         <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700"><span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Conectado</span>
       </div>
-      <button onClick={desconectar} className="mt-10 w-full rounded-xl border border-red-200 bg-red-50 text-red-600 font-semibold py-3.5 flex items-center justify-center gap-2 hover:bg-red-100">
+      {/* Diagnóstico (temporário) — mostra se o app registrou pra RECEBER chamadas */}
+      <div className="mt-8 rounded-xl bg-surface-50 border border-surface-200 p-3 text-left">
+        <p className="text-xs font-semibold text-stone-600 mb-1.5">Diagnóstico</p>
+        <p className="text-xs text-stone-500 flex items-center gap-1.5">
+          Recebimento:
+          {registrado === true ? <span className="font-semibold text-green-600">✓ registrado</span>
+            : registrado === false ? <span className="font-semibold text-red-500">✗ não registrado</span>
+              : <span className="text-stone-400">verificando…</span>}
+        </p>
+        <p className="text-xs text-stone-400 mt-1 truncate">Último evento: {ultimoEvento || '—'}</p>
+      </div>
+      <button onClick={desconectar} className="mt-6 w-full rounded-xl border border-red-200 bg-red-50 text-red-600 font-semibold py-3.5 flex items-center justify-center gap-2 hover:bg-red-100">
         <LogOut className="w-5 h-5" /> Desconectar este aparelho
       </button>
       <p className="text-xs text-stone-400 text-center mt-3">Você precisará do QR/código pra entrar de novo.</p>
