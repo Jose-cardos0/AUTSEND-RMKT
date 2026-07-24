@@ -14,12 +14,13 @@ try { webpush.setVapidDetails('mailto:contato@autsend.com.br', VAPID_PUBLIC, VAP
 async function enviarPushRamal(uid, ramalId, payload) {
   const ref = db.doc(`users/${uid}/ramais/${ramalId}`)
   const subs = (await ref.get()).data()?.pushSubs || []
+  console.log('PUSH ramal', ramalId, 'subs:', subs.length)
   if (!subs.length) return 0
   const msg = JSON.stringify(payload)
   const vivos = []
   await Promise.all(subs.map(async (s) => {
     try { await webpush.sendNotification(s, msg); vivos.push(s) }
-    catch (e) { if (e?.statusCode !== 404 && e?.statusCode !== 410) vivos.push(s) } // 404/410 = expirada → descarta
+    catch (e) { console.error('PUSH erro', e?.statusCode, e?.body || e?.message); if (e?.statusCode !== 404 && e?.statusCode !== 410) vivos.push(s) } // 404/410 = expirada → descarta
   }))
   if (vivos.length !== subs.length) await ref.set({ pushSubs: vivos }, { merge: true })
   return vivos.length
@@ -4403,15 +4404,18 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
     const tipo = evt.event_type || ''
     const p = evt.payload || {}
     const connId = p.connection_id
+    console.log('CCWH', JSON.stringify({ tipo, dir: p.direction, connId, from: p.from, to: p.to }))
     if (!connId) { res.status(200).json({ ok: true }); return }
     const mapSnap = await db.doc(`ccConnMap/${connId}`).get()
+    console.log('CCWH map', mapSnap.exists, mapSnap.exists ? JSON.stringify(mapSnap.data()) : '-')
     if (!mapSnap.exists) { res.status(200).json({ ok: true, ignored: 'sem ramal' }); return }
     const { uid, ramalId } = mapSnap.data()
-    const entrada = (p.direction === 'incoming')
+    const entrada = (p.direction === 'incoming' || p.direction === 'inbound')
 
     if (tipo === 'call.initiated' && entrada) {
       const de = p.from || ''
-      await enviarPushRamal(uid, ramalId, { title: 'Chamada recebida', body: de ? `Ligação de ${de}` : 'Alguém está te ligando', tag: 'chamada' })
+      const enviados = await enviarPushRamal(uid, ramalId, { title: 'Chamada recebida', body: de ? `Ligação de ${de}` : 'Alguém está te ligando', tag: 'chamada' })
+      console.log('CCWH push enviados:', enviados)
       // guarda pra logar duração ao desligar (relatório server-side, inclusive app fechado)
       await db.doc(`callPendingCC/${p.call_control_id}`).set({ uid, ramalId, from: p.from || '', iniMs: Date.now(), atendida: false }, { merge: true }).catch(() => {})
     } else if (tipo === 'call.answered' && entrada) {

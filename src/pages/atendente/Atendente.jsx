@@ -108,6 +108,8 @@ export default function Atendente() {
     try {
       const { login, password, numero, nome, fotoUrl } = await obterTokenWebrtc()
       if (numero || nome) { const r = { numero, nome, fotoUrl: fotoUrl || '' }; setRamal(r); salvarSessao(getSessao(), r) }
+      // Se já tem permissão de push, re-salva a inscrição NESTE ramal (senão a notificação vai pro ramal errado).
+      if (pushAtivo()) ativarPush().then(() => setPushLigado(true)).catch(() => {})
       if (clientRef.current) { try { clientRef.current.disconnect() } catch { /* ignore */ } clientRef.current = null }
       // Registra com login/senha SIP (não com token JWT) — só assim o softphone RECEBE chamadas.
       const client = new TelnyxRTC({ login, password })
