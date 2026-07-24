@@ -4135,7 +4135,21 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
   if (pn?.id) {
     await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: credentialConnectionId }) })
   }
+  // 4) Webhook de chamadas na central → nos avisa quando entra ligação (pra push com o app fechado).
+  await garantirWebhookCallRamal(apiKey, credentialConnectionId, uid, ramalId)
   return { credentialConnectionId, sipUsername, sipPassword, voiceProfileId: profileId }
+}
+const RAMAL_CALL_WEBHOOK = 'https://us-central1-afiliadocdnx.cloudfunctions.net/ramalCallWebhook'
+/** Amarra o webhook de chamadas na central do ramal + mapeia a connection → ramal (pro push na entrada). */
+async function garantirWebhookCallRamal(apiKey, connectionId, uid, ramalId) {
+  if (!connectionId) return
+  try {
+    await fetch(`https://api.telnyx.com/v2/credential_connections/${connectionId}`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhook_event_url: RAMAL_CALL_WEBHOOK, webhook_api_version: '2' }),
+    })
+    await db.doc(`ccConnMap/${connectionId}`).set({ uid, ramalId }, { merge: true })
+  } catch (_) { /* best-effort */ }
 }
 /** Acha o phone number id na conta Telnyx tentando formatos (+E164, sem +, cru). Retorna { id, connectionId, numero } ou null. */
 async function acharTelnyxPhoneId(H, numero) {
@@ -4334,6 +4348,11 @@ exports.ramalWebrtcToken = onRequest({ region: 'us-central1', timeoutSeconds: 20
       sipUsername = novoUser; sipPassword = novaSenha
       await ref.set({ sipUsername, sipPassword, sipFonte: 'conexao' }, { merge: true })
     }
+    // Garante o webhook de chamadas na central (pra push na entrada) — nos ramais antigos também.
+    if (!ramal.webhookCallSet && ramal.credentialConnectionId) {
+      const prov = (await db.doc(`users/${sessao.uid}/smsProviders/${ramal.providerId}`).get()).data()
+      if (prov?.apiKey) { await garantirWebhookCallRamal(prov.apiKey, ramal.credentialConnectionId, sessao.uid, sessao.ramalId); await ref.set({ webhookCallSet: true }, { merge: true }) }
+    }
     await ref.set({ ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ login: sipUsername, password: sipPassword, numero: ramal.numero, nome: ramal.nome, fotoUrl: ramal.fotoUrl || '' })
   } catch (err) { console.error('ramalWebrtcToken', err?.message || err); res.status(500).json({ erro: 'Erro ao conectar.' }) }
@@ -4372,6 +4391,46 @@ exports.ramalSalvarPush = onRequest({ region: 'us-central1', timeoutSeconds: 15,
     try { await webpush.sendNotification(sub, JSON.stringify({ title: 'Autsend Atendente', body: 'Pronto! Você vai receber chamadas mesmo com o app fechado.' })) } catch (_) {}
     res.status(200).json({ ok: true })
   } catch (err) { console.error('ramalSalvarPush', err?.message || err); res.status(500).json({ erro: 'Erro ao ativar notificações.' }) }
+})
+
+/**
+ * [Telnyx] Webhook de chamadas da central do ramal. Na ligação de ENTRADA, dispara o push pro aparelho
+ * do atendente (pra acordar o app fechado). Também loga inbound no relatório ao desligar. Público.
+ */
+exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20, memory: '256MiB', maxInstances: 20 }, async (req, res) => {
+  try {
+    const evt = req.body?.data || {}
+    const tipo = evt.event_type || ''
+    const p = evt.payload || {}
+    const connId = p.connection_id
+    if (!connId) { res.status(200).json({ ok: true }); return }
+    const mapSnap = await db.doc(`ccConnMap/${connId}`).get()
+    if (!mapSnap.exists) { res.status(200).json({ ok: true, ignored: 'sem ramal' }); return }
+    const { uid, ramalId } = mapSnap.data()
+    const entrada = (p.direction === 'incoming')
+
+    if (tipo === 'call.initiated' && entrada) {
+      const de = p.from || ''
+      await enviarPushRamal(uid, ramalId, { title: 'Chamada recebida', body: de ? `Ligação de ${de}` : 'Alguém está te ligando', tag: 'chamada' })
+      // guarda pra logar duração ao desligar (relatório server-side, inclusive app fechado)
+      await db.doc(`callPendingCC/${p.call_control_id}`).set({ uid, ramalId, from: p.from || '', iniMs: Date.now(), atendida: false }, { merge: true }).catch(() => {})
+    } else if (tipo === 'call.answered' && entrada) {
+      await db.doc(`callPendingCC/${p.call_control_id}`).set({ atendida: true, answeredMs: Date.now() }, { merge: true }).catch(() => {})
+    } else if (tipo === 'call.hangup' && entrada) {
+      const pend = (await db.doc(`callPendingCC/${p.call_control_id}`).get()).data()
+      if (pend && pend.ramalId === ramalId) {
+        const seg = pend.atendida && pend.answeredMs ? Math.max(1, Math.round((Date.now() - pend.answeredMs) / 1000)) : 0
+        const nome = (await db.doc(`users/${uid}/ramais/${ramalId}`).get()).data()?.nome || ''
+        await db.collection(`users/${uid}/callcenterLogs`).add({
+          ramalId, ramalNome: nome, dir: 'in', numero: String(pend.from || '').slice(0, 24),
+          atendida: !!pend.atendida, segundos: seg, ts: Date.now(), origem: 'servidor',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        }).catch(() => {})
+        await db.doc(`callPendingCC/${p.call_control_id}`).delete().catch(() => {})
+      }
+    }
+    res.status(200).json({ ok: true })
+  } catch (err) { console.error('ramalCallWebhook', err?.message || err); try { res.status(200).json({ ok: false }) } catch (_) {} }
 })
 
 /** [App atendente] Registra uma ligação que o softphone conduziu (pro relatório do dono). Público (Bearer sessão). */
