@@ -215,9 +215,10 @@ export default function Atendente() {
 
   // ═══════════════ RENDER ═══════════════
   const wrap = (children) => (
-    <div className="min-h-screen bg-surface-50 text-stone-800 flex flex-col items-center">
+    <div className="min-h-screen bg-surface-50 text-stone-800 flex flex-col items-center sm:justify-center sm:py-8">
       <audio id="atendente-remote-audio" autoPlay />
-      <div className="w-full max-w-md flex-1 flex flex-col bg-white shadow-sm min-h-screen">{children}</div>
+      {/* Celular: tela cheia. Desktop: um "telefone" centralizado (card com altura fixa, arredondado e sombra). */}
+      <div className="w-full max-w-md flex flex-col bg-white overflow-hidden min-h-screen sm:min-h-0 sm:h-[760px] sm:max-h-[92vh] sm:rounded-[2rem] sm:shadow-2xl sm:ring-1 sm:ring-surface-200">{children}</div>
     </div>
   )
 
