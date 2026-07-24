@@ -4765,7 +4765,7 @@ exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300, enfo
         leadId: c.leadId || null, produto: c.produto || '', nome: c.nome || '', email: c.email || '', agenteNome: d.agenteNome || '',
       })
       iniciadas++
-    } catch (e) { erros.push({ telefone: norm.e164, erro: traduzErroVoz(e.message) }) }
+    } catch (e) { console.error('callDisparar contato', norm.e164, '->', e?.message || e); erros.push({ telefone: norm.e164, erro: traduzErroVoz(e.message) }) }
   }
 
   const disparoRef = await db.collection(`users/${uid}/callDisparos`).add({
@@ -4779,7 +4779,8 @@ exports.callDisparar = onCall({ region: 'us-central1', timeoutSeconds: 300, enfo
 /** Traduz erros comuns da Telnyx Voice pra PT (reaproveita o padrão do SMS). */
 function traduzErroVoz(msg) {
   const s = String(msg || '')
-  if (/insufficient|balance/i.test(s)) return 'Saldo insuficiente na conta Telnyx.'
+  if (/account is disabled|account.*blocked|is blocked|\bD17\b|suspended/i.test(s)) return 'Sua conta Telnyx está bloqueada — geralmente por saldo negativo. Adicione saldo em portal.telnyx.com e tente de novo.'
+  if (/insufficient|balance|negative/i.test(s)) return 'Saldo insuficiente na sua conta Telnyx. Adicione saldo em portal.telnyx.com.'
   if (/not.*voice|voice.*not|connection/i.test(s)) return 'Número sem voz habilitada. Ative a voz no chip (Call → Integração).'
   if (/unauthorized|authentication|api key/i.test(s)) return 'Chave da Telnyx inválida ou sem permissão.'
   if (/invalid.*number|not a valid/i.test(s)) return 'Número de destino inválido.'
