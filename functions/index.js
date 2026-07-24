@@ -4477,7 +4477,7 @@ async function falarEsperaCC(apiKey, ccid) {
   try {
     await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/speak`, {
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload: 'Só um momento. Estamos conectando você a um atendente.', voice: CALL_VOZ_PADRAO, language: 'pt-BR' }),
+      body: JSON.stringify({ payload: 'One moment please. We are connecting you to an available agent.', voice: 'Polly.Joanna-Neural', language: 'en-US' }),
     })
   } catch (_) { /* best-effort */ }
 }
