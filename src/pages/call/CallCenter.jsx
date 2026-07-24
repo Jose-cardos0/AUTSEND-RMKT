@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuthState } from 'react-firebase-hooks/auth'
 import { QRCodeSVG } from 'qrcode.react'
@@ -38,31 +38,48 @@ function BotaoCopiar({ texto, label = 'Copiar' }) {
   )
 }
 
-/** Modal do QR de pareamento do ramal. */
-function ModalQR({ ramal, onClose }) {
+/** Modal do QR de pareamento do ramal. Quando o ramal pareia (status != aguardando), vira "✓ conectado" e fecha sozinho. */
+function ModalQR({ ramal, status, onClose }) {
   const link = linkPareamento(ramal.pairKey)
+  const jaPareado = status && status !== 'aguardando'
+  const abriuPareado = useRef(jaPareado) // se já estava pareado ao abrir, mostra o QR (pra re-parear outro aparelho)
+  const acabouDeParear = jaPareado && !abriuPareado.current
+  useEffect(() => {
+    if (!acabouDeParear) return
+    const t = setTimeout(onClose, 2500)
+    return () => clearTimeout(t)
+  }, [acabouDeParear, onClose])
+  const pareado = acabouDeParear
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
       <div className="app-panel rounded-2xl w-full max-w-sm p-6 relative" onClick={(e) => e.stopPropagation()}>
         <button type="button" onClick={onClose} className="absolute right-4 top-4 text-stone-400 hover:text-stone-600"><X className="w-5 h-5" /></button>
-        <div className="text-center">
-          <h3 className="text-lg font-bold text-stone-800">{ramal.nome}</h3>
-          <p className="text-sm text-stone-500 tabular-nums">{formatarNumero(ramal.numero)}</p>
-          <div className="mt-4 flex justify-center">
-            <div className="p-3 bg-white rounded-xl border-2 border-surface-200">
-              <QRCodeSVG value={link} size={196} level="M" />
+        {pareado ? (
+          <div className="text-center py-6">
+            <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600 mb-4"><Check className="w-8 h-8" /></span>
+            <h3 className="text-lg font-bold text-stone-800">Atendente conectado!</h3>
+            <p className="text-sm text-stone-500 mt-1"><strong>{ramal.nome}</strong> pareou o aparelho e já pode ligar e receber.</p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <h3 className="text-lg font-bold text-stone-800">{ramal.nome}</h3>
+            <p className="text-sm text-stone-500 tabular-nums">{formatarNumero(ramal.numero)}</p>
+            <div className="mt-4 flex justify-center">
+              <div className="p-3 bg-white rounded-xl border-2 border-surface-200">
+                <QRCodeSVG value={link} size={196} level="M" />
+              </div>
             </div>
+            <p className="mt-4 text-xs text-stone-500">Código do ramal</p>
+            <p className="text-2xl font-black tracking-widest text-stone-800 tabular-nums select-all">{ramal.pairKey}</p>
+            <div className="mt-3 flex items-center justify-center gap-4">
+              <BotaoCopiar texto={ramal.pairKey} label="Copiar código" />
+              <BotaoCopiar texto={link} label="Copiar link" />
+            </div>
+            <p className="mt-5 flex items-center justify-center gap-1.5 text-xs text-stone-400">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Aguardando o atendente parear…
+            </p>
           </div>
-          <p className="mt-4 text-xs text-stone-500">Código do ramal</p>
-          <p className="text-2xl font-black tracking-widest text-stone-800 tabular-nums select-all">{ramal.pairKey}</p>
-          <div className="mt-3 flex items-center justify-center gap-4">
-            <BotaoCopiar texto={ramal.pairKey} label="Copiar código" />
-            <BotaoCopiar texto={link} label="Copiar link" />
-          </div>
-          <p className="mt-5 text-xs text-stone-500 leading-relaxed">
-            O atendente instala o app <strong>Autsend Atendente</strong> e escaneia este QR (ou digita o código). O acesso vale por <strong>30 dias</strong>.
-          </p>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -236,7 +253,7 @@ export default function CallCenter() {
         )}
       </div>
 
-      {qrRamal && <ModalQR ramal={qrRamal} onClose={() => setQrRamal(null)} />}
+      {qrRamal && <ModalQR ramal={qrRamal} status={(ramais.find((r) => r.id === qrRamal.id) || {}).status} onClose={() => setQrRamal(null)} />}
     </PageShell>
   )
 }
