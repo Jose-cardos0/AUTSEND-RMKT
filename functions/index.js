@@ -4156,6 +4156,8 @@ exports.ramalCriar = onCall({ region: 'us-central1', timeoutSeconds: 60 }, async
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
   })
   await db.doc(`users/${uid}/smsProviders/${providerId}`).set({ callCenters: admin.firestore.FieldValue.arrayUnion(numNorm) }, { merge: true })
+  // Mapa pairKey → ramal (lookup direto no pareamento, sem collectionGroup/índice).
+  await db.doc(`pairKeys/${pairKey}`).set({ uid, ramalId: ramalRef.id, criadoEm: admin.firestore.FieldValue.serverTimestamp() })
   return { ok: true, ramalId: ramalRef.id, pairKey, numero: exato }
 })
 
@@ -4182,6 +4184,7 @@ exports.ramalRevogar = onCall({ region: 'us-central1', timeoutSeconds: 30 }, asy
   const ramal = snap.data()
   const prov = (await db.doc(`users/${uid}/smsProviders/${ramal.providerId}`).get()).data()
   if (prov?.apiKey) await desprovisionarRamalBYO(prov.apiKey, ramal)
+  if (ramal.pairKey) await db.doc(`pairKeys/${ramal.pairKey}`).delete().catch(() => {})
   await ref.set({ status: 'revogado', pairKey: '' }, { merge: true })
   if (ramal.numeroNorm && ramal.providerId) {
     await db.doc(`users/${uid}/smsProviders/${ramal.providerId}`).set({ callCenters: admin.firestore.FieldValue.arrayRemove(ramal.numeroNorm) }, { merge: true })
@@ -4196,14 +4199,16 @@ exports.ramalParear = onRequest({ region: 'us-central1', timeoutSeconds: 20, mem
   try {
     const pairKey = String(req.body?.pairKey || '').trim().toUpperCase()
     if (!pairKey) { res.status(400).json({ erro: 'Informe o código do ramal.' }); return }
-    const q = await db.collectionGroup('ramais').where('pairKey', '==', pairKey).limit(1).get()
-    if (q.empty) { res.status(404).json({ erro: 'Código inválido ou expirado.' }); return }
-    const doc = q.docs[0]
-    const ramal = doc.data()
+    const mapSnap = await db.doc(`pairKeys/${pairKey}`).get()
+    if (!mapSnap.exists) { res.status(404).json({ erro: 'Código inválido ou expirado.' }); return }
+    const { uid, ramalId } = mapSnap.data()
+    const ref = db.doc(`users/${uid}/ramais/${ramalId}`)
+    const snap = await ref.get()
+    if (!snap.exists) { res.status(404).json({ erro: 'Ramal não encontrado.' }); return }
+    const ramal = snap.data()
     if (ramal.status === 'revogado') { res.status(403).json({ erro: 'Acesso revogado.' }); return }
-    const uid = doc.ref.parent.parent.id
-    const sessao = ramalAssinarSessao({ uid, ramalId: doc.id, dev: _b64url(crypto.randomBytes(9)) })
-    await doc.ref.set({ status: 'ativo', ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    const sessao = ramalAssinarSessao({ uid, ramalId, dev: _b64url(crypto.randomBytes(9)) })
+    await ref.set({ status: 'ativo', ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ sessao, ramal: { nome: ramal.nome, numero: ramal.numero } })
   } catch (err) { console.error('ramalParear', err?.message || err); res.status(500).json({ erro: 'Erro ao parear.' }) }
 })

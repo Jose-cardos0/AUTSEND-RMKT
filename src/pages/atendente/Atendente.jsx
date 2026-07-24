@@ -2,10 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { TelnyxRTC } from '@telnyx/webrtc'
 import { Phone, PhoneOff, PhoneIncoming, Delete, Mic, MicOff, Loader2, LogOut, Wifi, WifiOff } from 'lucide-react'
 import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao } from '../../lib/atendente'
+import logo from '../../assets/autsendlogo.png'
 
 function fmtNum(n) {
-  const d = String(n || '').replace(/[^\d+]/g, '')
-  const only = d.replace(/\D/g, '')
+  const only = String(n || '').replace(/\D/g, '')
   if (only.length === 11 && only.startsWith('1')) return `+1 (${only.slice(1, 4)}) ${only.slice(4, 7)}-${only.slice(7)}`
   return n
 }
@@ -53,9 +53,9 @@ export default function Atendente() {
     const metaCriado = !meta
     if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.appendChild(meta) }
     const metaAntigo = meta.getAttribute('content')
-    meta.setAttribute('content', '#0c0a09')
+    meta.setAttribute('content', '#4a46de')
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw-atendente.js', { scope: '/atendente' }).catch(() => {})
-    return () => { // restaura ao sair da rota
+    return () => {
       if (criado) link.remove(); else if (antigo) link.setAttribute('href', antigo)
       if (metaCriado) meta.remove(); else if (metaAntigo) meta.setAttribute('content', metaAntigo)
     }
@@ -154,106 +154,109 @@ export default function Atendente() {
   // ═══════════════ RENDER ═══════════════
   // O <audio> remoto fica FIXO fora do conteúdo que troca (senão remontaria a cada render e cortaria o áudio).
   const conteudo = () => {
-  if (fase === 'carregando' || pareando) {
-    return <div className="flex-1 flex flex-col items-center justify-center gap-3 text-stone-400"><Loader2 className="w-8 h-8 animate-spin text-emerald-400" /><p className="text-sm">{pareando ? 'Pareando dispositivo…' : 'Carregando…'}</p></div>
-  }
+    if (fase === 'carregando' || pareando) {
+      return <div className="flex-1 flex flex-col items-center justify-center gap-3 text-stone-400"><Loader2 className="w-8 h-8 animate-spin text-primary-600" /><p className="text-sm">{pareando ? 'Pareando dispositivo…' : 'Carregando…'}</p></div>
+    }
 
-  if (fase === 'login') {
-    return (
+    if (fase === 'login') {
+      return (
         <div className="flex-1 flex flex-col justify-center px-6 py-10">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 mb-4"><Phone className="w-8 h-8 text-emerald-400" /></div>
-            <h1 className="text-2xl font-bold">Autsend Atendente</h1>
-            <p className="text-sm text-stone-400 mt-1">Escaneie o QR do seu ramal ou digite o código.</p>
+            <img src={logo} alt="Autsend" className="h-9 w-auto object-contain mx-auto mb-5" />
+            <h1 className="text-2xl font-bold text-stone-800">Atendente</h1>
+            <p className="text-sm text-stone-500 mt-1">Escaneie o QR do seu ramal ou digite o código.</p>
           </div>
-          <label className="block text-xs font-medium text-stone-400 mb-2">Código do ramal</label>
+          <label className="block text-xs font-medium text-stone-500 mb-2">Código do ramal</label>
           <input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="XXXX-XXXX" autoCapitalize="characters"
             onKeyDown={(e) => e.key === 'Enter' && parearManual()}
-            className="w-full rounded-xl bg-stone-900 border border-stone-700 px-4 py-3.5 text-center text-2xl font-black tracking-widest tabular-nums focus:border-emerald-500 focus:outline-none" />
-          {erro && <p className="text-sm text-red-400 mt-3 text-center">{erro}</p>}
-          <button onClick={parearManual} disabled={pareando} className="mt-5 w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold py-3.5 disabled:opacity-60 flex items-center justify-center gap-2">
+            className="w-full rounded-xl bg-white border border-surface-300 px-4 py-3.5 text-center text-2xl font-black tracking-widest tabular-nums text-stone-800 focus:border-primary-500 focus:outline-none" />
+          {erro && <p className="text-sm text-red-600 mt-3 text-center">{erro}</p>}
+          <button onClick={parearManual} disabled={pareando} className="mt-5 w-full rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold py-3.5 disabled:opacity-60 flex items-center justify-center gap-2">
             {pareando ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Entrar'}
           </button>
-          <p className="text-xs text-stone-500 text-center mt-6">O acesso vale por 30 dias neste aparelho.</p>
+          <p className="text-xs text-stone-400 text-center mt-6">O acesso vale por 30 dias neste aparelho.</p>
         </div>
-    )
-  }
+      )
+    }
 
-  if (fase === 'conectando' || fase === 'erro') {
-    return (
+    if (fase === 'conectando' || fase === 'erro') {
+      return (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
-          {fase === 'erro' ? <WifiOff className="w-10 h-10 text-red-400" /> : <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />}
-          <p className="text-sm text-stone-300">{fase === 'erro' ? (erro || 'Sem conexão de voz.') : 'Conectando à central…'}</p>
-          {fase === 'erro' && <button onClick={conectar} className="rounded-xl bg-emerald-500 text-stone-950 font-bold px-6 py-2.5">Tentar de novo</button>}
-          {fase === 'erro' && <button onClick={desconectar} className="text-xs text-stone-500 underline">Sair e parear de novo</button>}
+          {fase === 'erro' ? <WifiOff className="w-10 h-10 text-red-500" /> : <Loader2 className="w-10 h-10 animate-spin text-primary-600" />}
+          <p className="text-sm text-stone-600">{fase === 'erro' ? (erro || 'Sem conexão de voz.') : 'Conectando à central…'}</p>
+          {fase === 'erro' && <button onClick={conectar} className="rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold px-6 py-2.5">Tentar de novo</button>}
+          {fase === 'erro' && <button onClick={desconectar} className="text-xs text-stone-400 underline">Sair e parear de novo</button>}
         </div>
-    )
-  }
+      )
+    }
 
-  // Tela de chamada (recebendo / saindo / tocando / ativa)
-  if (chamadaEstado) {
-    const recebendo = chamadaEstado === 'recebendo'
-    const ativa = chamadaEstado === 'ativa'
-    const rotulo = recebendo ? 'Chamada recebida' : ativa ? fmtDur(duracao) : chamadaEstado === 'saindo' ? 'Chamando…' : 'Tocando…'
-    const quem = recebendo ? (chamadaDe || 'Desconhecido') : discar || chamadaDe
-    return (
+    // Tela de chamada (recebendo / saindo / tocando / ativa)
+    if (chamadaEstado) {
+      const recebendo = chamadaEstado === 'recebendo'
+      const ativa = chamadaEstado === 'ativa'
+      const rotulo = recebendo ? 'Chamada recebida' : ativa ? fmtDur(duracao) : chamadaEstado === 'saindo' ? 'Chamando…' : 'Tocando…'
+      const quem = recebendo ? (chamadaDe || 'Desconhecido') : discar || chamadaDe
+      return (
         <div className="flex-1 flex flex-col items-center justify-between py-16 px-6">
           <div className="flex flex-col items-center gap-3 mt-10">
-            <div className={`w-24 h-24 rounded-full bg-stone-800 flex items-center justify-center ${recebendo ? 'animate-pulse' : ''}`}>
-              {recebendo ? <PhoneIncoming className="w-10 h-10 text-emerald-400" /> : <Phone className="w-10 h-10 text-stone-300" />}
+            <div className={`w-24 h-24 rounded-full bg-surface-100 flex items-center justify-center ${recebendo ? 'animate-pulse' : ''}`}>
+              {recebendo ? <PhoneIncoming className="w-10 h-10 text-primary-600" /> : <Phone className="w-10 h-10 text-stone-500" />}
             </div>
-            <p className="text-2xl font-bold tabular-nums mt-2">{fmtNum(quem)}</p>
-            <p className={`text-sm ${ativa ? 'text-emerald-400 font-semibold tabular-nums' : 'text-stone-400'}`}>{rotulo}</p>
+            <p className="text-2xl font-bold tabular-nums mt-2 text-stone-800">{fmtNum(quem)}</p>
+            <p className={`text-sm ${ativa ? 'text-primary-600 font-semibold tabular-nums' : 'text-stone-500'}`}>{rotulo}</p>
           </div>
           <div className="flex items-center justify-center gap-8">
             {ativa && (
-              <button onClick={toggleMudo} className={`w-14 h-14 rounded-full flex items-center justify-center ${mudo ? 'bg-white text-stone-900' : 'bg-stone-800 text-white'}`}>
+              <button onClick={toggleMudo} className={`w-14 h-14 rounded-full flex items-center justify-center transition ${mudo ? 'bg-stone-800 text-white' : 'bg-surface-100 text-stone-700'}`}>
                 {mudo ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
               </button>
             )}
             {recebendo && (
-              <button onClick={atender} className="w-16 h-16 rounded-full bg-emerald-500 hover:bg-emerald-400 flex items-center justify-center shadow-lg"><Phone className="w-7 h-7 text-stone-950" /></button>
+              <button onClick={atender} className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 flex items-center justify-center shadow-lg"><Phone className="w-7 h-7 text-white" /></button>
             )}
-            <button onClick={desligar} className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center shadow-lg"><PhoneOff className="w-7 h-7 text-white" /></button>
+            <button onClick={desligar} className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg"><PhoneOff className="w-7 h-7 text-white" /></button>
           </div>
         </div>
+      )
+    }
+
+    // Discador (pronto)
+    return (
+      <>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200">
+          <div className="flex items-center gap-3 min-w-0">
+            <img src={logo} alt="Autsend" className="h-6 w-auto object-contain shrink-0" />
+            <div className="min-w-0 border-l border-surface-200 pl-3">
+              <p className="font-semibold text-stone-800 truncate leading-tight">{ramal?.nome || 'Ramal'}</p>
+              <p className="text-xs text-stone-500 tabular-nums flex items-center gap-1.5"><Wifi className="w-3 h-3 text-green-500" /> {fmtNum(ramal?.numero)}</p>
+            </div>
+          </div>
+          <button onClick={desconectar} title="Sair" className="text-stone-400 hover:text-stone-600 p-2 shrink-0"><LogOut className="w-5 h-5" /></button>
+        </div>
+
+        <div className="flex-1 flex flex-col justify-end px-6 pb-8">
+          <div className="text-center py-8 min-h-[80px]">
+            <p className="text-3xl font-bold tabular-nums break-all text-stone-800">{discar || <span className="text-stone-300">Digite um número</span>}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            {TECLAS.map((t) => (
+              <button key={t} onClick={() => tecla(t)} className="h-16 rounded-full bg-surface-100 hover:bg-surface-200 text-2xl font-semibold text-stone-800 active:scale-95 transition">{t}</button>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 items-center">
+            <div />
+            <button onClick={ligar} disabled={!discar} className="w-16 h-16 mx-auto rounded-full bg-green-500 hover:bg-green-600 disabled:opacity-30 flex items-center justify-center shadow-lg"><Phone className="w-7 h-7 text-white" /></button>
+            <button onClick={apagar} disabled={!discar} className="w-12 h-12 mx-auto rounded-full flex items-center justify-center text-stone-400 disabled:opacity-30"><Delete className="w-6 h-6" /></button>
+          </div>
+        </div>
+      </>
     )
   }
 
-  // Discador (pronto)
   return (
-      <>
-      <div className="flex items-center justify-between px-5 py-4 border-b border-stone-800">
-        <div className="min-w-0">
-          <p className="font-semibold truncate">{ramal?.nome || 'Ramal'}</p>
-          <p className="text-xs text-stone-400 tabular-nums flex items-center gap-1.5"><Wifi className="w-3 h-3 text-emerald-400" /> {fmtNum(ramal?.numero)}</p>
-        </div>
-        <button onClick={desconectar} title="Sair" className="text-stone-500 hover:text-stone-300 p-2"><LogOut className="w-5 h-5" /></button>
-      </div>
-
-      <div className="flex-1 flex flex-col justify-end px-6 pb-8">
-        <div className="text-center py-8 min-h-[80px]">
-          <p className="text-3xl font-bold tabular-nums break-all">{discar || <span className="text-stone-600">Digite um número</span>}</p>
-        </div>
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          {TECLAS.map((t) => (
-            <button key={t} onClick={() => tecla(t)} className="h-16 rounded-full bg-stone-900 hover:bg-stone-800 text-2xl font-semibold active:scale-95 transition">{t}</button>
-          ))}
-        </div>
-        <div className="grid grid-cols-3 items-center">
-          <div />
-          <button onClick={ligar} disabled={!discar} className="w-16 h-16 mx-auto rounded-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-30 flex items-center justify-center shadow-lg"><Phone className="w-7 h-7 text-stone-950" /></button>
-          <button onClick={apagar} disabled={!discar} className="w-12 h-12 mx-auto rounded-full flex items-center justify-center text-stone-400 disabled:opacity-30"><Delete className="w-6 h-6" /></button>
-        </div>
-      </div>
-      </>
-  )
-  }
-
-  return (
-    <div className="min-h-screen bg-stone-950 text-white flex flex-col items-center">
+    <div className="min-h-screen bg-surface-50 text-stone-800 flex flex-col items-center">
       <audio id="atendente-remote-audio" autoPlay />
-      <div className="w-full max-w-md flex-1 flex flex-col">{conteudo()}</div>
+      <div className="w-full max-w-md flex-1 flex flex-col bg-white shadow-sm min-h-screen">{conteudo()}</div>
     </div>
   )
 }
