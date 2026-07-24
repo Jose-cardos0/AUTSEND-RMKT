@@ -4425,11 +4425,12 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
         const pend = { uid, ramalId, ccid, apiKey, sipUsername, from: p.from || '', iniMs: Date.now() }
         await db.doc(`callPendingCC/${ccid}`).set(pend, { merge: true }).catch(() => {})
         await db.doc(`ramalPendingCall/${ramalId}`).set(pend, { merge: true }).catch(() => {})
-        // App aberto? transfere já pro softphone. Senão, espera o app acordar (ramalPronto) — o caller ouve o toque.
+        // App ABERTO → o softphone registrado toca direto (SIP), não mexemos. App FECHADO → atendemos
+        // (seguramos a chamada) e esperamos o app acordar (ramalPronto) pra transferir — transfer exige atendida.
         const presMs = ramal.presencaEm?.toMillis?.() || 0
         const online = ramal.presencaOnline === true && (Date.now() - presMs) < 45000
         console.log('CCWH online?', online)
-        if (online) await transferirParaSoftphone(apiKey, ccid, sipUsername, p.from)
+        if (!online) await atenderChamadaCC(apiKey, ccid)
       } else { console.log('CCWH sem apiKey/sipUsername') }
       res.status(200).json({ ok: true }); return
     }
@@ -4456,6 +4457,16 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
   } catch (err) { console.error('ramalCallWebhook', err?.message || err); try { res.status(200).json({ ok: false }) } catch (_) {} }
 })
 
+/** Atende a chamada de entrada (Call Control) pra segurá-la enquanto o app acorda (app fechado). */
+async function atenderChamadaCC(apiKey, ccid) {
+  try {
+    const r = await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/answer`, {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: '{}',
+    })
+    if (!r.ok) console.error('answer falhou', r.status, await r.text().catch(() => ''))
+    else console.log('answer OK', ccid)
+  } catch (e) { console.error('answer erro', e?.message || e) }
+}
 /** Transfere a chamada de entrada (Call Control) pro softphone registrado (SIP URI da credential connection). */
 async function transferirParaSoftphone(apiKey, ccid, sipUsername, from) {
   try {
