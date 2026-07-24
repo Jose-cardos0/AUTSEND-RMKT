@@ -4467,7 +4467,7 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
   } catch (err) { console.error('ramalCallWebhook', err?.message || err); try { res.status(200).json({ ok: false }) } catch (_) {} }
 })
 
-const AUDIO_ESPERA_URL = 'https://autsend.com.br/espera.mp3'
+const AUDIO_ESPERA_URL = 'https://www.autsend.com.br/espera.mp3'
 /** Musiquinha de espera (playback em loop) enquanto o app do atendente acorda. */
 async function tocarEsperaCC(apiKey, ccid) {
   try {
