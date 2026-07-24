@@ -4444,13 +4444,8 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
     }
     if ((tipo === 'call.answered' || tipo === 'call.bridged') && entrada) {
       const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
-      if (pend?.autoAtendida && !pend.transferido && pend.apiKey) await falarEsperaCC(pend.apiKey, ccid) // toque de espera
+      if (pend?.autoAtendida && !pend.transferido && pend.apiKey) await tocarEsperaCC(pend.apiKey, ccid) // musiquinha de espera (loop)
       await db.doc(`callPendingCC/${ccid}`).set({ answeredMs: Date.now() }, { merge: true }).catch(() => {})
-      res.status(200).json({ ok: true }); return
-    }
-    if (tipo === 'call.speak.ended' && entrada) {
-      const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
-      if (pend?.autoAtendida && !pend.transferido && pend.apiKey) await falarEsperaCC(pend.apiKey, ccid) // repete o toque até transferir
       res.status(200).json({ ok: true }); return
     }
     if (tipo === 'call.hangup' && entrada) {
@@ -4472,12 +4467,13 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
   } catch (err) { console.error('ramalCallWebhook', err?.message || err); try { res.status(200).json({ ok: false }) } catch (_) {} }
 })
 
-/** Toque de espera (TTS) enquanto o app do atendente acorda. */
-async function falarEsperaCC(apiKey, ccid) {
+const AUDIO_ESPERA_URL = 'https://autsend.com.br/espera.mp3'
+/** Musiquinha de espera (playback em loop) enquanto o app do atendente acorda. */
+async function tocarEsperaCC(apiKey, ccid) {
   try {
-    await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/speak`, {
+    await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/playback_start`, {
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload: 'One moment please. We are connecting you to an available agent.', voice: 'Polly.Joanna-Neural', language: 'en-US' }),
+      body: JSON.stringify({ audio_url: AUDIO_ESPERA_URL, loop: 'infinity' }),
     })
   } catch (_) { /* best-effort */ }
 }
@@ -4494,7 +4490,9 @@ async function atenderChamadaCC(apiKey, ccid) {
 /** Transfere a chamada de entrada (Call Control) pro softphone registrado (SIP URI da credential connection). */
 async function transferirParaSoftphone(apiKey, ccid, sipUsername, from) {
   try {
-    await db.doc(`callPendingCC/${ccid}`).set({ transferido: true }, { merge: true }).catch(() => {}) // para o loop do toque de espera
+    await db.doc(`callPendingCC/${ccid}`).set({ transferido: true }, { merge: true }).catch(() => {}) // marca transferido
+    // Para a musiquinha de espera antes de transferir.
+    try { await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/playback_stop`, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: '{}' }) } catch (_) {}
     const r = await fetch(`https://api.telnyx.com/v2/calls/${ccid}/actions/transfer`, {
       method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ to: `sip:${sipUsername}@sip.telnyx.com`, from: from || undefined, timeout_secs: 30 }),
