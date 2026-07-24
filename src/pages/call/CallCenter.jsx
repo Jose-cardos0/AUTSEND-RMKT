@@ -5,11 +5,11 @@ import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { auth } from '../../lib/firebase'
 import { listarNumerosComFuncoes } from '../../lib/smsNumeros'
-import { criarRamal, listarRamais, revogarRamal, setFotoRamal, linkPareamento, PWA_ATENDENTE_URL } from '../../lib/callcenter'
+import { criarRamal, listarRamais, revogarRamal, setFotoRamal, reassociarRamal, linkPareamento, PWA_ATENDENTE_URL } from '../../lib/callcenter'
 import { useConfirm } from '../../components/ConfirmDialog'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera } from 'lucide-react'
+import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera, PhoneIncoming } from 'lucide-react'
 import telnyxLogo from '../../assets/telnyx.png'
 
 const _norm = (s) => String(s || '').replace(/\D/g, '')
@@ -114,6 +114,7 @@ export default function CallCenter() {
   const [criando, setCriando] = useState(false)
   const [revogandoId, setRevogandoId] = useState(null)
   const [fotoLoadingId, setFotoLoadingId] = useState(null)
+  const [fixandoId, setFixandoId] = useState(null)
   const [qrRamal, setQrRamal] = useState(null)
 
   const carregar = async () => {
@@ -166,6 +167,17 @@ export default function CallCenter() {
     } catch (err) {
       toast.error(err.message || 'Não consegui salvar a foto.')
     } finally { setFotoLoadingId(null) }
+  }
+
+  const corrigirRecebimento = async (r) => {
+    setFixandoId(r.id)
+    try {
+      const res = await reassociarRamal(r.id)
+      if (res.jaEstavaOk) toast.success('Recebimento já estava certo. Peça pro atendente abrir o app e ligue de novo.')
+      else toast.success('Recebimento corrigido! Agora ligue pro número — deve tocar no app do atendente.')
+    } catch (err) {
+      toast.error(err.message || 'Não consegui corrigir o recebimento.')
+    } finally { setFixandoId(null) }
   }
 
   const revogar = async (r) => {
@@ -283,6 +295,11 @@ export default function CallCenter() {
                       {revogandoId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                     </button>
                   </div>
+                  <button type="button" onClick={() => corrigirRecebimento(r)} disabled={fixandoId === r.id}
+                    className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-stone-400 hover:text-primary-600 disabled:opacity-60 -mt-1">
+                    {fixandoId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PhoneIncoming className="w-3.5 h-3.5" />}
+                    Não recebe chamadas? Corrigir
+                  </button>
                 </div>
               )
             })}

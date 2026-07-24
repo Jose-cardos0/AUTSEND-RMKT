@@ -4115,13 +4115,23 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
   if (!tc.ok) throw new HttpsError('failed-precondition', tcd?.errors?.[0]?.detail || 'Não consegui criar a credencial do ramal.')
   const telephonyCredentialId = tcd?.data?.id
   // 4) Liga o número na central do ramal (inbound → toca no atendente).
-  const pn = await fetch(`https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(numeroExato)}`, { headers: H })
-  const pnd = await pn.json().catch(() => ({}))
-  const phoneId = pnd?.data?.[0]?.id
-  if (phoneId) {
-    await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneId}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: credentialConnectionId }) })
+  const pn = await acharTelnyxPhoneId(H, numeroExato)
+  if (pn?.id) {
+    await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: credentialConnectionId }) })
   }
   return { credentialConnectionId, telephonyCredentialId, voiceProfileId: profileId }
+}
+/** Acha o phone number id na conta Telnyx tentando formatos (+E164, sem +, cru). Retorna { id, connectionId, numero } ou null. */
+async function acharTelnyxPhoneId(H, numero) {
+  const cands = [...new Set([numero, '+' + String(numero).replace(/\D/g, ''), String(numero).replace(/^\+/, '')])]
+  for (const c of cands) {
+    try {
+      const r = await fetch(`https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(c)}`, { headers: H })
+      const d = await r.json().catch(() => ({}))
+      if (d?.data?.[0]?.id) return { id: d.data[0].id, connectionId: d.data[0].connection_id || null, numero: c }
+    } catch (_) { /* tenta o próximo formato */ }
+  }
+  return null
 }
 /** Remove o ramal na Telnyx (credential + connection). Best-effort. */
 async function desprovisionarRamalBYO(apiKey, ramal) {
@@ -4206,6 +4216,34 @@ exports.ramalRevogar = onCall({ region: 'us-central1', timeoutSeconds: 30 }, asy
     await db.doc(`users/${uid}/smsProviders/${ramal.providerId}`).set({ callCenters: admin.firestore.FieldValue.arrayRemove(ramal.numeroNorm) }, { merge: true })
   }
   return { ok: true }
+})
+
+/**
+ * Corrige/diagnostica o RECEBIMENTO de chamadas de um ramal: reaponta o número pra central (credential
+ * connection) do ramal na Telnyx. Devolve pra onde estava apontado antes (diagnóstico).
+ */
+exports.ramalReassociar = onCall({ region: 'us-central1', timeoutSeconds: 30 }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const ramalId = String(request.data?.ramalId || '')
+  const snap = await db.doc(`users/${uid}/ramais/${ramalId}`).get()
+  if (!snap.exists) throw new HttpsError('not-found', 'Ramal não encontrado.')
+  const ramal = snap.data()
+  if (!ramal.credentialConnectionId) throw new HttpsError('failed-precondition', 'Ramal sem central de voz. Recrie o ramal.')
+  const prov = (await db.doc(`users/${uid}/smsProviders/${ramal.providerId}`).get()).data()
+  if (!prov?.apiKey) throw new HttpsError('failed-precondition', 'Conta Telnyx do número não encontrada.')
+  const H = { Authorization: `Bearer ${prov.apiKey}`, 'Content-Type': 'application/json' }
+  const pn = await acharTelnyxPhoneId(H, ramal.numero)
+  if (!pn?.id) throw new HttpsError('not-found', 'Número não encontrado na sua conta Telnyx.')
+  const jaOk = pn.connectionId === ramal.credentialConnectionId
+  const patch = await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, {
+    method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: ramal.credentialConnectionId }),
+  })
+  if (!patch.ok) {
+    const d = await patch.json().catch(() => ({}))
+    throw new HttpsError('internal', d?.errors?.[0]?.detail || 'Não consegui reapontar o número na Telnyx.')
+  }
+  return { ok: true, jaEstavaOk: jaOk, connectionAntes: pn.connectionId || null, connectionAgora: ramal.credentialConnectionId }
 })
 
 /** [App atendente] Pareia o dispositivo com a pairKey → sessão de 30 dias + dados do ramal. Público. */

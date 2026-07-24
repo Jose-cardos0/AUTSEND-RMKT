@@ -30,6 +30,12 @@ export async function setFotoRamal(ramalId, dataUrl) {
   return r.data // { ok, fotoUrl }
 }
 
+/** Corrige o recebimento de chamadas do ramal (reaponta o número pra central dele na Telnyx). */
+export async function reassociarRamal(ramalId) {
+  const r = await call('ramalReassociar')({ ramalId })
+  return r.data // { ok, jaEstavaOk, connectionAntes, connectionAgora }
+}
+
 /** Link de pareamento (o QR aponta pra cá; abre o PWA já com o código). */
 export function linkPareamento(pairKey) {
   return `${PWA_ATENDENTE_URL}?k=${encodeURIComponent(pairKey)}`
