@@ -4131,26 +4131,48 @@ async function provisionarRamalBYO(uid, providerId, apiKey, numeroExato, ramalId
       method: 'PATCH', headers: H, body: JSON.stringify({ outbound: { outbound_voice_profile_id: profileId } }),
     })
   } catch (_) {}
-  // 3) Liga o número na central do ramal (inbound → toca no atendente).
-  const pn = await acharTelnyxPhoneId(H, numeroExato)
-  if (pn?.id) {
-    await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: credentialConnectionId }) })
-  }
-  // 4) Webhook de chamadas na central → nos avisa quando entra ligação (pra push com o app fechado).
-  await garantirWebhookCallRamal(apiKey, credentialConnectionId, uid, ramalId)
+  // 3) Call Control app controla o inbound (answer/música/transfer) e aponta o número pra ele.
+  //    A credential connection fica SÓ pro softphone registrar (sip:user) e pra ligação de saída.
+  await garantirCallControlRamal(apiKey, uid, ramalId, credentialConnectionId, numeroExato, profileId)
   return { credentialConnectionId, sipUsername, sipPassword, voiceProfileId: profileId }
 }
 const RAMAL_CALL_WEBHOOK = 'https://us-central1-afiliadocdnx.cloudfunctions.net/ramalCallWebhook'
-/** Amarra o webhook de chamadas na central do ramal + mapeia a connection → ramal (pro push na entrada). */
-async function garantirWebhookCallRamal(apiKey, connectionId, uid, ramalId) {
+/** Remove o webhook da credential connection (ela não roteia mais o número; comandos Call Control não valem nela). */
+async function removerWebhookCredCon(apiKey, connectionId) {
   if (!connectionId) return
   try {
     await fetch(`https://api.telnyx.com/v2/credential_connections/${connectionId}`, {
       method: 'PATCH', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhook_event_url: RAMAL_CALL_WEBHOOK, webhook_api_version: '2' }),
+      body: JSON.stringify({ webhook_event_url: '' }),
     })
-    await db.doc(`ccConnMap/${connectionId}`).set({ uid, ramalId }, { merge: true })
   } catch (_) { /* best-effort */ }
+}
+/**
+ * Garante um CALL CONTROL APP pro ramal (onde answer/música/transfer funcionam), aponta o número pra ele
+ * e mapeia app→ramal. A credential connection fica só pra o softphone registrar. Idempotente.
+ */
+async function garantirCallControlRamal(apiKey, uid, ramalId, credentialConnectionId, numeroExato, profileId) {
+  const H = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+  const ramalRef = db.doc(`users/${uid}/ramais/${ramalId}`)
+  let ccAppId = (await ramalRef.get()).data()?.callControlAppId || null
+  if (ccAppId) { try { const c = await fetch(`https://api.telnyx.com/v2/call_control_applications/${ccAppId}`, { headers: H }); if (!c.ok) ccAppId = null } catch (_) { ccAppId = null } }
+  if (!ccAppId) {
+    let prof = profileId
+    if (!prof) { try { const lp = await fetch('https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=1', { headers: H }); const lpd = await lp.json().catch(() => ({})); prof = lpd?.data?.[0]?.id || null } catch (_) {} }
+    const ca = await fetch('https://api.telnyx.com/v2/call_control_applications', {
+      method: 'POST', headers: H,
+      body: JSON.stringify({ application_name: `Autsend CallCenter ${ramalId}`, webhook_event_url: RAMAL_CALL_WEBHOOK, webhook_api_version: '2', ...(prof ? { outbound: { outbound_voice_profile_id: prof } } : {}) }),
+    })
+    const cad = await ca.json().catch(() => ({}))
+    if (!ca.ok) throw new HttpsError('failed-precondition', cad?.errors?.[0]?.detail || 'Não consegui criar o Call Control na sua conta Telnyx.')
+    ccAppId = cad?.data?.id
+    await ramalRef.set({ callControlAppId: ccAppId }, { merge: true })
+  }
+  await db.doc(`ccConnMap/${ccAppId}`).set({ uid, ramalId }, { merge: true }) // webhook mapeia connection_id do evento
+  const pn = await acharTelnyxPhoneId(H, numeroExato)
+  if (pn?.id) await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, { method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: ccAppId }) })
+  await removerWebhookCredCon(apiKey, credentialConnectionId) // central SIP só pra registrar
+  return ccAppId
 }
 /** Acha o phone number id na conta Telnyx tentando formatos (+E164, sem +, cru). Retorna { id, connectionId, numero } ou null. */
 async function acharTelnyxPhoneId(H, numero) {
@@ -4288,18 +4310,11 @@ exports.ramalReassociar = onCall({ region: 'us-central1', timeoutSeconds: 30 }, 
   const H = { Authorization: `Bearer ${prov.apiKey}`, 'Content-Type': 'application/json' }
   const pn = await acharTelnyxPhoneId(H, ramal.numero)
   if (!pn?.id) throw new HttpsError('not-found', 'Número não encontrado na sua conta Telnyx.')
-  const jaOk = pn.connectionId === ramal.credentialConnectionId
-  const patch = await fetch(`https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`, {
-    method: 'PATCH', headers: H, body: JSON.stringify({ connection_id: ramal.credentialConnectionId }),
-  })
-  if (!patch.ok) {
-    const d = await patch.json().catch(() => ({}))
-    throw new HttpsError('internal', d?.errors?.[0]?.detail || 'Não consegui reapontar o número na Telnyx.')
-  }
-  // Garante o webhook de chamadas na central (pro push na entrada).
-  await garantirWebhookCallRamal(prov.apiKey, ramal.credentialConnectionId, uid, ramalId)
-  await db.doc(`users/${uid}/ramais/${ramalId}`).set({ webhookCallSet: true }, { merge: true })
-  return { ok: true, jaEstavaOk: jaOk, connectionAntes: pn.connectionId || null, connectionAgora: ramal.credentialConnectionId }
+  // Garante o Call Control app (answer/música/transfer funcionam) + aponta o número pra ele.
+  const ccAppId = await garantirCallControlRamal(prov.apiKey, uid, ramalId, ramal.credentialConnectionId, ramal.numero)
+  await db.doc(`users/${uid}/ramais/${ramalId}`).set({ ccAppSet: true }, { merge: true })
+  const jaOk = pn.connectionId === ccAppId
+  return { ok: true, jaEstavaOk: jaOk, connectionAntes: pn.connectionId || null, connectionAgora: ccAppId }
 })
 
 /** [App atendente] Pareia o dispositivo com a pairKey → sessão de 30 dias + dados do ramal. Público. */
@@ -4359,10 +4374,10 @@ exports.ramalWebrtcToken = onRequest({ region: 'us-central1', timeoutSeconds: 20
       sipUsername = novoUser; sipPassword = novaSenha
       await ref.set({ sipUsername, sipPassword, sipFonte: 'conexao' }, { merge: true })
     }
-    // Garante o webhook de chamadas na central (pra push na entrada) — nos ramais antigos também.
-    if (!ramal.webhookCallSet && ramal.credentialConnectionId) {
+    // Garante o Call Control app + aponta o número pra ele (migra ramais antigos também).
+    if (!ramal.ccAppSet && ramal.credentialConnectionId) {
       const prov = (await db.doc(`users/${sessao.uid}/smsProviders/${ramal.providerId}`).get()).data()
-      if (prov?.apiKey) { await garantirWebhookCallRamal(prov.apiKey, ramal.credentialConnectionId, sessao.uid, sessao.ramalId); await ref.set({ webhookCallSet: true }, { merge: true }) }
+      if (prov?.apiKey) { try { await garantirCallControlRamal(prov.apiKey, sessao.uid, sessao.ramalId, ramal.credentialConnectionId, ramal.numero); await ref.set({ ccAppSet: true }, { merge: true }) } catch (e) { console.error('ccApp heal', e?.message || e) } }
     }
     await ref.set({ ultimoAcesso: admin.firestore.FieldValue.serverTimestamp() }, { merge: true })
     res.status(200).json({ login: sipUsername, password: sipPassword, numero: ramal.numero, nome: ramal.nome, fotoUrl: ramal.fotoUrl || '' })
@@ -4430,21 +4445,24 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
       // Acorda o app (push) — mesmo com o app fechado.
       await enviarPushRamal(uid, ramalId, { title: 'Chamada recebida', body: p.from ? `Ligação de ${p.from}` : 'Alguém está te ligando', tag: 'chamada' })
       if (apiKey && sipUsername) {
-        const pend = { uid, ramalId, ccid, apiKey, sipUsername, from: p.from || '', iniMs: Date.now() }
-        await db.doc(`callPendingCC/${ccid}`).set(pend, { merge: true }).catch(() => {})
-        await db.doc(`ramalPendingCall/${ramalId}`).set(pend, { merge: true }).catch(() => {})
-        // App ABERTO → o softphone registrado toca direto (SIP), não mexemos. App FECHADO → atendemos
-        // (seguramos a chamada) e esperamos o app acordar (ramalPronto) pra transferir — transfer exige atendida.
         const presMs = ramal.presencaEm?.toMillis?.() || 0
         const online = ramal.presencaOnline === true && (Date.now() - presMs) < 45000
         console.log('CCWH online?', online)
-        if (!online) { await atenderChamadaCC(apiKey, ccid); await db.doc(`callPendingCC/${ccid}`).set({ autoAtendida: true }, { merge: true }).catch(() => {}) }
+        const pend = { uid, ramalId, ccid, apiKey, sipUsername, from: p.from || '', online, iniMs: Date.now() }
+        await db.doc(`callPendingCC/${ccid}`).set(pend, { merge: true }).catch(() => {})
+        await db.doc(`ramalPendingCall/${ramalId}`).set(pend, { merge: true }).catch(() => {})
+        // Atende (Call Control app) pra poder transferir/tocar. No call.answered decidimos: transfere (app aberto)
+        // ou toca a música e espera o app acordar (app fechado → ramalPronto).
+        await atenderChamadaCC(apiKey, ccid)
       } else { console.log('CCWH sem apiKey/sipUsername') }
       res.status(200).json({ ok: true }); return
     }
     if ((tipo === 'call.answered' || tipo === 'call.bridged') && entrada) {
       const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
-      if (pend?.autoAtendida && !pend.transferido && pend.apiKey) await tocarEsperaCC(pend.apiKey, ccid) // musiquinha de espera (loop)
+      if (pend && !pend.transferido) {
+        if (pend.online) await transferirParaSoftphone(pend.apiKey, ccid, pend.sipUsername, pend.from) // app aberto → transfere já
+        else if (pend.apiKey) await tocarEsperaCC(pend.apiKey, ccid) // app fechado → música até o app acordar
+      }
       await db.doc(`callPendingCC/${ccid}`).set({ answeredMs: Date.now() }, { merge: true }).catch(() => {})
       res.status(200).json({ ok: true }); return
     }
