@@ -4459,16 +4459,18 @@ exports.ramalCallWebhook = onRequest({ region: 'us-central1', timeoutSeconds: 20
       } else { console.log('CCWH sem apiKey/sipUsername') }
       res.status(200).json({ ok: true }); return
     }
-    if ((tipo === 'call.answered' || tipo === 'call.bridged') && entrada) {
+    if (tipo === 'call.answered' || tipo === 'call.bridged') {
+      // call.answered/bridged NÃO vêm com direction — filtramos pelo pending (nossa chamada de entrada).
       const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
       if (pend && !pend.transferido) {
+        console.log('CCWH answered -> online?', pend.online)
         if (pend.online) await transferirParaSoftphone(pend.apiKey, ccid, pend.sipUsername, pend.from) // app aberto → transfere já
         else if (pend.apiKey) await tocarEsperaCC(pend.apiKey, ccid) // app fechado → música até o app acordar
+        await db.doc(`callPendingCC/${ccid}`).set({ answeredMs: Date.now() }, { merge: true }).catch(() => {})
       }
-      await db.doc(`callPendingCC/${ccid}`).set({ answeredMs: Date.now() }, { merge: true }).catch(() => {})
       res.status(200).json({ ok: true }); return
     }
-    if (tipo === 'call.hangup' && entrada) {
+    if (tipo === 'call.hangup') {
       const pend = (await db.doc(`callPendingCC/${ccid}`).get()).data()
       if (pend) {
         const seg = pend.answeredMs ? Math.max(1, Math.round((Date.now() - pend.answeredMs) / 1000)) : 0
