@@ -76,11 +76,11 @@ function BotaoCopiar({ texto, label = 'Copiar' }) {
 }
 
 /** Modal do QR de pareamento do ramal. Quando o ramal pareia (status != aguardando), vira "✓ conectado" e fecha sozinho. */
-function ModalQR({ ramal, status, onClose }) {
+function ModalQR({ ramal, ultimoAcesso, onClose }) {
   const link = linkPareamento(ramal.pairKey)
-  const jaPareado = status && status !== 'aguardando'
-  const abriuPareado = useRef(jaPareado) // se já estava pareado ao abrir, mostra o QR (pra re-parear outro aparelho)
-  const acabouDeParear = jaPareado && !abriuPareado.current
+  // Fecha quando o atendente PAREA/CONECTA com o modal aberto — detectado por ultimoAcesso avançar.
+  const abriuTs = useRef(ultimoAcesso || 0)
+  const acabouDeParear = (ultimoAcesso || 0) > (abriuTs.current || 0)
   useEffect(() => {
     if (!acabouDeParear) return
     const t = setTimeout(onClose, 2500)
@@ -435,7 +435,7 @@ export default function CallCenter() {
         </div>
       )}
 
-      {qrRamal && <ModalQR ramal={qrRamal} status={(ramais.find((r) => r.id === qrRamal.id) || {}).status} onClose={() => setQrRamal(null)} />}
+      {qrRamal && <ModalQR ramal={qrRamal} ultimoAcesso={(ramais.find((r) => r.id === qrRamal.id) || {}).ultimoAcesso} onClose={() => setQrRamal(null)} />}
     </PageShell>
   )
 }
