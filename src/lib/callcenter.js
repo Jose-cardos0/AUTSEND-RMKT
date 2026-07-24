@@ -36,6 +36,12 @@ export async function reassociarRamal(ramalId) {
   return r.data // { ok, jaEstavaOk, connectionAntes, connectionAgora }
 }
 
+/** Relatório do call center (stats por atendente + recentes) nos últimos N dias. */
+export async function getRelatorioCallCenter(dias = 30) {
+  const r = await call('ramalRelatorio')({ dias })
+  return r.data // { dias, ramais, totais, recentes }
+}
+
 /** Link de pareamento (o QR aponta pra cá; abre o PWA já com o código). */
 export function linkPareamento(pairKey) {
   return `${PWA_ATENDENTE_URL}?k=${encodeURIComponent(pairKey)}`

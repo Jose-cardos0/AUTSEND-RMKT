@@ -5,12 +5,31 @@ import { QRCodeSVG } from 'qrcode.react'
 import toast from 'react-hot-toast'
 import { auth } from '../../lib/firebase'
 import { listarNumerosComFuncoes } from '../../lib/smsNumeros'
-import { criarRamal, listarRamais, revogarRamal, setFotoRamal, reassociarRamal, linkPareamento, PWA_ATENDENTE_URL } from '../../lib/callcenter'
+import { criarRamal, listarRamais, revogarRamal, setFotoRamal, reassociarRamal, getRelatorioCallCenter, linkPareamento, PWA_ATENDENTE_URL } from '../../lib/callcenter'
 import { useConfirm } from '../../components/ConfirmDialog'
 import PageShell from '../../components/PageShell'
 import PageLoader from '../../components/PageLoader'
-import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera, PhoneIncoming } from 'lucide-react'
+import { Headphones, Plus, Loader2, QrCode, Trash2, Copy, Check, X, Smartphone, Phone, User, Camera, PhoneIncoming, PhoneOutgoing, PhoneMissed, BarChart3, Clock } from 'lucide-react'
 import telnyxLogo from '../../assets/telnyx.png'
+
+/** Formata segundos em tempo legível (2h 5min / 3min 20s / 45s). */
+function fmtTempo(seg) {
+  seg = Math.max(0, Math.round(seg || 0))
+  const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60
+  if (h) return `${h}h ${m}min`
+  if (m) return `${m}min ${s}s`
+  return `${s}s`
+}
+function fmtQuando(ts) {
+  if (!ts) return ''
+  const s = Math.floor((Date.now() - ts) / 1000)
+  if (s < 60) return 'agora'
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`
+  const d = new Date(ts)
+  const hoje = new Date().toDateString() === d.toDateString()
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  return hoje ? hora : `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${hora}`
+}
 
 const _norm = (s) => String(s || '').replace(/\D/g, '')
 /** Reduz a imagem escolhida pra ~256px e devolve um dataUrl JPEG (leve pra guardar no Firestore). */
@@ -116,6 +135,18 @@ export default function CallCenter() {
   const [fotoLoadingId, setFotoLoadingId] = useState(null)
   const [fixandoId, setFixandoId] = useState(null)
   const [qrRamal, setQrRamal] = useState(null)
+  const [view, setView] = useState('ramais') // ramais | relatorio
+  const [relDias, setRelDias] = useState(30)
+  const [rel, setRel] = useState(null)
+  const [relLoading, setRelLoading] = useState(false)
+
+  useEffect(() => {
+    if (view !== 'relatorio' || !user?.uid) return
+    let vivo = true
+    setRelLoading(true)
+    getRelatorioCallCenter(relDias).then((d) => { if (vivo) setRel(d) }).catch(() => {}).finally(() => { if (vivo) setRelLoading(false) })
+    return () => { vivo = false }
+  }, [view, relDias, user?.uid])
 
   const carregar = async () => {
     if (!user?.uid) return
@@ -211,6 +242,17 @@ export default function CallCenter() {
         </div>
       </div>
 
+      {/* Toggle Ramais / Relatório */}
+      <div className="mt-4 inline-flex rounded-xl bg-surface-100 p-1">
+        {[{ k: 'ramais', label: 'Ramais', icon: Headphones }, { k: 'relatorio', label: 'Relatório', icon: BarChart3 }].map((t) => (
+          <button key={t.k} type="button" onClick={() => setView(t.k)}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition ${view === t.k ? 'bg-white text-primary-700 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>
+            <t.icon className="w-4 h-4" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'ramais' && (<>
       {/* Criar ramal */}
       <div className="app-panel rounded-2xl p-4 sm:p-5 mt-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-stone-800"><Plus className="w-4 h-4 text-primary-600" /> Novo ramal</h3>
@@ -307,6 +349,91 @@ export default function CallCenter() {
           </div>
         )}
       </div>
+      </>)}
+
+      {view === 'relatorio' && (
+        <div className="mt-4 space-y-4">
+          <div className="flex items-center gap-1.5">
+            {[7, 30, 90].map((d) => (
+              <button key={d} type="button" onClick={() => setRelDias(d)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${relDias === d ? 'bg-primary-600 text-white' : 'bg-surface-100 text-stone-500 hover:bg-surface-200'}`}>
+                {d} dias
+              </button>
+            ))}
+          </div>
+
+          {relLoading && !rel ? (
+            <PageLoader className="py-10" />
+          ) : !rel || (rel.totais.atendidas + rel.totais.perdidas + rel.totais.feitas === 0) ? (
+            <div className="app-panel rounded-2xl py-10 text-center">
+              <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-100 text-stone-400 mb-3"><BarChart3 className="w-6 h-6" /></span>
+              <p className="text-sm text-stone-600 font-medium">Sem ligações no período.</p>
+              <p className="text-xs text-stone-400 mt-1">Assim que os atendentes usarem o app, aparece aqui.</p>
+            </div>
+          ) : (
+            <>
+              {/* Totais */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Atendidas', value: rel.totais.atendidas, icon: PhoneIncoming, cor: 'text-green-600 bg-green-50' },
+                  { label: 'Perdidas', value: rel.totais.perdidas, icon: PhoneMissed, cor: 'text-red-500 bg-red-50' },
+                  { label: 'Feitas', value: rel.totais.feitas, icon: PhoneOutgoing, cor: 'text-primary-600 bg-primary-50' },
+                  { label: 'Tempo total', value: fmtTempo(rel.totais.segundos), icon: Clock, cor: 'text-stone-600 bg-surface-100' },
+                ].map((s) => (
+                  <div key={s.label} className="app-panel rounded-xl p-4">
+                    <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${s.cor} mb-2`}><s.icon className="w-4 h-4" /></span>
+                    <p className="text-xl font-bold text-stone-800 tabular-nums">{s.value}</p>
+                    <p className="text-xs text-stone-500">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Por atendente */}
+              <div className="app-panel rounded-2xl p-4 sm:p-5">
+                <h3 className="text-sm font-semibold text-stone-800 mb-3">Por atendente</h3>
+                <div className="space-y-2">
+                  {rel.ramais.map((r) => (
+                    <div key={r.ramalId} className="flex items-center gap-3 rounded-xl bg-surface-50 border border-surface-200 p-3">
+                      <span className="w-9 h-9 rounded-full bg-primary-50 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-primary-600" /></span>
+                      <p className="font-semibold text-stone-800 truncate flex-1 min-w-0">{r.nome}</p>
+                      <div className="flex items-center gap-3 text-xs shrink-0">
+                        <span className="text-green-600 font-semibold" title="Atendidas"><PhoneIncoming className="w-3.5 h-3.5 inline -mt-0.5" /> {r.atendidas}</span>
+                        <span className="text-red-500 font-semibold" title="Perdidas"><PhoneMissed className="w-3.5 h-3.5 inline -mt-0.5" /> {r.perdidas}</span>
+                        <span className="text-primary-600 font-semibold" title="Feitas"><PhoneOutgoing className="w-3.5 h-3.5 inline -mt-0.5" /> {r.feitas}</span>
+                        <span className="text-stone-500 tabular-nums hidden sm:inline" title="Tempo total"><Clock className="w-3.5 h-3.5 inline -mt-0.5" /> {fmtTempo(r.segundos)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recentes */}
+              {rel.recentes.length > 0 && (
+                <div className="app-panel rounded-2xl p-4 sm:p-5">
+                  <h3 className="text-sm font-semibold text-stone-800 mb-3">Ligações recentes</h3>
+                  <div className="divide-y divide-surface-100">
+                    {rel.recentes.map((c, i) => {
+                      const perdida = c.dir === 'in' && !c.atendida
+                      const Icon = perdida ? PhoneMissed : c.dir === 'in' ? PhoneIncoming : PhoneOutgoing
+                      const cor = perdida ? 'text-red-500' : c.dir === 'in' ? 'text-green-600' : 'text-primary-600'
+                      return (
+                        <div key={i} className="flex items-center gap-3 py-2.5">
+                          <Icon className={`w-4 h-4 shrink-0 ${cor}`} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-stone-800 tabular-nums truncate">{formatarNumero(c.numero)}</p>
+                            <p className="text-xs text-stone-400 truncate">{c.ramalNome} · {perdida ? 'Perdida' : c.atendida ? fmtTempo(c.segundos) : 'Não atendida'}</p>
+                          </div>
+                          <span className="text-xs text-stone-400 shrink-0">{fmtQuando(c.ts)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {qrRamal && <ModalQR ramal={qrRamal} status={(ramais.find((r) => r.id === qrRamal.id) || {}).status} onClose={() => setQrRamal(null)} />}
     </PageShell>

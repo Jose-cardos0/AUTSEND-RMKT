@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { TelnyxRTC } from '@telnyx/webrtc'
 import { Phone, PhoneOff, PhoneIncoming, PhoneOutgoing, PhoneMissed, Delete, Mic, MicOff, Loader2, LogOut, Wifi, WifiOff, Grid3x3, Clock, Menu as MenuIcon } from 'lucide-react'
-import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico, enviarPresenca } from '../../lib/atendente'
+import { parear, obterTokenWebrtc, getSessao, getRamalSalvo, salvarSessao, limparSessao, getHistorico, addHistorico, enviarPresenca, registrarChamadaServidor } from '../../lib/atendente'
 import logo from '../../assets/autsendlogo.png'
 
 function fmtNum(n) {
@@ -91,7 +91,9 @@ export default function Atendente() {
     if (!info) return
     infoRef.current = null
     const dur = info.atendida && info.ini ? Math.max(1, Math.round((Date.now() - info.ini) / 1000)) : 0
-    setHistorico(addHistorico({ id: `${Date.now()}_${Math.round(Math.random() * 999)}`, dir: info.dir, num: info.num, atendida: !!info.atendida, dur, ts: Date.now() }))
+    const item = { id: `${Date.now()}_${Math.round(Math.random() * 999)}`, dir: info.dir, num: info.num, atendida: !!info.atendida, dur, ts: Date.now() }
+    setHistorico(addHistorico(item))
+    registrarChamadaServidor(item) // manda cópia pro relatório do dono
   }, [])
 
   // ── Conecta o softphone (TelnyxRTC) usando o token efêmero ──

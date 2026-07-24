@@ -15,6 +15,20 @@ export function limparSessao() {
   try { localStorage.removeItem(LS_SESSAO); localStorage.removeItem(LS_RAMAL); localStorage.removeItem(LS_HIST) } catch { /* ignore */ }
 }
 
+/** Reporta uma ligação concluída pro servidor (relatório do dono). Best-effort. */
+export function registrarChamadaServidor(item) {
+  const sessao = getSessao()
+  if (!sessao) return
+  const body = JSON.stringify({ ...item, sessao })
+  try {
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon(`${BASE}/ramalRegistrarChamada`, new Blob([body], { type: 'application/json' }))
+      return
+    }
+    fetch(`${BASE}/ramalRegistrarChamada`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao}` }, body, keepalive: true }).catch(() => {})
+  } catch { /* ignore */ }
+}
+
 // ── Histórico de ligações (local, por aparelho) ──
 export function getHistorico() { try { return JSON.parse(localStorage.getItem(LS_HIST) || '[]') } catch { return [] } }
 /** Adiciona uma ligação ao histórico e devolve a lista atualizada (máx 60). item: { id, dir:'in'|'out', num, atendida, dur, ts } */

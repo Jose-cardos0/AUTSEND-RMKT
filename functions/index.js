@@ -4334,6 +4334,51 @@ exports.ramalPresenca = onRequest({ region: 'us-central1', timeoutSeconds: 15, m
   } catch (err) { res.status(200).json({ ok: false }) }
 })
 
+/** [App atendente] Registra uma ligação que o softphone conduziu (pro relatório do dono). Público (Bearer sessão). */
+exports.ramalRegistrarChamada = onRequest({ region: 'us-central1', timeoutSeconds: 15, memory: '256MiB', maxInstances: 20 }, async (req, res) => {
+  _corsRamal(res)
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return }
+  try {
+    const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+    const sessao = ramalVerificarSessao(auth || req.body?.sessao || '')
+    if (!sessao) { res.status(401).json({ erro: 'Sessão expirada.' }); return }
+    const c = req.body || {}
+    const rSnap = await db.doc(`users/${sessao.uid}/ramais/${sessao.ramalId}`).get()
+    const ramalNome = rSnap.exists ? (rSnap.data().nome || '') : ''
+    await db.collection(`users/${sessao.uid}/callcenterLogs`).add({
+      ramalId: sessao.ramalId, ramalNome,
+      dir: c.dir === 'in' ? 'in' : 'out', numero: String(c.num || '').slice(0, 24),
+      atendida: !!c.atendida, segundos: Math.max(0, Math.round(Number(c.dur) || 0)),
+      ts: Number(c.ts) || Date.now(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+    res.status(200).json({ ok: true })
+  } catch (err) { console.error('ramalRegistrarChamada', err?.message || err); res.status(200).json({ ok: false }) }
+})
+
+/** [Dono] Relatório do call center: stats por atendente + recentes, nos últimos N dias. */
+exports.ramalRelatorio = onCall({ region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' }, async (request) => {
+  const uid = request.auth?.uid
+  if (!uid) throw new HttpsError('unauthenticated', 'Faça login.')
+  const dias = Math.min(90, Math.max(1, Number(request.data?.dias) || 30))
+  const desde = Date.now() - dias * 86400000
+  const snap = await db.collection(`users/${uid}/callcenterLogs`).orderBy('createdAt', 'desc').limit(1000).get()
+  const porRamal = {}
+  const totais = { atendidas: 0, perdidas: 0, feitas: 0, segundos: 0 }
+  const recentes = []
+  snap.docs.forEach((d) => {
+    const c = d.data()
+    if ((c.ts || 0) < desde) return
+    const k = c.ramalId || '?'
+    if (!porRamal[k]) porRamal[k] = { ramalId: k, nome: c.ramalNome || 'Ramal', atendidas: 0, perdidas: 0, feitas: 0, segundos: 0 }
+    const r = porRamal[k]
+    if (c.dir === 'in') { if (c.atendida) { r.atendidas++; totais.atendidas++ } else { r.perdidas++; totais.perdidas++ } } else { r.feitas++; totais.feitas++ }
+    r.segundos += c.segundos || 0; totais.segundos += c.segundos || 0
+    if (recentes.length < 60) recentes.push({ ramalNome: c.ramalNome || '', dir: c.dir, numero: c.numero || '', atendida: !!c.atendida, segundos: c.segundos || 0, ts: c.ts || 0 })
+  })
+  return { dias, ramais: Object.values(porRamal).sort((a, b) => (b.atendidas + b.feitas) - (a.atendidas + a.feitas)), totais, recentes }
+})
+
 /** Pré-escuta: gera o áudio ElevenLabs do roteiro e devolve como data URL (a mesma voz da ligação). */
 exports.callPreviewVoz = onCall({ region: 'us-central1', timeoutSeconds: 30, memory: '512MiB' }, async (request) => {
   const uid = request.auth?.uid
