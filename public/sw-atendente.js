@@ -22,12 +22,12 @@ self.addEventListener('push', (event) => {
   }))
 })
 
-// Clicou na notificação → foca/abre o app.
+// Clicou na notificação → foca/abre o app (com ?call=1 pra mostrar a tela de "recebendo chamada").
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    for (const c of all) { if (c.url.includes('/atendente')) { await c.focus(); return } }
-    await self.clients.openWindow('/atendente')
+    for (const c of all) { if (c.url.includes('/atendente')) { try { c.postMessage({ tipo: 'chamada' }) } catch (_) {} await c.focus(); return } }
+    await self.clients.openWindow('/atendente?call=1')
   })())
 })

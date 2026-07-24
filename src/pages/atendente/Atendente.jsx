@@ -55,6 +55,7 @@ export default function Atendente() {
   const [ultimoEvento, setUltimoEvento] = useState('') // diagnóstico: último evento do SDK
   const [pushLigado, setPushLigado] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
+  const [aguardandoChamada, setAguardandoChamada] = useState(false) // abriu pela notificação → espera a chamada (não mostra teclado)
 
   const clientRef = useRef(null)
   const callRef = useRef(null)
@@ -156,6 +157,25 @@ export default function Atendente() {
     }
   }, [encerrarUI, registrarEfim])
 
+  // Abriu pela notificação de chamada? Mostra "recebendo chamada" (não o teclado) até a chamada chegar.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('call') === '1') {
+      setAguardandoChamada(true)
+      url.searchParams.delete('call'); window.history.replaceState({}, '', url.pathname)
+    }
+    const onMsg = (e) => { if (e?.data?.tipo === 'chamada') setAguardandoChamada(true) }
+    navigator.serviceWorker?.addEventListener('message', onMsg)
+    return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
+  }, [])
+  // Some com o "recebendo" quando a chamada chega, ou some sozinho em 20s (se não veio).
+  useEffect(() => {
+    if (!aguardandoChamada) return
+    if (chamadaEstado) { setAguardandoChamada(false); return }
+    const t = setTimeout(() => setAguardandoChamada(false), 20000)
+    return () => clearTimeout(t)
+  }, [aguardandoChamada, chamadaEstado])
+
   // ── Boot: ?k= da URL (QR) → pareia; senão sessão salva → conecta; senão login ──
   useEffect(() => {
     const url = new URL(window.location.href)
@@ -203,7 +223,12 @@ export default function Atendente() {
       callRef.current = call; setChamadaEstado('saindo')
     } catch { setErro('Não consegui iniciar a ligação.') }
   }
-  const atender = () => { try { callRef.current?.answer() } catch { /* ignore */ } }
+  const destravarAudio = () => {
+    // Desbloqueia o <audio> remoto no gesto do usuário (senão, no app fresco, a voz do chamador não toca).
+    try { const el = document.getElementById('atendente-remote-audio'); if (el) { el.muted = false; el.play().catch(() => {}) } } catch { /* ignore */ }
+    try { const AC = window.AudioContext || window.webkitAudioContext; if (AC) { const c = new AC(); if (c.state === 'suspended') c.resume().catch(() => {}); setTimeout(() => c.close().catch(() => {}), 300) } } catch { /* ignore */ }
+  }
+  const atender = () => { destravarAudio(); try { callRef.current?.answer() } catch { /* ignore */ } }
   const desligar = () => { try { callRef.current?.hangup() } catch { /* ignore */ } registrarEfim(); encerrarUI() }
   const toggleMudo = () => { try { callRef.current?.toggleAudioMute(); setMudo((v) => !v) } catch { /* ignore */ } }
   const tecla = (t) => setDiscar((v) => (v + t).slice(0, 20))
@@ -289,6 +314,17 @@ export default function Atendente() {
           <button onClick={desligar} className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-lg"><PhoneOff className="w-7 h-7 text-white" /></button>
         </div>
       </div>,
+    )
+  }
+
+  // Abriu pela notificação e a chamada ainda não chegou → mostra "recebendo" (evita piscar o teclado).
+  if (aguardandoChamada) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <div className="w-24 h-24 rounded-full bg-primary-50 flex items-center justify-center animate-pulse"><PhoneIncoming className="w-10 h-10 text-primary-600" /></div>
+        <p className="text-lg font-semibold text-stone-800">Recebendo chamada…</p>
+        <p className="text-sm text-stone-500">Conectando você à ligação.</p>
+      </div>
     )
   }
 
